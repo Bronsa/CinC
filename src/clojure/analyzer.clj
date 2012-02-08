@@ -28,6 +28,7 @@
   containing at least :form, :op and :env keys). If expr has any (immediately)
   nested exprs, must have :children [exprs...] entry. This will
   facilitate code walking without knowing the details of the op set."
+  ([form] (analyze {:ns (@namespaces *ns*) :context :statement :locals {}} form nil))
   ([env form] (analyze env form nil))
   ([env form name]
     (let [form (if (instance? clojure.lang.LazySeq form)
@@ -55,35 +56,6 @@
               (if-not (identical? eof r)
                 (recur (read pbr false eof false) (conj ret (analyze env r)))
                 ret))))))))
-
-(def char-map
-  {\- "_",
-   \: "_COLON_",
-   \+ "_PLUS_",
-   \> "_GT_",
-   \< "_LT_",
-   \= "_EQ_",
-   \~ "_TILDE_",
-   \! "_BANG_",
-   \@ "_CIRCA_",
-   \# "_SHARP_",
-   \' "_SINGLEQUOTE_",
-   \" "_DOUBLEQUOTE_",
-   \% "_PERCENT_",
-   \^ "_CARET_",
-   \& "_AMPERSAND_",
-   \* "_STAR_",
-   \| "_BAR_",
-   \{ "_LBRACE_",
-   \} "_RBRACE_",
-   \[ "_LBRACK_",
-   \] "_RBRACK_",
-   \/ "_SLASH_",
-   \\ "_BSLASH_",
-   \? "_QMARK_"})
-
-(defn munge [s]
-  (symbol (apply str (map #(char-map % %) (str s)))))
 
 (defn confirm-var-exists [env prefix suffix]
   (when *warn-on-undeclared*
@@ -115,19 +87,19 @@
 
           (namespace sym)
           (let [ns (namespace sym)]
-            (symbol (str (resolve-ns-alias env ns) "." (munge (name sym)))))
+            (symbol (str (resolve-ns-alias env ns)) (name sym)))
 
           (.contains s ".")
-          (munge (let [idx (.indexOf s ".")
+          (let [idx (.indexOf s ".")
                        prefix (symbol (subs s 0 idx))
                        suffix (subs s idx)
                        lb (-> env :locals prefix)]
                    (if lb
                      (symbol (str (:name lb) suffix))
-                     sym)))
+                     sym))
 
           :else (let [full-ns (if (core-name? env sym) 'clojure.core (-> env :ns :name))]
-                  (munge (symbol (str full-ns "." (name sym))))))]
+                  (symbol (str full-ns) (name sym))))]
     {:name nm}))
 
 (defn resolve-existing-var [env sym]
@@ -141,10 +113,10 @@
           (let [ns (namespace sym)
                 full-ns (resolve-ns-alias env ns)]
             (confirm-var-exists env full-ns (symbol (name sym)))
-            (symbol (str full-ns "." (munge (name sym)))))
+            (symbol (str full-ns) (name sym)))
 
           (.contains s ".")
-          (munge (let [idx (.indexOf s ".")
+          (let [idx (.indexOf s ".")
                        prefix (symbol (subs s 0 idx))
                        suffix (subs s idx)
                        lb (-> env :locals prefix)]
@@ -152,14 +124,14 @@
                      (symbol (str (:name lb) suffix))
                      (do
                        (confirm-var-exists env prefix (symbol suffix))
-                       sym))))
+                       sym)))
 
           (get-in @namespaces [(-> env :ns :name) :uses sym])
-          (symbol (str (get-in @namespaces [(-> env :ns :name) :uses sym]) "." (munge (name sym))))
+          (symbol (str (get-in @namespaces [(-> env :ns :name) :uses sym])) (name sym))
 
           :else (let [full-ns (if (core-name? env sym) 'clojure.core (-> env :ns :name))]
                   (confirm-var-exists env full-ns sym)
-                  (munge (symbol (str full-ns "." (name sym))))))]
+                  (symbol (str full-ns) (name sym))))]
     {:name nm}))
 
 (defn analyze-symbol
@@ -227,7 +199,7 @@
         args (apply pfn form)
         sym (:sym args)]
     (assert (not (namespace sym)) "Can't def ns-qualified name")
-    (let [name (munge (:name (resolve-var (dissoc env :locals ) sym)))
+    (let [name (:name (resolve-var (dissoc env :locals ) sym))
           init-expr (when (contains? args :init ) (disallowing-recur
                                                     (analyze (assoc env :context :expr ) (:init args) sym)))
           export-as (when-let [export-val (-> sym meta :export )]

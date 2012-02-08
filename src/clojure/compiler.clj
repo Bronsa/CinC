@@ -4,7 +4,38 @@
   (:use [clojure analyzer set walk])
   (:import [org.objectweb.asm Type Opcodes ClassWriter]
            [org.objectweb.asm.commons Method GeneratorAdapter]
+           [org.objectweb.asm.util TraceClassVisitor]
            [clojure.lang DynamicClassLoader]))
+
+(def char-map
+  {\- "_",
+   \: "_COLON_",
+   \+ "_PLUS_",
+   \> "_GT_",
+   \< "_LT_",
+   \= "_EQ_",
+   \~ "_TILDE_",
+   \! "_BANG_",
+   \@ "_CIRCA_",
+   \# "_SHARP_",
+   \' "_SINGLEQUOTE_",
+   \" "_DOUBLEQUOTE_",
+   \% "_PERCENT_",
+   \^ "_CARET_",
+   \& "_AMPERSAND_",
+   \* "_STAR_",
+   \| "_BAR_",
+   \{ "_LBRACE_",
+   \} "_RBRACE_",
+   \[ "_LBRACK_",
+   \] "_RBRACK_",
+   \/ "_SLASH_",
+   \\ "_BSLASH_",
+   \? "_QMARK_",
+   \. "_DOT_"})
+
+(defn munge [s]
+  (symbol (apply str (map #(char-map % %) (str s)))))
 
 (defmulti ^:private emit :op)
 
@@ -14,18 +45,16 @@
 
 (def ^:dynamic *loader* (DynamicClassLoader.))
 
+(def object-type (Type/getType Object))
+
 (def ifn-type (Type/getType clojure.lang.IFn))
 
-(def object-type (Type/getType Object))
+(def var-type (Type/getType clojure.lang.Var))
 
 (def max-positional-arity 20)
 
 (def arg-types (into-array (for [i (range max-positional-arity )]
                              (into-array Type (repeat i object-type)))))
-
-;(defmacro emit-wrap [env & body]
-;  `(let [env# ~env]
-;     ))
 
 (defn debug-info [name source-path line]
   (str "SMAP\n"
@@ -65,7 +94,7 @@
 
 (defn- process [f ast]
   (let [post-fn (fn [form]
-                  (swap! *frame* (comp vec distinct (partial merge-with union)) (f form))
+                  (swap! *frame* (partial merge-with (comp vec distinct union)) (f form))
                   form)]
     (if (new-frame? ast)
       (binding [*frame* (new-frame)]
@@ -75,41 +104,67 @@
 (defn- emit-vars [cv {vars :vars}]
   (doseq [v vars]
     (.visitField cv
-      (+ Opcodes/ACC_PUBLIC Opcodes/ACC_SUPER Opcodes/ACC_STATIC) (str v) (Type/getType clojure.lang.Var) nil nil)))
+      (+ Opcodes/ACC_PUBLIC Opcodes/ACC_SUPER Opcodes/ACC_STATIC) (str (munge v)) (.getDescriptor var-type) nil nil)))
 
 (defmulti type-of class)
 
-(defmethod type-of :default object-type)
+(defmethod type-of :default [o] object-type)
 
 (defn- emit-constants [cv {constants :constants}]
   (doall (map-indexed
     (fn [i v]
-      (.visitField cv (+ Opcodes/ACC_PUBLIC Opcodes/ACC_SUPER Opcodes/ACC_STATIC) (str "CONSTANT" i) (type-of v) nil v)))))
+      (.visitField cv
+        (+ Opcodes/ACC_PUBLIC Opcodes/ACC_SUPER Opcodes/ACC_STATIC)
+        (str "CONSTANT" i)
+        (.getDescriptor (type-of v))
+        nil
+        nil))
+    constants)))
+
+(defn- emit-constructors [cv {constructors :constructors}])
+
+(defn- emit-class [cw internal-name ast]
+  (doto cw
+    (.visit Opcodes/V1_5 (+ Opcodes/ACC_PUBLIC Opcodes/ACC_SUPER) internal-name nil "java/lang/Object" nil)
+    ;(.visitSource name (debug-info name source-path line))
+    (.visitSource internal-name nil)
+    (emit-vars ast)
+    (emit-constants ast)
+    (emit-constructors ast))
+  (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (Method/getMethod "Object invoke()") nil nil cw)
+            *frame* (new-frame)]
+    (swap! *frame* assoc :class internal-name)
+    (.visitCode *gen*)
+    (emit ast)
+    (.returnValue *gen*)
+    (.endMethod *gen*)
+    (.visitEnd cw)))
 
 (defn eval [form]
   (let [env {:ns (@namespaces *ns*) :context :statement :locals {}}
         cw (ClassWriter. ClassWriter/COMPUTE_MAXS)
         ast (analyze env form)
         ast (process #(merge (collect-vars %) (collect-constants %)) ast)
-        name (str "repl/Temp" (swap! unique inc))]
-    (-> cw
-      (.visit Opcodes/V1_5 (+ Opcodes/ACC_PUBLIC Opcodes/ACC_SUPER) name, nil, "java/lang/Object", nil)
-      ;(.visitSource name (debug-info name source-path line))
-      (.visitSource name nil)
-      (emit-vars form)
-      (emit-constants form)
-      (emit-constructors form))
-    (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (Method/getMethod "Object invoke()") nil nil cw)
-              *loader* (DynamicClassLoader.)]
-      (.visitCode *gen*)
-      (emit ast)
-      (.returnValue *gen*)
-      (.endMethod *gen*))
-    (.visitEnd cw)
-    (let [bytecode (.toByteArray cw)
-          class (load-class bytecode)
+        id (swap! unique inc)
+        internal-name (str "repl/Temp" id)
+        binary-name (str "repl.Temp" id)]
+    (emit-class cw internal-name ast)
+    (binding [*loader* (DynamicClassLoader.)]
+      (let [bytecode (.toByteArray cw)
+          class (load-class binary-name bytecode form)
           instance (.newInstance class)]
-      (.invoke instance))))
+        (.invoke instance)))))
+
+(defn- trace-eval [form]
+  (let [env {:ns (@namespaces *ns*) :context :statement :locals {}}
+        cw (TraceClassVisitor. (java.io.PrintWriter. *out*))
+        ast (analyze env form)
+        ast (process #(merge (collect-vars %) (collect-constants %)) ast)
+        id (swap! unique inc)
+        internal-name (str "repl/Temp" id)
+        binary-name (str "repl.Temp" id)]
+    (emit-class cw internal-name ast)))
+
 
 (defn load
   [f]
@@ -135,7 +190,22 @@
     (emit arg))
   (.invokeInterface *gen* ifn-type (Method. "invoke" object-type (get arg-types (count args)))))
 
+(def ^:private var-get-method (Method/getMethod "Object get()"))
+
+(def ^:private var-get-raw-method (Method/getMethod "Object getRawRoot()"))
+
 (defmethod ^:private emit :var
   [{:keys [info env] :as arg}]
+  (let [v (resolve (-> env :ns :name) (:name info))]
+    (.getStatic *gen* object-type (str (munge v)), var-type)
+    (.invokeVirtual *gen* var-type (if (.isDynamic v) var-get-method var-get-raw-method))))
 
-)
+(defmulti emit-constant class)
+(defmethod emit-constant :default [{value :form}]
+  (.push *gen* value))
+
+(defmethod ^:private emit :constant
+  [{:keys [form env]}]
+  (emit-constant form))
+
+(defmethod ^:private emit :default [args] (println "???" args))
