@@ -101,6 +101,9 @@
 (defn ^:private var! [sym]
     (clojure.lang.RT/var (namespace sym) (name sym)))
 
+(defn dynamic? [v]
+    (or (:dynamic (meta v)) (.isDynamic v)))
+
 (defn ^:private emit-vars [cv {:keys [vars env]}]
     (doseq [v vars]
         (let [n (str (munge v))
@@ -255,7 +258,7 @@
           var (var! v)
           {:keys [class fields]} @*frame*]
         (.getStatic *gen* class (fields var) var-type)
-        (.invokeVirtual *gen* var-type (if (:dynamic (meta var)) var-get-method var-get-raw-method))))
+        (.invokeVirtual *gen* var-type (if (dynamic? var) var-get-method var-get-raw-method))))
 
 (defmethod emit :def [{:keys [name form init env doc export] :as args}]
     (let [var (var! name)
@@ -281,15 +284,3 @@
 
 
 (defmethod emit :default [args] (println "???" args))
-
-(use 'clojure.pprint)
-(defn ppm [obj]
-    (let [orig-dispatch *print-pprint-dispatch*]
-        (with-pprint-dispatch
-            (fn [o]
-                (when (meta o)
-                    (print "^")
-                    (orig-dispatch (meta o))
-                    (pprint-newline :fill ))
-                (orig-dispatch o))
-            (pprint obj))))
