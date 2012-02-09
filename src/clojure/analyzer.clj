@@ -12,7 +12,7 @@
 (def ^:dynamic *file* nil)
 (def ^:dynamic *warn-on-undeclared* false)
 
-(def specials '#{def})
+(def specials '#{def fn*})
 
 (def ^:dynamic *recur-frames* nil)
 
@@ -250,3 +250,49 @@ facilitate code walking without knowing the details of the op set."
                     :name name :doc doc :init init-expr}
                 (when init-expr {:children [init-expr]})
                 (when export-as {:export export-as})))))
+
+(defn analyze-block
+  "returns {:statements .. :ret .. :children ..}"
+  [env exprs]
+  (let [statements (disallowing-recur
+                     (seq (map #(analyze (assoc env :context :statement) %) (butlast exprs))))
+        ret (if (<= (count exprs) 1)
+              (analyze env (first exprs))
+              (analyze (assoc env :context (if (= :statement (:context env)) :statement :return)) (last exprs)))]
+    {:statements statements :ret ret :children (vec (cons ret statements))}))
+
+(defn- analyze-fn-method [env locals meth]
+    (letfn [(uniqify [[p & r]]
+                (when p
+                    (cons (if (some #{p} r) (gensym (str p)) p)
+                        (uniqify r))))]
+        (let [params (first meth)
+              fields (-> params meta ::fields)
+              variadic (boolean (some '#{&} params))
+              params (uniqify (remove '#{&} params))
+              fixed-arity (count (if variadic (butlast params) params))
+              body (next meth)
+              locals (reduce (fn [m name] (assoc m name {:name name})) locals params)
+              recur-frame {:names (vec params) :flag (atom nil)}
+              block (binding [*recur-frames* (cons recur-frame *recur-frames*)]
+                (analyze-block (assoc env :context :return :locals locals) body))]
+
+            (merge {:env env :variadic variadic :params params
+                    :max-fixed-arity fixed-arity :recurs @(:flag recur-frame)} block))))
+
+(defmethod parse 'fn*
+    [op env [_ & args] name]
+    (let [[name meths] (if (symbol? (first args))
+        [(first args) (next args)]
+        [name (seq args)])
+          ;;turn (fn [] ...) into (fn ([]...))
+          meths (if (vector? (first meths)) (list meths) meths)
+          locals (:locals env)
+          locals (if name (assoc locals name {:name name}) locals)
+          menv (if (> (count meths) 1) (assoc env :context :expr ) env)
+          methods (map #(analyze-fn-method menv locals %) meths)
+          max-fixed-arity (apply max (map :max-fixed-arity methods))
+          variadic (boolean (some :variadic methods))]
+        ;;todo - validate unique arities, at most one variadic, variadic takes max required args
+        {:env env :op :fn :name name :methods methods :variadic variadic :recur-frames *recur-frames*
+         :max-fixed-arity max-fixed-arity}))
