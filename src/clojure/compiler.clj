@@ -60,18 +60,16 @@
 
 (def ^:private unique (atom 0))
 
-(defn ^:private new-frame []
-    (atom {}))
+(defn ^:private new-frame [] (atom {}))
 
-(def ^:dynamic ^:private *frame* (new-frame))
+(def ^:dynamic ^:private *frame*)
 
 (defn ^:private collect-vars [form]
     (case (:op form)
-        :var
-        (let [var (-> form :info :name)]
-            (if-not (resolve var)
-                (throw (clojure.lang.Util/runtimeException (str "No such var: " var)))
-                {:vars [var]}))
+        :var (let [var (-> form :info :name )]
+                 (if-not (resolve var)
+                     (throw (clojure.lang.Util/runtimeException (str "No such var: " var)))
+                     {:vars [var]}))
 
         :def {:vars [(:name form)]}
 
@@ -82,21 +80,23 @@
     (when (= (:op form) :constant )
         {:constants [(:form form)]}))
 
-(def ^:private new-frame-ops {})
-
 (defn ^:private new-frame? [form]
-    (or (new-frame-ops (:op form))
-        (= :statement (-> form :env :context ))))
+    (#{:fn } (:op form)))
 
-(defn ^:private process-frames [f ast]
+(defn ^:private process-frames-helper [f ast]
     (let [post-fn
           (fn [form]
               (swap! *frame* (partial merge-with (comp vec distinct union)) (f form))
               form)]
         (if (new-frame? ast)
             (binding [*frame* (new-frame)]
-                (merge (walk (partial process-frames f) post-fn ast) @*frame*))
-            (walk (partial process-frames f) post-fn ast))))
+                (let [res (walk (partial process-frames-helper f) post-fn ast)]
+                    (merge res @*frame*)))
+            (walk (partial process-frames-helper f) post-fn ast))))
+
+(defn ^:private process-frames [ast]
+    (binding [*frame* (new-frame)]
+        (merge (process-frames-helper #(merge (collect-vars %) (collect-constants %)) ast) @*frame*)))
 
 (defn ^:private var! [sym]
     (clojure.lang.RT/var (namespace sym) (name sym)))
@@ -180,7 +180,7 @@
         line
         "*E"))
 
-(defn ^:private emit-class [internal-name ast]
+(defn ^:private emit-class [internal-name ast emit-methods]
     (binding [*frame* (new-frame)]
         (let [cw (ClassWriter. ClassWriter/COMPUTE_MAXS)]
             (swap! *frame* merge ast {:class (Type/getType internal-name)})
@@ -190,39 +190,44 @@
                 (.visitSource internal-name nil)
                 (emit-vars ast)
                 (emit-constants ast)
-                (emit-constructors ast))
-            (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (Method/getMethod "Object invoke()") nil nil cw)]
-                (.visitCode *gen*)
-                (emit ast)
-                (.returnValue *gen*)
-                (.endMethod *gen*)
-                (.visitEnd cw))
+                (emit-constructors ast)
+                (emit-methods ast)
+                .visitEnd)
             cw)))
+
+(defn ^:private emit-statement [cv ast]
+    (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (Method/getMethod "Object invoke()") nil nil cv)]
+        (.visitCode *gen*)
+        (emit ast)
+        (.returnValue *gen*)
+        (.endMethod *gen*)))
 
 (defn eval [form]
     (let [env {:ns (@namespaces *ns*) :context :statement :locals {}}
           ast (analyze env form)
-          ast (process-frames #(merge (collect-vars %) (collect-constants %)) ast)
+          ast (process-frames ast)
           id (swap! unique inc)
           internal-name (str "repl/Temp" id)
           binary-name (str "repl.Temp" id)
-          cw (emit-class internal-name ast)]
+          cw (emit-class internal-name ast emit-statement)]
         (binding [*loader* (DynamicClassLoader.)]
             (let [bytecode (.toByteArray cw)
                   class (load-class binary-name bytecode form)
                   instance (.newInstance class)]
                 (.invoke instance)))))
 
-(defn eval-trace [form]
+(defn eval-trace [form & {:keys [check]}]
     (let [env {:ns (@namespaces *ns*) :context :statement :locals {}}
           ast (analyze env form)
-          ast (process-frames #(merge (collect-vars %) (collect-constants %)) ast)
+          ast (process-frames ast)
           id (swap! unique inc)
           internal-name (str "repl/Temp" id)
           binary-name (str "repl.Temp" id)
-          cw (emit-class internal-name ast)]
-        (let [cv (ClassReader. (.toByteArray cw))]
-            (.accept cv (CheckClassAdapter. (TraceClassVisitor. (java.io.PrintWriter. *out*))) 0))))
+          cw (emit-class internal-name ast emit-statement)]
+        (let [cv (ClassReader. (.toByteArray cw))
+              v (TraceClassVisitor. (java.io.PrintWriter. *out*))
+              v (if check (CheckClassAdapter. v) v)]
+            (.accept cv v 0))))
 
 
 (defn load [f]
@@ -282,5 +287,38 @@
 (defmethod emit :constant [{:keys [form env]}]
     (emit-constant form))
 
+(defn ^:private notsup [& args]
+    (clojure.lang.Util/runtimeException (apply str "Unsupported: " args)))
 
-(defmethod emit :default [args] (println "???" args))
+(defn emit-fn-method [cv {:keys [name params statements ret env recurs] :as args}]
+    (binding [*gen*
+              (GeneratorAdapter. Opcodes/ACC_PUBLIC
+                  (Method/getMethod (str "Object invoke(" (apply str (interpose \, params)) ")")) nil nil cv)]
+        (.visitCode *gen*)
+        (when recurs (notsup "recurs"))
+        (when statements
+            (dorun (map emit statements)))
+        (emit ret)
+        (.returnValue *gen*)
+        (.endMethod *gen*)))
+
+(defn ^:private emit-fns [cv {:keys [name env methods max-fixed-arity variadic recur-frames]}]
+    (let [loop-locals (seq (mapcat :names (filter #(and % @(:flag %)) recur-frames)))]
+        (when loop-locals
+            (notsup "loop-locals"))
+        (let [maxparams (apply max-key count (map :params methods))
+              mmap (zipmap (repeatedly #(gensym (str name "__"))) methods)
+              ms (sort-by #(-> % second :params count) (seq mmap))]
+            (doseq [[n meth] ms]
+                (if (:variadic meth)
+                    (notsup '(emit-variadic-fn-method meth))
+                    (emit-fn-method cv meth)))
+            (when loop-locals
+                (notsup "loop-locals")))))
+
+(defmethod emit :fn [ast]
+    [ast]
+    (let [name (str (or (:name ast) (gensym)))]
+        (emit-class name ast emit-fns)))
+
+(defmethod emit :default [args] (clojure.lang.Util/runtimeException (str "Unknown operator: " (:op args) "\nForm: " args)))

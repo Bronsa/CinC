@@ -26,3 +26,5 @@
                     (pprint-newline :fill ))
                 (orig-dispatch o))
             (pprint obj))))
+
+(eval-trace '(fn [] 1))
