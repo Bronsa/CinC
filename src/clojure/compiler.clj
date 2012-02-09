@@ -66,8 +66,17 @@
 (def ^:dynamic ^:private *frame* (new-frame))
 
 (defn ^:private collect-vars [form]
-    (when (= (:op form) :var )
-        {:vars [(-> form :info :name )]}))
+    (case (:op form)
+        :var
+        (let [var (-> form :info :name)]
+            (if-not (resolve var)
+                (throw (clojure.lang.Util/runtimeException (str "No such var: " var)))
+                {:vars [var]}))
+
+        :def {:vars [(:name form)]}
+
+        nil
+        ))
 
 (defn ^:private collect-constants [form]
     (when (= (:op form) :constant )
@@ -80,21 +89,25 @@
         (= :statement (-> form :env :context ))))
 
 (defn ^:private process-frames [f ast]
-    (let [post-fn (fn [form]
-        (swap! *frame* (partial merge-with (comp vec distinct union)) (f form))
-        form)]
+    (let [post-fn
+          (fn [form]
+              (swap! *frame* (partial merge-with (comp vec distinct union)) (f form))
+              form)]
         (if (new-frame? ast)
             (binding [*frame* (new-frame)]
                 (merge (walk (partial process-frames f) post-fn ast) @*frame*))
             (walk (partial process-frames f) post-fn ast))))
 
+(defn ^:private var! [sym]
+    (clojure.lang.RT/var (namespace sym) (name sym)))
+
 (defn ^:private emit-vars [cv {:keys [vars env]}]
     (doseq [v vars]
-        (let [name (str (munge v))
-              var (resolve (-> env :ns :name) v)]
+        (let [n (str (munge v))
+              var (var! v)]
             (.visitField cv
-                (+ Opcodes/ACC_PUBLIC Opcodes/ACC_FINAL Opcodes/ACC_STATIC) name (.getDescriptor var-type) nil nil)
-            (swap! *frame* assoc-in [:fields var] name))))
+                (+ Opcodes/ACC_PUBLIC Opcodes/ACC_FINAL Opcodes/ACC_STATIC) n (.getDescriptor var-type) nil nil)
+            (swap! *frame* assoc-in [:fields var] n))))
 
 (defmulti type-of class)
 (defmethod type-of :default [o] object-type)
@@ -139,7 +152,7 @@
         (.returnValue ctor)
         (.endMethod ctor))
     (let [m (Method/getMethod "void <clinit> ()")
-          line (-> ast :env :line)
+          line (-> ast :env :line )
           {:keys [class fields]} @*frame*]
         (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC m nil nil cv)]
             (.visitCode *gen*)
@@ -170,7 +183,7 @@
             (swap! *frame* merge ast {:class (Type/getType internal-name)})
             (doto cw
                 (.visit Opcodes/V1_5 (+ Opcodes/ACC_PUBLIC Opcodes/ACC_SUPER) internal-name nil "java/lang/Object" nil)
-;                (.visitSource internal-name (debug-info internal-name "NO_SOURCE_PATH" (-> ast :env :line)))
+                ;                (.visitSource internal-name (debug-info internal-name "NO_SOURCE_PATH" (-> ast :env :line)))
                 (.visitSource internal-name nil)
                 (emit-vars ast)
                 (emit-constants ast)
@@ -239,11 +252,24 @@
 
 (defmethod emit :var [{:keys [info env]}]
     (let [v (:name info)
-          var (resolve (-> env :ns :name) v)
+          var (var! v)
           {:keys [class fields]} @*frame*]
         (.getStatic *gen* class (fields var) var-type)
-        (.invokeVirtual *gen* var-type (if (.isDynamic var) var-get-method var-get-raw-method))))
+        (.invokeVirtual *gen* var-type (if (:dynamic (meta var)) var-get-method var-get-raw-method))))
 
+(defmethod emit :def [{:keys [name form init env doc export] :as args}]
+    (let [var (var! name)
+          {:keys [class fields]} @*frame*]
+        (.getStatic *gen* class (fields var) var-type)
+        (when (:dynamic (meta form))
+            (.push *gen* true)
+            (.invokeVirtual *gen* var-type (Method/getMethod "clojure.lang.Var setDynamic(boolean)")))
+        (when (meta form)
+            (println "TODO: Copy meta on def"))
+        (when init
+            (.dup *gen*)
+            (emit init)
+            (.invokeVirtual *gen* var-type (Method/getMethod "void bindRoot(Object)")))))
 
 (defmulti ^:private emit-constant class)
 (defmethod emit-constant Long [v]
@@ -253,4 +279,17 @@
 (defmethod emit :constant [{:keys [form env]}]
     (emit-constant form))
 
+
 (defmethod emit :default [args] (println "???" args))
+
+(use 'clojure.pprint)
+(defn ppm [obj]
+    (let [orig-dispatch *print-pprint-dispatch*]
+        (with-pprint-dispatch
+            (fn [o]
+                (when (meta o)
+                    (print "^")
+                    (orig-dispatch (meta o))
+                    (pprint-newline :fill ))
+                (orig-dispatch o))
+            (pprint obj))))
