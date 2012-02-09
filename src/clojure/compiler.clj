@@ -139,10 +139,12 @@
         (.returnValue ctor)
         (.endMethod ctor))
     (let [m (Method/getMethod "void <clinit> ()")
+          line (-> ast :env :line)
           {:keys [class fields]} @*frame*]
         (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC m nil nil cv)]
             (.visitCode *gen*)
-            (.visitLineNumber *gen* (-> ast :env :line) (.mark *gen*))
+            (when line
+                (.visitLineNumber *gen* line (.mark *gen*)))
             (doseq [[v n] fields]
                 (emit-value v)
                 (.checkCast *gen* (type-of v))
@@ -168,7 +170,7 @@
             (swap! *frame* merge ast {:class (Type/getType internal-name)})
             (doto cw
                 (.visit Opcodes/V1_5 (+ Opcodes/ACC_PUBLIC Opcodes/ACC_SUPER) internal-name nil "java/lang/Object" nil)
-                ;                (.visitSource internal-name (debug-info internal-name "NO_SOURCE_PATH" (-> ast :env :line)))
+;                (.visitSource internal-name (debug-info internal-name "NO_SOURCE_PATH" (-> ast :env :line)))
                 (.visitSource internal-name nil)
                 (emit-vars ast)
                 (emit-constants ast)
