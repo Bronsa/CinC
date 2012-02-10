@@ -56,7 +56,8 @@
                                          (into-array Type (repeat i object-type)))))
 
 (defn load-class [name bytecode form]
-    (.defineClass *loader* name bytecode form))
+    (let [binary-name (.replace name \/ \.)]
+        (.defineClass *loader* binary-name bytecode form)))
 
 (def ^:private unique (atom 0))
 
@@ -146,12 +147,12 @@
     (.push *gen* (name (.sym v)))
     (.invokeStatic *gen* (Type/getType clojure.lang.RT) (Method/getMethod "clojure.lang.Var var(String,String)")))
 
+(def ^:private constructor-method (Method/getMethod "void <init> ()"))
 
 (defn ^:private emit-constructors [cv ast]
-    (let [m (Method/getMethod "void <init> ()")
-          ctor (GeneratorAdapter. Opcodes/ACC_PUBLIC m nil nil cv)]
+    (let [ctor (GeneratorAdapter. Opcodes/ACC_PUBLIC constructor-method nil nil cv)]
         (.loadThis ctor)
-        (.invokeConstructor ctor object-type m)
+        (.invokeConstructor ctor object-type constructor-method)
         (.returnValue ctor)
         (.endMethod ctor))
     (let [m (Method/getMethod "void <clinit> ()")
@@ -208,11 +209,10 @@
           ast (process-frames ast)
           id (swap! unique inc)
           internal-name (str "repl/Temp" id)
-          binary-name (str "repl.Temp" id)
           cw (emit-class internal-name ast emit-statement)]
         (binding [*loader* (DynamicClassLoader.)]
             (let [bytecode (.toByteArray cw)
-                  class (load-class binary-name bytecode form)
+                  class (load-class internal-name bytecode form)
                   instance (.newInstance class)]
                 (.invoke instance)))))
 
@@ -222,13 +222,11 @@
           ast (process-frames ast)
           id (swap! unique inc)
           internal-name (str "repl/Temp" id)
-          binary-name (str "repl.Temp" id)
-          cw (emit-class internal-name ast emit-statement)]
-        (let [cv (ClassReader. (.toByteArray cw))
-              v (TraceClassVisitor. (java.io.PrintWriter. *out*))
-              v (if check (CheckClassAdapter. v) v)]
-            (.accept cv v 0))))
-
+          cw (emit-class internal-name ast emit-statement)
+          cv (ClassReader. (.toByteArray cw))
+          v (TraceClassVisitor. (java.io.PrintWriter. *out*))
+          v (if check (CheckClassAdapter. v) v)]
+        (.accept cv v 0)))
 
 (defn load [f]
     (let [res (or (io/resource f) (io/as-url (io/as-file f)))]
@@ -302,23 +300,24 @@
         (.returnValue *gen*)
         (.endMethod *gen*)))
 
-(defn ^:private emit-fns [cv {:keys [name env methods max-fixed-arity variadic recur-frames]}]
+(defn ^:private emit-fns [cv {:keys [name env methods max-fixed-arity variadic recur-frames] :as ast}]
     (let [loop-locals (seq (mapcat :names (filter #(and % @(:flag %)) recur-frames)))]
         (when loop-locals
             (notsup "loop-locals"))
-        (let [maxparams (apply max-key count (map :params methods))
-              mmap (zipmap (repeatedly #(gensym (str name "__"))) methods)
-              ms (sort-by #(-> % second :params count) (seq mmap))]
-            (doseq [[n meth] ms]
-                (if (:variadic meth)
-                    (notsup '(emit-variadic-fn-method meth))
-                    (emit-fn-method cv meth)))
-            (when loop-locals
-                (notsup "loop-locals")))))
+        (doseq [meth methods]
+            (if (:variadic meth)
+                (notsup '(emit-variadic-fn-method meth))
+                (emit-fn-method cv meth)))
+        (when loop-locals
+            (notsup "loop-locals"))))
 
 (defmethod emit :fn [ast]
-    [ast]
-    (let [name (str (or (:name ast) (gensym)))]
-        (emit-class name ast emit-fns)))
+    (let [name (str (or (:name ast) (gensym)))
+          cw (emit-class name ast emit-fns)
+          bytecode (.toByteArray cw)
+          class (load-class name bytecode ast)]
+        (.newInstance *gen* (Type/getType class))
+        (.dup *gen*)
+        (.invokeConstructor *gen* (Type/getType class) constructor-method)))
 
 (defmethod emit :default [args] (clojure.lang.Util/runtimeException (str "Unknown operator: " (:op args) "\nForm: " args)))
