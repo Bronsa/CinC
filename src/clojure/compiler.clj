@@ -95,7 +95,7 @@
     {:vars [(:name form)]}
 
     (= :constant op)
-    {:constants [form]}
+    {:constants [(:form form)]}
 
     :else nil
     ))
