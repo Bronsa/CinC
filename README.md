@@ -1,3 +1,5 @@
+(Note: repository is now available on both github at https://github.com/remleduff/CinC and bitbucket at https://bitbucket.org/remleduff/cinc)
+
 Clojure in Clojure (pre-pre-pre-alpha)
 ======================================
 
