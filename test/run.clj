@@ -2,9 +2,7 @@
     (doseq [ns nss
             :when (find-ns ns)
             [sym var] (ns-map ns)]
-;        (println ns sym var (.ns var))
         (when (and (var? var) ((set nss) (.getName (.ns var))))
-;            (println "Unmap " ns sym)
             (ns-unmap ns sym))))
 
 
@@ -27,4 +25,16 @@
                 (orig-dispatch o))
             (pprint obj))))
 
-(eval-trace '(fn [] 1))
+;(eval-trace '(fn [] 1))
+
+(defprotocol Blah
+  (foo [a])
+  (bar [a]))
+
+(defrecord P []
+  Blah
+  (foo [a] 1))
+
+(def sample (P.))
+
+(process-frames (analyze '(foo (bar sample))))
