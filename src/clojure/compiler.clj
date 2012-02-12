@@ -1,8 +1,12 @@
 (ns clojure.compiler
-  (:refer-clojure :exclude [eval load munge])
+  (:refer-clojure :exclude [eval load munge *ns*])
   (:require [clojure.java.io :as io]
             [clojure.string :as string])
-  (:use [clojure [analyzer :only [analyze namespaces]] [walk :only [walk]]])
+  (:use [clojure
+         [analyzer :only [analyze namespaces *ns*]]
+         [walk :only [walk]]
+         [reflect :only [type-reflect]]
+         [set :only [select]]])
   (:import [org.objectweb.asm Type Opcodes ClassReader ClassWriter]
            [org.objectweb.asm.commons Method GeneratorAdapter]
            [org.objectweb.asm.util CheckClassAdapter TraceClassVisitor]
