@@ -82,7 +82,7 @@
 (defn ^:private new-frame [] (atom {}))
 
 
-(defn ^:private collect-frame [{:keys [op f] :as form}]
+(defn ^:private collect-frame [{:keys [op f form name] :as ast}]
   (cond
     (= :invoke op)
     (let [s (-> f :info :name )]
@@ -90,16 +90,16 @@
         {:callsites [s]}))
 
     (= :var op)
-    (let [var (-> form :info :name )]
-      (if-not (resolve var)
-        (throw (Util/runtimeException (str "No such var: " var)))
-        {:vars [var]}))
+    (let [var (-> ast :info :name )]
+      (when-not (resolve var)
+        (throw (Util/runtimeException (str "No such var: " var))))
+      {:vars [var]})
 
     (= :def op)
-    {:vars [(:name form)]}
+    {:vars [name]}
 
     (= :constant op)
-    {:constants [(:form form)]}
+    {:constants [form]}
 
     :else nil
     ))
@@ -274,21 +274,27 @@
                 (recur
                   (read pbr false eof false))))))))))
 
+(defn ^:private emit-args-and-call [args]
+  (doseq [arg args]
+    (emit arg))
+  (.invokeInterface *gen* ifn-type (Method. "invoke" object-type (get arg-types (count args)))))
+
 (defn ^:private emit-invoke-proto [{:keys [f args]}]
   (let [{:keys [class fields protos]} @*frame*
         on-label (.newLabel *gen*)
         call-label (.newLabel *gen*)
         end-label (.newLabel *gen*)
-        sym (-> f :info :name)
-        v (var! sym)
+        fsym (-> f :info :name )
+        fvar (var! fsym)
+        proto @(-> fvar meta :protocol )
         e (get args 0)
-        protocol-on (:on @v)]
-    ; evaluate the first arg
+        protocol-on (:on proto)]
+    ; load the first arg, so we can see its type
     (emit e)
     (.dup *gen*)
     (.invokeStatic *gen* util-type (Method/getMethod "Class classOf(Object)"))
     (.loadThis *gen*)
-    (.getField *gen* class (-> protos sym :cached-class) class-type) ; target,class,cached-class
+    (.getField *gen* class (-> protos fsym :cached-class ) class-type) ; target,class,cached-class
     ; Check if first arg type is same as cached
     (.visitJumpInsn *gen* Opcodes/IF_ACMPEQ call-label) ; target
     (when (protocol-on)
@@ -296,43 +302,53 @@
       (.instanceOf *gen* (Type/getType protocol-on))
       (.ifZCmp *gen* GeneratorAdapter/NE on-label))
     (.dup *gen*) ; target, target
-    (.invokeStatic *gen* util-type (Method/getMethod("Class classOf(Object"))) ; target, class
+    (.invokeStatic *gen* util-type (Method/getMethod ("Class classOf(Object"))) ; target, class
     (.loadThis *gen*)
     (.swap *gen*)
-    (.putField *gen* class (-> protos sym :cached-class) class-type) ; target
+    (.putField *gen* class (-> protos fsym :cached-class ) class-type) ; target
 
+    (assert (fields fvar))
+
+    ; Slow path through proto-fn
     (.mark *gen* call-label) ; target
-    (.getStatic *gen* class (fields v) var-type)
-     ))
+    (.getStatic *gen* class (fields fsym) var-type)
+    (.invokeVirtual *gen* var-type var-get-raw-method) ; target, proto-fn
+    (.swap *gen*)
+    (emit-args-and-call (rest args))
+    (.goTo *gen* end-label)
 
-;  gen.mark(callLabel); //target
-;  objx.emitVar(gen, v);
-;  gen.invokeVirtual(VAR_TYPE, Method.getMethod("Object getRawRoot()")); //target, proto-fn
-;  gen.swap();
-;  emitArgsAndCall(1, context,objx,gen);
-;  gen.goTo(endLabel);
-;
-;  gen.mark(onLabel); //target
-;  if(protocolOn != null)
-;  {
-;    MethodExpr.emitTypedArgs(objx, gen, onMethod.getParameterTypes(), RT.subvec(args,1,args.count()));
-;    if(context == C.RETURN)
-;    {
-;      ObjMethod method = (ObjMethod) METHOD.deref();
-;      method.emitClearLocals(gen);
-;      }
-;    Method m = new Method(onMethod.getName(), Type.getReturnType(onMethod), Type.getArgumentTypes(onMethod));
-;  gen.invokeInterface(Type.getType(protocolOn), m);
-;  HostExpr.emitBoxReturn(objx, gen, onMethod.getReturnType());
-;  }
-;    gen.mark(endLabel);
+    ; Fast path through interface
+    (.mark *gen* on-label)
+    (when protocol-on
+      (let [mmap (:method-map proto)
+            key (or (-> fsym name keyword mmap) (throw (IllegalArgumentException.
+                                                         (str "No method of interface: " protocol-on
+                                                           " found for function: " fsym " of protocol: " (-> fvar meta :protocol )
+                                                           " (The protocol method may have been defined before and removed.)"))))
+            meth (-> key name munge)
+            members (-> protocol-on type-reflect :members )
+            methods (select #(and (= (:name meth)) (= (dec (count args)) (-> % :parameter-types count))) members)]
+        (when-not (= (count methods) 1)
+          (throw (IllegalArgumentException. (str "No single method: " meth " of interface: " protocol-on
+                                              " found for function: " fsym " of protocol: " (-> fvar meta :protocol )))))
+        ;    MethodExpr.emitTypedArgs(objx, gen, onMethod.getParameterTypes(), RT.subvec(args,1,args.count()));
+        ;    if(context == C.RETURN)
+        ;    {
+        ;      ObjMethod method = (ObjMethod) METHOD.deref();
+        ;      method.emitClearLocals(gen);
+        ;      }
+        ;    Method m = new Method(onMethod.getName(), Type.getReturnType(onMethod), Type.getArgumentTypes(onMethod));
+        ;  gen.invokeInterface(Type.getType(protocolOn), m);
+        ;  HostExpr.emitBoxReturn(objx, gen, onMethod.getReturnType());
+        (println "Protocol primitive path not implemented yet")
+        (.mark *gen* end-label)))))
+
+
 
 (defn ^:private emit-invoke-fn [{:keys [f args env]}]
   (emit f)
   (.checkCast *gen* ifn-type)
-  (doseq [arg args]
-    (emit arg))
-  (.invokeInterface *gen* ifn-type (Method. "invoke" object-type (get arg-types (count args)))))
+  (emit-args-and-call args))
 
 (defmethod emit :invoke [ast]
   (.visitLineNumber *gen* (-> ast :env :line ) (.mark *gen*))
