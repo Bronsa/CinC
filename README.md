@@ -21,8 +21,8 @@ user=> (pprint (process-frames (clojure.analyzer/analyze '(+ 1 2))))
 user=> (eval '(+ 1 2))  
 >3
 
-user=> (eval-trace '(+ 1 2))  
+user=> (eval '(+ 1 2) :trace true)  
 >... textual representation of the class is printed
 
-user=> (eval-trace '(+ 1 2) :check true)  
+user=> (eval '(+ 1 2) :trace true :check true)  
 >... textual representation of the class is printed and additional verification is done by ASMStart typing in the blue box...

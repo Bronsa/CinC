@@ -1,16 +1,16 @@
 (ns clojure.compiler
   (:refer-clojure :exclude [eval load munge *ns*])
   (:require [clojure.java.io :as io]
-            [clojure.string :as string])
+   [clojure.string :as string])
   (:use [clojure
          [analyzer :only [analyze namespaces *ns*]]
          [walk :only [walk]]
          [reflect :only [type-reflect]]
          [set :only [select]]])
   (:import [org.objectweb.asm Type Opcodes ClassReader ClassWriter]
-           [org.objectweb.asm.commons Method GeneratorAdapter]
-           [org.objectweb.asm.util CheckClassAdapter TraceClassVisitor]
-           [clojure.lang DynamicClassLoader RT Util]))
+   [org.objectweb.asm.commons Method GeneratorAdapter]
+   [org.objectweb.asm.util CheckClassAdapter TraceClassVisitor]
+   [clojure.lang DynamicClassLoader RT Util]))
 
 (def max-positional-arity 20)
 
@@ -73,8 +73,18 @@
 (defn dynamic? [v]
   (or (:dynamic (meta v)) (.isDynamic v)))
 
+
+(def ^:dynamic *trace-bytecode* false)
+(def ^:dynamic *check-bytecode* false)
 (defn load-class [name bytecode form]
+  (println "load-class " name *trace-bytecode*)
   (let [binary-name (.replace name \/ \.)]
+    (when (or *trace-bytecode* *check-bytecode*)
+      (let [cr (ClassReader. bytecode)
+            w (java.io.PrintWriter. (if *trace-bytecode* *out* (java.io.StringWriter.)))
+            v (TraceClassVisitor. w)
+            v (if *check-bytecode* (CheckClassAdapter. v) v)]
+        (.accept cr v 0)))
     (.defineClass *loader* binary-name bytecode form)))
 
 (def ^:dynamic ^:private *frame*)
@@ -82,24 +92,24 @@
 (defn ^:private new-frame [] (atom {}))
 
 
-(defn ^:private collect-frame [{:keys [op f form name] :as ast}]
+(defn ^:private collect-frame [ast]
   (cond
-    (= :invoke op)
-    (let [s (-> f :info :name )]
+    (= :invoke (:op ast))
+    (let [s (-> ast :f :info :name )]
       (when (-> s var! meta :protocol )
         {:callsites [s]}))
 
-    (= :var op)
+    (= :var (:op ast))
     (let [var (-> ast :info :name )]
       (when-not (resolve var)
         (throw (Util/runtimeException (str "No such var: " var))))
       {:vars [var]})
 
-    (= :def op)
-    {:vars [name]}
+    (= :def (:op ast))
+    {:vars [(:name ast)]}
 
-    (= :constant op)
-    {:constants [form]}
+    (= :constant (:op ast))
+    {:constants [(:form ast)]}
 
     :else nil
     ))
@@ -161,7 +171,7 @@
                (.visitField cv (+ Opcodes/ACC_PRIVATE) cached-proto-fn (.getDescriptor afn-type) nil nil)
                (.visitField cv (+ Opcodes/ACC_PRIVATE) cached-proto-impl (.getDescriptor ifn-type) nil nil)
                (swap! *frame* assoc-in [:protos site]
-                 {:cached-class cached-class :cached-proto-fn cached-proto-fn :cached-proto-impl cached-proto-impl})))
+                              {:cached-class cached-class :cached-proto-fn cached-proto-fn :cached-proto-impl cached-proto-impl})))
            callsites)))
 
 
@@ -236,28 +246,22 @@
     (.returnValue *gen*)
     (.endMethod *gen*)))
 
-(defn eval [form]
-  (let [env {:ns (@namespaces *ns*) :context :statement :locals {}}
-        ast (analyze env form)
-        ast (process-frames ast)
-        internal-name (str "repl/Temp" (RT/nextID))
-        cw (emit-class internal-name ast emit-statement)]
-    (binding [*loader* (DynamicClassLoader.)]
-      (let [bytecode (.toByteArray cw)
-            class (load-class internal-name bytecode form)
-            instance (.newInstance class)]
-        (.invoke instance)))))
-
-(defn eval-trace [form & {:keys [check]}]
-  (let [env {:ns (@namespaces *ns*) :context :statement :locals {}}
-        ast (analyze env form)
-        ast (process-frames ast)
-        internal-name (str "repl/Temp" (RT/nextID))
-        cw (emit-class internal-name ast emit-statement)
-        cv (ClassReader. (.toByteArray cw))
-        v (TraceClassVisitor. (java.io.PrintWriter. *out*))
-        v (if check (CheckClassAdapter. v) v)]
-    (.accept cv v 0)))
+(defn eval
+  ([form & {:keys [trace check]}]
+   (binding [*trace-bytecode* trace
+             *check-bytecode* check]
+     (eval form)))
+  ([form]
+   (let [env {:ns (@namespaces *ns*) :context :statement :locals {}}
+         ast (analyze env form)
+         ast (process-frames ast)
+         internal-name (str "repl/Temp" (RT/nextID))
+         cw (emit-class internal-name ast emit-statement)]
+     (binding [*loader* (DynamicClassLoader.)]
+       (let [bytecode (.toByteArray cw)
+             class (load-class internal-name bytecode form)
+             instance (.newInstance class)]
+         (.invoke instance))))))
 
 (defn load [f]
   (let [res (or (io/resource f) (io/as-url (io/as-file f)))]
@@ -279,6 +283,22 @@
     (emit arg))
   (.invokeInterface *gen* ifn-type (Method. "invoke" object-type (get arg-types (count args)))))
 
+(defmulti maybe-class class)
+(defmethod maybe-class String [s]
+  (try
+    (RT/classForName s)
+    (catch Exception e nil)))
+(defmethod maybe-class Class [c] c)
+(defmethod maybe-class clojure.lang.Symbol [sym]
+  (when-not (namespace sym)
+    ; TODO: I have no idea what this used to do
+    ;    (if(Util.equals(sym,COMPILE_STUB_SYM.get()))
+    ;    return (Class) COMPILE_STUB_CLASS.get();
+    (let [ret (resolve sym)]
+      (if (instance? Class ret)
+        ret
+        (maybe-class name)))))
+
 (defn ^:private emit-invoke-proto [{:keys [f args]}]
   (let [{:keys [class fields protos]} @*frame*
         on-label (.newLabel *gen*)
@@ -288,7 +308,7 @@
         fvar (var! fsym)
         proto @(-> fvar meta :protocol )
         e (get args 0)
-        protocol-on (:on proto)]
+        protocol-on (maybe-class (:on proto))]
     ; load the first arg, so we can see its type
     (emit e)
     (.dup *gen*)
@@ -297,12 +317,12 @@
     (.getField *gen* class (-> protos fsym :cached-class ) class-type) ; target,class,cached-class
     ; Check if first arg type is same as cached
     (.visitJumpInsn *gen* Opcodes/IF_ACMPEQ call-label) ; target
-    (when (protocol-on)
+    (when protocol-on
       (.dup *gen*) ; target, target
       (.instanceOf *gen* (Type/getType protocol-on))
       (.ifZCmp *gen* GeneratorAdapter/NE on-label))
     (.dup *gen*) ; target, target
-    (.invokeStatic *gen* util-type (Method/getMethod ("Class classOf(Object"))) ; target, class
+    (.invokeStatic *gen* util-type (Method/getMethod "Class classOf(Object)")) ; target, class
     (.loadThis *gen*)
     (.swap *gen*)
     (.putField *gen* class (-> protos fsym :cached-class ) class-type) ; target
@@ -311,7 +331,7 @@
 
     ; Slow path through proto-fn
     (.mark *gen* call-label) ; target
-    (.getStatic *gen* class (fields fsym) var-type)
+    (.getStatic *gen* class (fields fvar) var-type)
     (.invokeVirtual *gen* var-type var-get-raw-method) ; target, proto-fn
     (.swap *gen*)
     (emit-args-and-call (rest args))
@@ -323,14 +343,14 @@
       (let [mmap (:method-map proto)
             key (or (-> fsym name keyword mmap) (throw (IllegalArgumentException.
                                                          (str "No method of interface: " protocol-on
-                                                           " found for function: " fsym " of protocol: " (-> fvar meta :protocol )
-                                                           " (The protocol method may have been defined before and removed.)"))))
+                                                                                         " found for function: " fsym " of protocol: " (-> fvar meta :protocol )
+                                                                                         " (The protocol method may have been defined before and removed.)"))))
             meth (-> key name munge)
             members (-> protocol-on type-reflect :members )
             methods (select #(and (= (:name meth)) (= (dec (count args)) (-> % :parameter-types count))) members)]
         (when-not (= (count methods) 1)
           (throw (IllegalArgumentException. (str "No single method: " meth " of interface: " protocol-on
-                                              " found for function: " fsym " of protocol: " (-> fvar meta :protocol )))))
+                                                                      " found for function: " fsym " of protocol: " (-> fvar meta :protocol )))))
         ;    MethodExpr.emitTypedArgs(objx, gen, onMethod.getParameterTypes(), RT.subvec(args,1,args.count()));
         ;    if(context == C.RETURN)
         ;    {
@@ -343,8 +363,6 @@
         (println "Protocol primitive path not implemented yet")
         (.mark *gen* end-label)))))
 
-
-
 (defn ^:private emit-invoke-fn [{:keys [f args env]}]
   (emit f)
   (.checkCast *gen* ifn-type)
@@ -352,7 +370,7 @@
 
 (defmethod emit :invoke [ast]
   (.visitLineNumber *gen* (-> ast :env :line ) (.mark *gen*))
-  (if (:protocol (meta (-> ast :f :info :name )))
+  (if (:protocol (meta (-> ast :f :info :name var!)))
     (emit-invoke-proto ast)
     (emit-invoke-fn ast)))
 
@@ -367,7 +385,7 @@
   (let [var (var! name)
         {:keys [class fields]} @*frame*]
     (.getStatic *gen* class (fields var) var-type)
-    (when (:dynamic (meta form))
+    (when (dynamic? form)
       (.push *gen* true)
       (.invokeVirtual *gen* var-type (Method/getMethod "clojure.lang.Var setDynamic(boolean)")))
     (when (meta form)
