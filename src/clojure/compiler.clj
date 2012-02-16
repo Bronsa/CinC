@@ -1,5 +1,5 @@
 (ns clojure.compiler
-  (:refer-clojure :exclude [eval load munge *ns*])
+  (:refer-clojure :exclude [eval load munge *ns* type])
   (:require [clojure.java.io :as io]
    [clojure.string :as string])
   (:use [clojure
@@ -75,7 +75,7 @@
   (RT/var (namespace sym) (name sym)))
 
 (defn dynamic? [v]
-  (or (:dynamic (meta v)) (.isDynamic v)))
+  (or (:dynamic (meta v)) (when-let [var (or (when (symbol? v) (resolve v)) (when (var? v) v))] (.isDynamic var))))
 
 
 (def ^:dynamic *trace-bytecode* false)
@@ -469,7 +469,7 @@
   (let [var (var! name)
         {:keys [class fields]} @*frame*]
     (.getStatic *gen* class (fields var) var-type)
-    (when (dynamic? form)
+    (when (dynamic? name)
       (.push *gen* true)
       (.invokeVirtual *gen* var-type (Method/getMethod "clojure.lang.Var setDynamic(boolean)")))
     (when (meta form)
