@@ -6,7 +6,8 @@
          [analyzer :only [analyze namespaces *ns*]]
          [walk :only [walk]]
          [reflect :only [type-reflect]]
-         [set :only [select]]])
+         [set :only [select]]
+         [pprint]]) ; pprint is for debugging
   (:import [org.objectweb.asm Type Opcodes ClassReader ClassWriter]
    [org.objectweb.asm.commons Method GeneratorAdapter]
    [org.objectweb.asm.util CheckClassAdapter TraceClassVisitor]
@@ -45,6 +46,7 @@
   (symbol (apply str (map #(char-map % %) (str s)))))
 
 (defmulti ^:private emit :op )
+(defmulti ^:private emit-unboxed :op )
 
 (defmulti ^:private emit-constant class)
 
@@ -59,7 +61,9 @@
 (def ^:private afn-type (Type/getType clojure.lang.AFn))
 (def ^:private var-type (Type/getType clojure.lang.Var))
 (def ^:private symbol-type (Type/getType clojure.lang.Symbol))
+(def ^:private rt-type (Type/getType clojure.lang.RT))
 (def ^:private util-type (Type/getType clojure.lang.Util))
+(def ^:private number-type (Type/getType java.lang.Number))
 (def ^:private arg-types (into-array (for [i (range max-positional-arity)]
                                        (into-array Type (repeat i object-type)))))
 
@@ -67,7 +71,7 @@
 (def ^:private var-get-method (Method/getMethod "Object get()"))
 (def ^:private var-get-raw-method (Method/getMethod "Object getRawRoot()"))
 
-(defn ^:private var! [sym]
+(defn- var! [sym]
   (RT/var (namespace sym) (name sym)))
 
 (defn dynamic? [v]
@@ -77,7 +81,6 @@
 (def ^:dynamic *trace-bytecode* false)
 (def ^:dynamic *check-bytecode* false)
 (defn load-class [name bytecode form]
-  (println "load-class " name *trace-bytecode*)
   (let [binary-name (.replace name \/ \.)]
     (when (or *trace-bytecode* *check-bytecode*)
       (let [cr (ClassReader. bytecode)
@@ -89,10 +92,10 @@
 
 (def ^:dynamic ^:private *frame*)
 
-(defn ^:private new-frame [] (atom {}))
+(defn- new-frame [] (atom {}))
 
 
-(defn ^:private collect-frame [ast]
+(defn- collect-frame [ast]
   (cond
     (= :invoke (:op ast))
     (let [s (-> ast :f :info :name )]
@@ -114,10 +117,10 @@
     :else nil
     ))
 
-(defn ^:private new-frame? [form]
+(defn- new-frame? [form]
   (#{:fn } (:op form)))
 
-(defn ^:private process-frames-helper [f ast]
+(defn- process-frames-helper [f ast]
   (let [post-fn
         (fn [form]
           (swap! *frame* (partial merge-with (comp vec distinct concat)) (f form))
@@ -132,7 +135,7 @@
   (binding [*frame* (new-frame)]
     (merge (process-frames-helper collect-frame ast) @*frame*)))
 
-(defn ^:private emit-vars [cv {:keys [vars env]}]
+(defn- emit-vars [cv {:keys [vars env]}]
   (doseq [v vars]
     (let [n (str (munge v))
           var (var! v)]
@@ -145,7 +148,7 @@
 (defmethod type-of clojure.lang.Var [o] var-type)
 (defmethod type-of clojure.lang.Symbol [o] symbol-type)
 
-(defn ^:private emit-constants [cv {constants :constants}]
+(defn- emit-constants [cv {constants :constants}]
   (dorun (map-indexed
            (fn [i v]
              (let [name (str "CONSTANT" i)]
@@ -158,7 +161,7 @@
                (swap! *frame* assoc-in [:fields v] name)))
            constants)))
 
-(defn ^:private emit-proto-callsites [cv {:keys [callsites env]}]
+(defn- emit-proto-callsites [cv {:keys [callsites env]}]
   (dorun (map-indexed
            (fn [i site]
              (let [cached-class (str "__cached_class__" i)
@@ -189,9 +192,9 @@
 (defmethod emit-value clojure.lang.Var [v]
   (.push *gen* (str (.ns v)))
   (.push *gen* (name (.sym v)))
-  (.invokeStatic *gen* (Type/getType RT) (Method/getMethod "clojure.lang.Var var(String,String)")))
+  (.invokeStatic *gen* rt-type (Method/getMethod "clojure.lang.Var var(String,String)")))
 
-(defn ^:private emit-constructors [cv ast]
+(defn- emit-constructors [cv ast]
   (let [ctor (GeneratorAdapter. Opcodes/ACC_PUBLIC constructor-method nil nil cv)]
     (.loadThis ctor)
     (.invokeConstructor ctor object-type constructor-method)
@@ -211,7 +214,7 @@
       (.returnValue *gen*)
       (.endMethod *gen*))))
 
-(defn ^:private debug-info [name source-path line]
+(defn- debug-info [name source-path line]
   (str "SMAP\n"
     name ".java\n"
     "Clojure\n"
@@ -223,7 +226,7 @@
     line
     "*E"))
 
-(defn ^:private emit-class [internal-name ast emit-methods]
+(defn- emit-class [internal-name ast emit-methods]
   (binding [*frame* (new-frame)]
     (let [cw (ClassWriter. ClassWriter/COMPUTE_MAXS)]
       (swap! *frame* merge ast {:class (Type/getType internal-name)})
@@ -239,7 +242,7 @@
         .visitEnd)
       cw)))
 
-(defn ^:private emit-statement [cv ast]
+(defn- emit-statement [cv ast]
   (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (Method/getMethod "Object invoke()") nil nil cv)]
     (.visitCode *gen*)
     (emit ast)
@@ -278,9 +281,11 @@
                 (recur
                   (read pbr false eof false))))))))))
 
-(defn ^:private emit-args-and-call [args]
-  (doseq [arg args]
+(defn- emit-args-and-call [args first-to-emit]
+  ; TODO: Handle (> (count args) max-positional-arity)
+  (doseq [arg (nthrest args first-to-emit)]
     (emit arg))
+  ; Java clojure calls method.emitClearLocals here, but it does nothing?
   (.invokeInterface *gen* ifn-type (Method. "invoke" object-type (get arg-types (count args)))))
 
 (defmulti maybe-class class)
@@ -297,9 +302,88 @@
     (let [ret (resolve sym)]
       (if (instance? Class ret)
         ret
-        (maybe-class name)))))
+        (maybe-class (name sym))))))
 
-(defn ^:private emit-invoke-proto [{:keys [f args]}]
+(defn- primitive? [o]
+  (let [c (maybe-class o)]
+    (and
+      (not (or (nil? c) (= c Void/TYPE)))
+      (.isPrimitive c))))
+
+(defmulti convertible? identity)
+(defmethod convertible? :default [t1 t2]
+  (println "Conversion not implemented: " [t1 t2])
+  nil)
+
+(defmulti emit-convert #(identity %))
+(defmethod emit-convert :default [t e]
+  (println "Conversion not implemented")
+  nil)
+
+(defn- emit-unchecked-cast [t p]
+  (let [m
+        (case t
+          Integer/TYPE (Method/getMethod "int uncheckedIntCast(Object)")
+          Float/TYPE (Method/getMethod "float uncheckedFloatCast(Object)")
+          Double/TYPE (Method/getMethod "double uncheckedDoubleCast(Object)")
+          Long/TYPE (Method/getMethod "long uncheckedLongCast(Object)")
+          Byte/TYPE (Method/getMethod "byte uncheckedByteCast(Object)")
+          Short/TYPE (Method/getMethod "short uncheckedShortCast(Object)"))]
+    (.invokeStatic *gen* rt-type m)))
+
+(defn- emit-checked-cast [t p]
+  (let [m
+        (case t
+          Integer/TYPE (Method/getMethod "int intCast(Object)")
+          Float/TYPE (Method/getMethod "float floatCast(Object)")
+          Double/TYPE (Method/getMethod "double doubleCast(Object)")
+          Long/TYPE (Method/getMethod "long longCast(Object)")
+          Byte/TYPE (Method/getMethod "byte byteCast(Object)")
+          Short/TYPE (Method/getMethod "short shortCast(Object)"))]
+    (.invokeStatic *gen* rt-type m)))
+
+(defn- emit-cast-arg [t p]
+  (if (.isPrimitive t)
+    (cond
+      (= t Boolean/TYPE)
+      (do
+        (.checkCast *gen* Type/BOOLEAN_TYPE)
+        (.invokeVirtual *gen* Type/BOOLEAN_TYPE (Method/getMethod "boolean booleanValue()")))
+
+      (= t Character/TYPE)
+      (do
+        (.checkCast *gen* Type/CHAR_TYPE)
+        (.invokeVirtual *gen* Type/CHAR_TYPE (Method/getMethod "char charValue()")))
+
+      :else (do
+      (.checkCast *gen* number-type)
+      (if *unchecked-math*
+        (emit-unchecked-cast t p)
+        (emit-checked-cast t p)))
+      )))
+
+(defn- emit-typed-arg [param-type param]
+  (cond
+    (= param-type (:tag param))
+    (emit-unboxed param)
+
+    (convertible? (:tag param) param-type)
+    (emit-convert param-type param)
+
+    :else (do
+    (emit param)
+    (emit-cast-arg param-type param))))
+
+(defn- emit-typed-args [param-types params]
+  (doall (map emit-typed-arg param-types params)))
+
+(defn- type [s]
+  (Type/getType (maybe-class s)))
+
+(defn- method [nm return-type & args]
+  (Method. (name nm) (type return-type) (into-array Type (map type args))))
+
+(defn- emit-invoke-proto [{:keys [f args]}]
   (let [{:keys [class fields protos]} @*frame*
         on-label (.newLabel *gen*)
         call-label (.newLabel *gen*)
@@ -327,46 +411,46 @@
     (.swap *gen*)
     (.putField *gen* class (-> protos fsym :cached-class ) class-type) ; target
 
-    (assert (fields fvar))
-
     ; Slow path through proto-fn
     (.mark *gen* call-label) ; target
     (.getStatic *gen* class (fields fvar) var-type)
     (.invokeVirtual *gen* var-type var-get-raw-method) ; target, proto-fn
     (.swap *gen*)
-    (emit-args-and-call (rest args))
+    (emit-args-and-call args 1)
     (.goTo *gen* end-label)
 
     ; Fast path through interface
     (.mark *gen* on-label)
     (when protocol-on
       (let [mmap (:method-map proto)
-            key (or (-> fsym name keyword mmap) (throw (IllegalArgumentException.
-                                                         (str "No method of interface: " protocol-on
-                                                                                         " found for function: " fsym " of protocol: " (-> fvar meta :protocol )
-                                                                                         " (The protocol method may have been defined before and removed.)"))))
-            meth (-> key name munge)
+            key (or (-> fsym name keyword mmap)
+                    (throw (IllegalArgumentException.
+                      (str "No method of interface: " protocol-on
+                                                   " found for function: " fsym " of protocol: " (-> fvar meta :protocol )
+                                                   " (The protocol method may have been defined before and removed.)"))))
+            meth-name (-> key name munge)
             members (-> protocol-on type-reflect :members )
-            methods (select #(and (= (:name meth)) (= (dec (count args)) (-> % :parameter-types count))) members)]
-        (when-not (= (count methods) 1)
-          (throw (IllegalArgumentException. (str "No single method: " meth " of interface: " protocol-on
-                                                                      " found for function: " fsym " of protocol: " (-> fvar meta :protocol )))))
-        ;    MethodExpr.emitTypedArgs(objx, gen, onMethod.getParameterTypes(), RT.subvec(args,1,args.count()));
-        ;    if(context == C.RETURN)
-        ;    {
-        ;      ObjMethod method = (ObjMethod) METHOD.deref();
-        ;      method.emitClearLocals(gen);
-        ;      }
-        ;    Method m = new Method(onMethod.getName(), Type.getReturnType(onMethod), Type.getArgumentTypes(onMethod));
-        ;  gen.invokeInterface(Type.getType(protocolOn), m);
-        ;  HostExpr.emitBoxReturn(objx, gen, onMethod.getReturnType());
-        (println "Protocol primitive path not implemented yet")
+            methods (select #(and (= (:name %) meth-name) (= (dec (count args)) (-> % :parameter-types count))) members)
+            _ (when-not (= (count methods) 1)
+                (throw (IllegalArgumentException. (str "No single method: " meth-name " of interface: " protocol-on
+                                                   " found for function: " fsym " of protocol: " (-> fvar meta :protocol )))))
+            meth (first methods)]
+        (emit-typed-args (:parameter-types meth) (rest args))
+        (when (= (-> f :info :env :context ) :return )
+          ; emit-clear-locals
+          (println "Clear locals")
+          )
+        (let [r (:return-type meth)
+              m (apply method (:name meth) r (:parameter-types meth))]
+          (.invokeInterface *gen* (Type/getType protocol-on) m)
+          (when (primitive? r)
+            (.box *gen* (-> meth :return-type type))))
         (.mark *gen* end-label)))))
 
-(defn ^:private emit-invoke-fn [{:keys [f args env]}]
+(defn- emit-invoke-fn [{:keys [f args env]}]
   (emit f)
   (.checkCast *gen* ifn-type)
-  (emit-args-and-call args))
+  (emit-args-and-call args 0))
 
 (defmethod emit :invoke [ast]
   (.visitLineNumber *gen* (-> ast :env :line ) (.mark *gen*))
@@ -403,13 +487,12 @@
 (defmethod emit :constant [{:keys [form env]}]
   (emit-constant form))
 
-(defn ^:private notsup [& args]
+(defn- notsup [& args]
   (Util/runtimeException (apply str "Unsupported: " args)))
 
 (defn emit-fn-method [cv {:keys [name params statements ret env recurs] :as args}]
   (binding [*gen*
-            (GeneratorAdapter. Opcodes/ACC_PUBLIC
-              (Method/getMethod (str "Object invoke(" (apply str (interpose \, params)) ")")) nil nil cv)]
+            (GeneratorAdapter. Opcodes/ACC_PUBLIC (method "invoke" "Object") nil nil cv)]
     (.visitCode *gen*)
     (when recurs (notsup "recurs"))
     (when statements
@@ -418,7 +501,7 @@
     (.returnValue *gen*)
     (.endMethod *gen*)))
 
-(defn ^:private emit-fns [cv {:keys [name env methods max-fixed-arity variadic recur-frames] :as ast}]
+(defn- emit-fns [cv {:keys [name env methods max-fixed-arity variadic recur-frames] :as ast}]
   (let [loop-locals (seq (mapcat :names (filter #(and % @(:flag %)) recur-frames)))]
     (when loop-locals
       (notsup "loop-locals"))
