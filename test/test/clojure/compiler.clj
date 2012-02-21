@@ -27,6 +27,9 @@
 (deftest test-eval
   (is (= 1 (c/eval '1)))
   (is (= 3 (c/eval '(+ 1 2))))
+  (testing "let"
+    (is (= 9 (c/eval '(let [x 9] x))))
+    (is (= 10 (c/eval '(let [x 8] (+ x 2))))))
   (testing "vars"
     (is (= 3 (c/eval '(+ a 2))))
     (is (c/eval '(def b 3))))

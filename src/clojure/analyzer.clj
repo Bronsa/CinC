@@ -1,7 +1,7 @@
 (ns clojure.analyzer
   (:refer-clojure :exclude [*ns* *file* macroexpand-1])
   (:require [clojure.java.io :as io]
-            [clojure.string :as string])
+   [clojure.string :as string])
   (:use [clojure pprint]))
 
 (let [mappings (.getMappings (clojure.lang.Namespace/find 'clojure.core))]
@@ -13,7 +13,7 @@
 (def ^:dynamic *file* nil)
 (def ^:dynamic *warn-on-undeclared* false)
 
-(def specials '#{def fn*})
+(def specials '#{def fn* let*})
 
 (def ^:dynamic *recur-frames* nil)
 
@@ -34,17 +34,17 @@ facilitate code walking without knowing the details of the op set."
   ([form] (analyze {:ns (@namespaces *ns*) :context :statement :locals {}} form nil))
   ([env form] (analyze env form nil))
   ([env form name]
-    (let [form
-          (if (instance? clojure.lang.LazySeq form)
-            (or (seq form) ())
-            form)]
-      (cond
-        (symbol? form) (analyze-symbol env form)
-        (and (seq? form) (seq form)) (analyze-seq env form name)
-        (map? form) (analyze-map env form name)
-        (vector? form) (analyze-vector env form name)
-        (set? form) (analyze-set env form name)
-        :else {:op :constant :env env :form form}))))
+   (let [form
+         (if (instance? clojure.lang.LazySeq form)
+           (or (seq form) ())
+           form)]
+     (cond
+       (symbol? form) (analyze-symbol env form)
+       (and (seq? form) (seq form)) (analyze-seq env form name)
+       (map? form) (analyze-map env form name)
+       (vector? form) (analyze-vector env form name)
+       (set? form) (analyze-set env form name)
+       :else {:op :constant :env env :form form}))))
 
 (defn analyze-file
   [f]
@@ -69,8 +69,8 @@ facilitate code walking without knowing the details of the op set."
           (binding [*out* *err*]
             (println
               (str " WARNING: Use of undeclared Var " prefix " / " suffix
-                (when (:line env)
-                  (str " at line " (:line env)))))))))))
+                                                      (when (:line env)
+                                                        (str " at line " (:line env)))))))))))
 
 (defn resolve-ns-alias [env name]
   (let [sym (symbol name)]
@@ -82,31 +82,12 @@ facilitate code walking without knowing the details of the op set."
   (and (get (:defs (@namespaces 'clojure.core)) sym)
     (not (contains? (-> env :ns :excludes ) sym))))
 
-(defn resolve-var [env sym]
-  (let [s (str sym)
-        lb (-> env :locals sym)
-        nm
-        (cond
-          lb (:name lb)
+(defn make-symbol [ns sym]
+  (symbol (str ns) (str sym)))
 
-          (namespace sym)
-          (let [ns (namespace sym)]
-            (symbol (str (resolve-ns-alias env ns)) (name sym)))
-
-          (.contains s ".")
-          (let [idx (.indexOf s ".")
-                prefix (symbol (subs s 0 idx))
-                suffix (subs s idx)
-                lb (-> env :locals prefix)]
-            (if lb
-              (symbol (str (:name lb) suffix))
-              sym))
-
-          :else (let [full-ns (if (core-name? env sym) 'clojure.core (-> env :ns :name ))]
-                  (symbol (str full-ns) (name sym))))]
-    {:name nm}))
-
-(defn resolve-existing-var [env sym]
+(defn resolve-var
+  ([env sym] (resolve-var env sym (fn [env ns sym] (make-symbol ns sym))))
+  ([env sym var-fn]
   (let [s (str sym)
         lb (-> env :locals sym)
         nm
@@ -116,8 +97,7 @@ facilitate code walking without knowing the details of the op set."
           (namespace sym)
           (let [ns (namespace sym)
                 full-ns (resolve-ns-alias env ns)]
-            (confirm-var-exists env full-ns (symbol (name sym)))
-            (symbol (str full-ns) (name sym)))
+            (var-fn env full-ns (name sym)))
 
           (.contains s ".")
           (let [idx (.indexOf s ".")
@@ -127,16 +107,22 @@ facilitate code walking without knowing the details of the op set."
             (if lb
               (symbol (str (:name lb) suffix))
               (do
-                (confirm-var-exists env prefix (symbol suffix))
+                (var-fn env prefix (symbol suffix))
                 sym)))
 
           (get-in @namespaces [(-> env :ns :name ) :uses sym])
-          (symbol (str (get-in @namespaces [(-> env :ns :name ) :uses sym])) (name sym))
+          (var-fn env (get-in @namespaces [(-> env :ns :name ) :uses sym]) (name sym))
 
-          :else (let [full-ns (if (core-name? env sym) 'clojure.core (-> env :ns :name ))]
-                  (confirm-var-exists env full-ns sym)
-                  (symbol (str full-ns) (name sym))))]
-    {:name nm}))
+          :else
+          (let [full-ns (if (core-name? env sym) 'clojure.core (-> env :ns :name ))]
+            (var-fn env full-ns sym)))]
+    {:name nm})))
+
+(defn resolve-existing-var [env sym]
+  (resolve-var env sym
+    (fn [env ns sym]
+      (confirm-var-exists env ns sym)
+      (make-symbol ns sym))))
 
 (defn parse-invoke
   [env [f & args]]
@@ -159,7 +145,7 @@ facilitate code walking without knowing the details of the op set."
 (defn get-expander [sym env]
   (let [mvar
         (when-not (or (-> env :locals sym) ;locals hide macros
-                    (-> env :ns :excludes sym))
+                                           (-> env :ns :excludes sym))
           (if-let [nstr (namespace sym)]
             (when-let [ns (find-ns (symbol nstr))]
               (.findInternedVar ^clojure.lang.Namespace ns (symbol (name sym))))
@@ -180,14 +166,14 @@ facilitate code walking without knowing the details of the op set."
             (cond
               (= (first opname) \.) (let [[target & args] (next form)]
                                       (list* '. target (symbol (subs opname 1)) args))
-              (= (last opname) \.) (list* 'new (symbol (subs opname 0 (dec (count opname)))) (next form))
-              :else form))
+                                    (= (last opname) \.) (list* 'new (symbol (subs opname 0 (dec (count opname)))) (next form))
+                                    :else form))
           form)))))
 
 (defn analyze-seq
   [env form name]
   (let [env (assoc env :line (or (-> form meta :line )
-                               (:line env)))]
+    (:line env)))]
     (let [op (first form)]
       (assert (not (nil? op)) "Can't call nil")
       (let [mform (macroexpand-1 env form)]
@@ -228,7 +214,8 @@ facilitate code walking without knowing the details of the op set."
 
 (defmethod parse 'def
   [op env form name]
-  (let [pfn (fn ([_ sym] {:sym sym})
+  (let [pfn (fn
+    ([_ sym] {:sym sym})
     ([_ sym init] {:sym sym :init init})
     ([_ sym doc init] {:sym sym :doc doc :init init}))
         args (apply pfn form)
@@ -241,13 +228,13 @@ facilitate code walking without knowing the details of the op set."
         (if (= true export-val) name export-val))
           doc (or (:doc args) (-> sym meta :doc ))]
       (swap! namespaces update-in [(-> env :ns :name ) :defs sym]
-        (fn [m]
-          (let [m (assoc (or m {}) :name name)]
-            (if-let [line (:line env)]
-              (-> m
-                (assoc :file *file*)
-                (assoc :line line))
-              m))))
+                        (fn [m]
+                          (let [m (assoc (or m {}) :name name)]
+                            (if-let [line (:line env)]
+                              (-> m
+                                (assoc :file *file*)
+                                (assoc :line line))
+                              m))))
       (merge {:env env :op :def :form form
               :name name :doc doc :init init-expr}
         (when init-expr {:children [init-expr]})
@@ -298,3 +285,33 @@ facilitate code walking without knowing the details of the op set."
     ;;todo - validate unique arities, at most one variadic, variadic takes max required args
     {:env env :op :fn :name name :methods methods :variadic variadic :recur-frames *recur-frames*
      :max-fixed-arity max-fixed-arity}))
+
+(defn analyze-let
+  [encl-env [_ bindings & exprs :as form] is-loop]
+  (assert (and (vector? bindings) (even? (count bindings))) "bindings must be vector of even number of elements")
+  (let [context (:context encl-env)
+        [bes env]
+        (disallowing-recur
+          (loop [bes []
+                 env (assoc encl-env :context :expr)
+                 bindings (seq (partition 2 bindings))]
+            (if-let [[name init] (first bindings)]
+              (do
+                (assert (not (or (namespace name) (.contains (str name) "."))) (str "Invalid local name: " name))
+                (let [init-expr (analyze env init)
+                      be {:name name :init init-expr}]
+                  (recur (conj bes be)
+                    (assoc-in env [:locals name] be)
+                    (next bindings))))
+              [bes env])))
+        recur-frame (when is-loop {:names (vec (map :name bes)) :flag (atom nil)})
+        {:keys [statements ret children]}
+        (binding [*recur-frames* (if recur-frame (cons recur-frame *recur-frames*) *recur-frames*)]
+          (analyze-block (assoc env :context (if (= :expr context) :return context)) exprs))]
+    {:env encl-env :op :let :loop is-loop
+     :bindings bes :statements statements :ret ret :form form :children (into [children] (map :init bes))}))
+
+(defmethod parse 'let*
+  [op encl-env form _]
+  (analyze-let encl-env form false))
+

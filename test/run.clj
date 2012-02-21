@@ -37,4 +37,12 @@
 
 (def sample (P.))
 
-(process-frames (analyze '(foo (bar sample))))
+(eval '(foo sample))
+
+(defrecord Q [])
+
+(extend-protocol Blah
+  Q
+  (foo [t] 2))
+
+(def sample2 (Q.))

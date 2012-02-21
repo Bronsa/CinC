@@ -45,9 +45,6 @@
 (defn munge [s]
   (symbol (apply str (map #(char-map % %) (str s)))))
 
-(defmulti ^:private emit :op )
-(defmulti ^:private emit-unboxed :op )
-
 (defmulti expression-type
   "Returns the type of the ast node provided, or Object if unknown. Respects :tag metadata"
   :op )
@@ -93,7 +90,6 @@
     (.defineClass *loader* binary-name bytecode form)))
 
 (def ^:dynamic ^:private *frame*)
-
 (defn- new-frame [] (atom {}))
 
 (defn- collect-frame [ast]
@@ -104,10 +100,12 @@
         {:callsites [s]}))
 
     :var
-    (let [var (-> ast :info :name )]
-      (when-not (resolve var)
-        (throw (Util/runtimeException (str "No such var: " var))))
-      {:vars [var]})
+    (let [sym (-> ast :info :name)
+          lb (-> ast :env :locals sym)
+          v (clojure.analyzer/resolve-var (:env ast) sym)]
+      (when-not (:name v)
+        (throw (Util/runtimeException (str "No such var: " sym))))
+      (when-not lb {:vars [sym]}))
 
     :def
     {:vars [(:name ast)]}
@@ -115,49 +113,63 @@
     :constant
     {:constants [{:value (:form ast) :type (Type/getType (expression-type ast))}]}
 
-    :let
-    {:unboxed true} ; TODO: this is probably insufficient, need to figure out if a "mismatch" happens that requires boxing
-
     nil))
 
 (defn- new-frame? [form]
   (#{:fn } (:op form)))
 
+(defn- unboxed-parent? [ast] (#{:let} (:op ast))) ; TODO: this is probably insufficient, need to figure out if a "mismatch" happens that requires boxing
+(def ^:dynamic *unboxed* false)
 (defn- process-frames-helper [f ast]
-  (let [post-fn
+  (let [pre-fn
+       (fn [form]
+          (process-frames-helper f (if (:op form) (assoc form :unboxed *unboxed*) form)))
+        post-fn
         (fn [form]
           (swap! *frame* (partial merge-with (comp vec distinct concat)) (f form))
-          form)]
-    (if (new-frame? ast)
-      (binding [*frame* (new-frame)]
-        (let [res (walk (partial process-frames-helper f) post-fn ast)]
-          (merge res @*frame*)))
-      (walk (partial process-frames-helper f) post-fn ast))))
+          form)
+        main
+        (fn [f ast]
+          (if (new-frame? ast)
+            (binding [*frame* (new-frame)]
+              (let [res (walk pre-fn post-fn ast)]
+                (merge res @*frame*)))
+            (walk pre-fn post-fn ast)))]
+    (if (unboxed-parent? ast)
+      (binding [*unboxed* true] (main f ast))
+      (main f ast))
+    ))
 
 (defn process-frames [ast]
   (binding [*frame* (new-frame)]
     (merge (process-frames-helper collect-frame ast) @*frame*)))
 
+(defmulti ^:private emit-boxed :op )
+(defmulti ^:private emit-unboxed :op )
+
+(defn ^:private emit [ast]
+  (if false #_(:unboxed ast)
+    (emit-unboxed ast)
+    (emit-boxed ast)))
+
 (defn- emit-vars [cv {:keys [vars env]}]
   (doseq [v vars]
-    (let [n (str (munge v))
+    (let [name (str (munge v))
           var (var! v)]
       (.visitField cv
-        (+ Opcodes/ACC_PUBLIC Opcodes/ACC_FINAL Opcodes/ACC_STATIC) n (.getDescriptor var-type) nil nil)
-      (swap! *frame* assoc-in [:fields var] {:name n :type var-type :value v}))))
+        (+ Opcodes/ACC_PUBLIC Opcodes/ACC_FINAL Opcodes/ACC_STATIC) name (.getDescriptor var-type) nil nil)
+      (swap! *frame* assoc-in [:fields var] {:name name :type var-type :value v}))))
 
 (defn- emit-constants [cv {constants :constants}]
-  (dorun (map-indexed
-           (fn [i v]
-             (let [name (str "CONSTANT" i)]
-               (.visitField cv
-                 (+ Opcodes/ACC_PUBLIC Opcodes/ACC_FINAL Opcodes/ACC_STATIC)
-                 name
-                 (.getDescriptor (:type v))
-                 nil
-                 nil)
-               (swap! *frame* assoc-in [:fields (:value v)] (assoc v :name name))))
-           constants)))
+  (dorun
+    (map-indexed
+      (fn [i v]
+        (let [name (str "CONSTANT" i)]
+          (.visitField cv (+ Opcodes/ACC_PUBLIC Opcodes/ACC_FINAL Opcodes/ACC_STATIC)
+            name (.getDescriptor (:type v))        nil
+            nil)
+          (swap! *frame* assoc-in [:fields (:value v)] (assoc v :name name))))
+      constants)))
 
 (defn- emit-proto-callsites [cv {:keys [callsites env]}]
   (dorun (map-indexed
@@ -378,7 +390,7 @@
 (defn- emit-typed-arg [param-type arg]
   (cond
     (= param-type (expression-type arg))
-    (emit-unboxed arg)
+    (emit arg)
 
     (convertible? (expression-type arg) param-type)
     (emit-convert param-type arg)
@@ -465,20 +477,29 @@
   (.checkCast *gen* ifn-type)
   (emit-args-and-call args 0))
 
-(defmethod emit :invoke [ast]
+(defmethod emit-boxed :invoke [ast]
   (.visitLineNumber *gen* (-> ast :env :line ) (.mark *gen*))
   (if (:protocol (meta (-> ast :f :info :name var!)))
     (emit-invoke-proto ast)
     (emit-invoke-fn ast)))
 
-(defmethod emit :var [{:keys [info env]}]
-  (let [v (:name info)
-        var (var! v)
+(defn- emit-var [v]
+  (let [var (var! v)
         {:keys [class fields]} @*frame*]
     (.getStatic *gen* class (:name (fields var)) var-type)
     (.invokeVirtual *gen* var-type (if (dynamic? var) var-get-method var-get-raw-method))))
 
-(defmethod emit :def [{:keys [name form init env doc export] :as args}]
+(defn- emit-local [v]
+  (let [lb (-> @*frame* :locals v)]
+    (.visitVarInsn *gen* (.getOpcode object-type Opcodes/ILOAD) (:index lb))))
+
+(defmethod emit-boxed :var [{:keys [info env]}]
+  (let [v (:name info)]
+    (if (namespace v)
+      (emit-var v)
+      (emit-local v))))
+
+(defmethod emit-boxed :def [{:keys [name form init env doc export] :as args}]
   (let [var (var! name)
         {:keys [class fields]} @*frame*]
     (.getStatic *gen* class (:name (fields var)) var-type)
@@ -492,8 +513,6 @@
       (emit init)
       (.invokeVirtual *gen* var-type (Method/getMethod "void bindRoot(Object)")))))
 
-; constants
-
 (defmulti ^:private emit-constant (fn [& r] first r))
 (defmethod emit-constant :default [t v]
   (let [{:keys [class fields]} @*frame*
@@ -501,7 +520,7 @@
     (.getStatic *gen* class name type)
     (.box *gen* type)))
 
-(defmethod emit :constant [{:keys [form env]}]
+(defmethod emit-boxed :constant [{:keys [form env]}]
   (emit-constant Object form))
 
 (defmethod emit-unboxed :constant [{:keys [form env]}]
@@ -510,7 +529,7 @@
 (defmethod expression-type :constant [ast]
   [ast]
   (let [class (-> ast :form class)
-        unboxed (:unboxed @*frame*)]
+        unboxed (:unboxed ast)]
   (cond
     (= class java.lang.Integer) (if unboxed Long/TYPE Long)
     (= class java.lang.Long) (if unboxed Long/TYPE Long)
@@ -521,7 +540,7 @@
 (defn- notsup [& args]
   (Util/runtimeException (apply str "Unsupported: " args)))
 
-(defn emit-fn-method [cv {:keys [name params statements ret env recurs] :as args}]
+(defn emit-fn-method [cv {:keys [name params statements ret env recurs] :as ast}]
   (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (asm-method "invoke" "java.lang.Object") nil nil cv)]
     (.visitCode *gen*)
     (when recurs (notsup "recurs"))
@@ -542,7 +561,7 @@
     (when loop-locals
       (notsup "loop-locals"))))
 
-(defmethod emit :fn [ast]
+(defmethod emit-boxed :fn [ast]
   (let [name (str (or (:name ast) (gensym)))
         cw (emit-class name ast emit-fns)
         bytecode (.toByteArray cw)
@@ -551,9 +570,20 @@
     (.dup *gen*)
     (.invokeConstructor *gen* (Type/getType class) constructor-method)))
 
-(defmethod emit :let [{:keys [bindings statements ret env loop]}]
-  (doseq [{:keys [name init]} bindings]
-    ))
+(defmethod emit-boxed :let [{:keys [bindings statements ret env loop]}]
+  (let [bs
+        (into {} (map-indexed
+          (fn [idx {:keys [name init]}]
+            (emit init)
+            (.visitVarInsn *gen* (.getOpcode object-type Opcodes/ISTORE) idx)
+            [name {:index idx :type (expression-type init)}])
+          bindings))]
+  (swap! *frame* assoc :locals bs)
+  (when statements
+    (dorun (map emit statements)))
+  (emit ret)
+  ; TODO: visit vars for debug
+  ))
 ;  (let [context (:context env)
 ;        bs (map (fn [{:keys [name init]}]
 ;                  (str "var " name " = " (emits init) ";\n"))
@@ -566,4 +596,4 @@
 ;    ; (print "}")
 ;    (when (= :expr context) (print "})()"))))
 
-(defmethod emit :default [args] (Util/runtimeException (str "Unknown operator: " (:op args) "\nForm: " args)))
+(defmethod emit-boxed :default [args] (Util/runtimeException (str "Unknown operator: " (:op args) "\nForm: " args)))
