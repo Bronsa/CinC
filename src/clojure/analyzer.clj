@@ -13,7 +13,7 @@
 (def ^:dynamic *file* nil)
 (def ^:dynamic *warn-on-undeclared* false)
 
-(def specials '#{if def fn* let*})
+(def specials '#{if def fn* let* .})
 
 (def ^:dynamic *recur-frames* nil)
 
@@ -61,16 +61,19 @@ facilitate code walking without knowing the details of the op set."
                 (recur (read pbr false eof false) (conj ret (analyze env r)))
                 ret))))))))
 
+(defmacro ^:private debug-prn
+  [& args]
+  `(.println System/err (str ~@args)))
+
 (defn confirm-var-exists [env prefix suffix]
   (when *warn-on-undeclared*
     (let [crnt-ns (-> env :ns :name )]
       (when (= prefix crnt-ns)
         (when-not (-> @namespaces crnt-ns :defs suffix)
-          (binding [*out* *err*]
-            (println
-              (str " WARNING: Use of undeclared Var " prefix " / " suffix
-                                                      (when (:line env)
-                                                        (str " at line " (:line env)))))))))))
+          (debug-prn
+            "WARNING: Use of undeclared Var " prefix " / " suffix
+            (when (:line env)
+              (str " at line " (:line env)))))))))
 
 (defn resolve-ns-alias [env name]
   (let [sym (symbol name)]
@@ -145,7 +148,7 @@ facilitate code walking without knowing the details of the op set."
 (defn get-expander [sym env]
   (let [mvar
         (when-not (or (-> env :locals sym) ;locals hide macros
-                                           (-> env :ns :excludes sym))
+                      (-> env :ns :excludes sym))
           (if-let [nstr (namespace sym)]
             (when-let [ns (find-ns (symbol nstr))]
               (.findInternedVar ^clojure.lang.Namespace ns (symbol (name sym))))
@@ -324,3 +327,85 @@ facilitate code walking without knowing the details of the op set."
   [op encl-env form _]
   (analyze-let encl-env form false))
 
+;; dot accessor code
+
+(def ^:private property-symbol? #(boolean (and (symbol? %) (re-matches #"^-.*" (name %)))))
+
+(defn- clean-symbol
+  [sym]
+  (if (property-symbol? sym)
+    (-> sym name (.substring 1) symbol)
+    sym))
+
+(defn- classify-dot-form
+  [[target member args]]
+  [(cond (nil? target) ::error
+                       :default      ::expr)
+   (cond (property-symbol? member) ::property
+                                   (symbol? member)          ::symbol
+                                   (seq? member)             ::list
+                                   :default                  ::error)
+   (cond (nil? args) ()
+                     :default    ::expr)])
+
+(defmulti build-dot-form #(classify-dot-form %))
+
+;; (. o -p)
+;; (. (...) -p)
+(defmethod build-dot-form [::expr ::property ()]
+  [[target prop _]]
+  {:dot-action ::access :target target :field (clean-symbol prop)})
+
+;; (. o -p <args>)
+(defmethod build-dot-form [::expr ::property ::list]
+  [[target prop args]]
+  (throw (Error. (str "Cannot provide arguments " args " on property access " prop))))
+
+(defn- build-method-call
+  "Builds the intermediate method call map used to reason about the parsed form during
+  compilation."
+  [target meth args]
+  (if (symbol? meth)
+    {:dot-action ::call :target target :method (munge meth) :args args}
+    {:dot-action ::call :target target :method (munge (first meth)) :args args}))
+
+;; (. o m 1 2)
+(defmethod build-dot-form [::expr ::symbol ::expr]
+  [[target meth args]]
+  (build-method-call target meth args))
+
+;; (. o m)
+(defmethod build-dot-form [::expr ::symbol ()]
+  [[target meth args]]
+; TODO: I think this warning was only for clojurescript
+;  (debug-prn "WARNING: The form " (list '. target meth)
+;                                  " is no longer a property access. Maybe you meant "
+;                                  (list '. target (symbol (str '- meth))) " instead?")
+  (build-method-call target meth args))
+
+;; (. o (m))
+;; (. o (m 1 2))
+(defmethod build-dot-form [::expr ::list ()]
+  [[target meth-expr _]]
+  (build-method-call target (first meth-expr) (rest meth-expr)))
+
+(defmethod build-dot-form :default
+  [dot-form]
+  (throw (Error. (str "Unknown dot form of " (list* '. dot-form) " with classification " (classify-dot-form dot-form)))))
+
+(defmethod parse '.
+  [_ env [_ target & [field & member+]] _]
+  (disallowing-recur
+    (let [{:keys [dot-action target method field args]} (build-dot-form [target field member+])
+          enve        (assoc env :context :expr)
+          targetexpr  (analyze enve target)
+          children    [enve]]
+      (case dot-action
+        ::access {:env env :op :dot :children children
+                  :target targetexpr
+                  :field field}
+        ::call   (let [argexprs (map #(analyze enve %) args)]
+        {:env env :op :dot :children (into children argexprs)
+         :target targetexpr
+         :method method
+         :args argexprs})))))

@@ -419,6 +419,10 @@
 (defn- emit-typed-args [param-types args]
   (doall (map emit-typed-arg param-types args)))
 
+(defn- emit-box-return [type]
+  (when (primitive? type)
+    (.box *gen* (asm-type type))))
+
 (defn- emit-invoke-proto [{:keys [f args]}]
   (let [{:keys [class fields protos]} @*frame*
         on-label (.newLabel *gen*)
@@ -426,7 +430,7 @@
         end-label (.newLabel *gen*)
         fsym (-> f :info :name )
         fvar (var! fsym)
-        proto @(-> fvar meta :protocol )
+        proto @(-> fvar meta :protocol)
         e (get args 0)
         protocol-on (maybe-class (:on proto))]
     ; load the first arg, so we can see its type
@@ -445,7 +449,7 @@
     (.invokeStatic *gen* (asm-type clojure.lang.Util) (Method/getMethod "Class classOf(Object)")) ; target, class
     (.loadThis *gen*)
     (.swap *gen*)
-    (.putField *gen* class (-> protos fsym :cached-class ) class-type) ; target
+    (.putField *gen* class (-> protos fsym :cached-class) class-type) ; target
 
     ; Slow path through proto-fn
     (.mark *gen* call-label) ; target
@@ -480,8 +484,7 @@
         (let [r (:return-type meth)
               m (apply asm-method (:name meth) r (:parameter-types meth))]
           (.invokeInterface *gen* (asm-type protocol-on) m)
-          (when (primitive? r)
-            (.box *gen* (-> meth :return-type asm-type))))
+          (emit-box-return r))
         (.mark *gen* end-label)))))
 
 (defn- emit-invoke-fn [{:keys [f args env]}]
@@ -626,5 +629,31 @@
   (emit ret)
   ; TODO: visit vars for debug
   ))
+
+(defn- emit-field
+  [env target field box-result]
+  (let [class (expression-type target)
+        members (-> class type-reflect :members)
+        field-info (select #(= (:name %) field) members)
+        type (:type field-info)]
+  (if type
+    (do
+      (.getField *gen* (asm-type class) field (asm-type type))
+      (when box-result (emit-box-return type)))
+    (do
+;      (.format (RT/errPrintWriter)
+;        "Reflection warning, %s:%d - reference to field %s can't be resolved.\n"
+;         *file* (-> target :env :line) field)
+      (.push *gen* (name field))
+      (.invokeStatic *gen* (asm-type clojure.lang.Reflector)
+                           (Method/getMethod "Object invokeNoArgInstanceMember(Object,String)"))))))
+
+(defmethod emit-boxed :dot
+  [{:keys [target field method args env]}]
+  (emit target)
+  (if field
+    (emit-field env target field true)
+    (notsup '(emit-method-call ast))))
+
 
 (defmethod emit-boxed :default [args] (Util/runtimeException (str "Unknown operator: " (:op args) "\nForm: " args)))
