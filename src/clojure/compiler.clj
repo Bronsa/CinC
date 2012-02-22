@@ -53,18 +53,19 @@
 (defmethod maybe-class String [s]
   (if-let [ret (prims s)]
     ret
-    (try
-      (RT/classForName s)
-    (catch Exception e nil))))
+    (if-let [ret (maybe-class (symbol s))]
+      ret
+      (try
+        (RT/classForName s)
+      (catch Exception e nil)))))
 (defmethod maybe-class clojure.lang.Symbol [sym]
   (when-not (namespace sym)
     ; TODO: I have no idea what this used to do
     ;    (if(Util.equals(sym,COMPILE_STUB_SYM.get()))
     ;    return (Class) COMPILE_STUB_CLASS.get();
     (let [ret (resolve sym)]
-      (if (instance? Class ret)
-        ret
-        (maybe-class (name sym))))))
+      (when (class? ret)
+        ret))))
 
 (defn- primitive? [o]
   (let [c (maybe-class o)]
@@ -81,6 +82,9 @@
 (defmulti expression-type
   "Returns the type of the ast node provided, or Object if unknown. Respects :tag metadata"
   :op )
+
+(defn- notsup [& args]
+  (Util/runtimeException (apply str "Unsupported: " args)))
 
 (def ^:dynamic ^:private *gen* nil)
 
@@ -238,7 +242,7 @@
 (defmethod emit-value symbol-type [{v :value}]
   (.push *gen* (namespace v))
   (.push *gen* (name v))
-  (.invokeStatic *gen* (asm-type clojure.lang.Symbol) (Method/getMethod "clojure.lang.Symbol intern(String,String)")))
+  (.invokeStatic *gen* symbol-type (Method/getMethod "clojure.lang.Symbol intern(String,String)")))
 
 (defmethod emit-value var-type [{v :value}]
   (.push *gen* (namespace v))
@@ -251,7 +255,7 @@
   (.invokeStatic *gen* rt-type (Method/getMethod "clojure.lang.Keyword keyword(String,String)")))
 
 (defmethod emit-value :default [ast]
-  (println "Don't know how to emit value: " ast))
+  (notsup "Don't know how to emit value: " ast))
 
 (defn- emit-constructors [cv ast]
   (let [ctor (GeneratorAdapter. Opcodes/ACC_PUBLIC constructor-method nil nil cv)]
@@ -332,7 +336,7 @@
       (with-open [r (io/reader res)]
         (let [env {:ns (@namespaces *ns*) :context :statement :locals {}}
               pbr (clojure.lang.LineNumberingPushbackReader. r)
-              eof (Object.)]
+              eof (java.lang.Object.)]
           (loop [r (read pbr false eof false)]
             (let [env (assoc env :ns (@namespaces *ns*))]
               (when-not (identical? eof r)
@@ -551,12 +555,12 @@
       (.invokeVirtual *gen* var-type (Method/getMethod "void bindRoot(Object)")))))
 
 (defn- emit-constant [t v]
-  (if v
+  (if (nil? v)
+    (.visitInsn *gen* Opcodes/ACONST_NULL)
     (let [{:keys [class fields]} @*frame*
         {:keys [name type]} (fields v)]
       (.getStatic *gen* class name type)
-      (.box *gen* type))
-    (.visitInsn *gen* Opcodes/ACONST_NULL)))
+      (.box *gen* type))))
 
 (defmethod emit-boxed :constant [{:keys [form env]}]
   (emit-constant java.lang.Object form))
@@ -577,11 +581,8 @@
     nil nil
     java.lang.Object)))
 
-(defn- notsup [& args]
-  (Util/runtimeException (apply str "Unsupported: " args)))
-
 (defn emit-fn-method [cv {:keys [name params statements ret env recurs] :as ast}]
-  (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (asm-method "invoke" "java.lang.Object") nil nil cv)]
+  (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (asm-method "invoke" "Object") nil nil cv)]
     (.visitCode *gen*)
     (when recurs (notsup "recurs"))
     (when statements
