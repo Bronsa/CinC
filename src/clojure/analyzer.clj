@@ -13,7 +13,7 @@
 (def ^:dynamic *file* nil)
 (def ^:dynamic *warn-on-undeclared* false)
 
-(def specials '#{def fn* let*})
+(def specials '#{if def fn* let*})
 
 (def ^:dynamic *recur-frames* nil)
 
@@ -211,6 +211,15 @@ facilitate code walking without knowing the details of the op set."
         {:op :meta :env env :form form :children [meta-expr expr]
          :meta meta-expr :expr expr})
       expr)))
+
+(defmethod parse 'if
+  [op env [_ test then else :as form] name]
+  (let [test-expr (disallowing-recur (analyze (assoc env :context :expr) test))
+        then-expr (analyze env then)
+        else-expr (analyze env else)]
+    {:env env :op :if :form form
+     :test test-expr :then then-expr :else else-expr
+     :children [test-expr then-expr else-expr]}))
 
 (defmethod parse 'def
   [op env form name]

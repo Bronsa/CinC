@@ -45,6 +45,39 @@
 (defn munge [s]
   (symbol (apply str (map #(char-map % %) (str s)))))
 
+(def ^:private prims
+  {"byte" Byte/TYPE "bool" Boolean/TYPE "char" Character/TYPE "int" Integer/TYPE "long" Long/TYPE "float" Float/TYPE "double" Double/TYPE})
+
+(defmulti maybe-class class)
+(defmethod maybe-class Class [c] c)
+(defmethod maybe-class String [s]
+  (if-let [ret (prims s)]
+    ret
+    (try
+      (RT/classForName s)
+    (catch Exception e nil))))
+(defmethod maybe-class clojure.lang.Symbol [sym]
+  (when-not (namespace sym)
+    ; TODO: I have no idea what this used to do
+    ;    (if(Util.equals(sym,COMPILE_STUB_SYM.get()))
+    ;    return (Class) COMPILE_STUB_CLASS.get();
+    (let [ret (resolve sym)]
+      (if (instance? Class ret)
+        ret
+        (maybe-class (name sym))))))
+
+(defn- primitive? [o]
+  (let [c (maybe-class o)]
+    (and
+      (not (or (nil? c) (= c Void/TYPE)))
+      (.isPrimitive c))))
+
+(defn- asm-type [s]
+  (when s (Type/getType (maybe-class s))))
+
+(defn- asm-method [nm return-type & args]
+  (Method. (str nm) (asm-type return-type) (into-array Type (map asm-type args))))
+
 (defmulti expression-type
   "Returns the type of the ast node provided, or Object if unknown. Respects :tag metadata"
   :op )
@@ -53,16 +86,17 @@
 
 (def ^:dynamic ^:private *loader* (DynamicClassLoader.))
 
-(def ^:private object-type (Type/getType Object))
-(def ^:private class-type (Type/getType Class))
+(def ^:private object-type (asm-type java.lang.Object))
+(def ^:private class-type (asm-type java.lang.Class))
 
-(def ^:private ifn-type (Type/getType clojure.lang.IFn))
-(def ^:private afn-type (Type/getType clojure.lang.AFn))
-(def ^:private var-type (Type/getType clojure.lang.Var))
-(def ^:private symbol-type (Type/getType clojure.lang.Symbol))
-(def ^:private rt-type (Type/getType clojure.lang.RT))
-(def ^:private util-type (Type/getType clojure.lang.Util))
-(def ^:private number-type (Type/getType java.lang.Number))
+(def ^:private ifn-type (asm-type clojure.lang.IFn))
+(def ^:private afn-type (asm-type clojure.lang.AFn))
+(def ^:private var-type (asm-type clojure.lang.Var))
+(def ^:private symbol-type (asm-type clojure.lang.Symbol))
+(def ^:private keyword-type (asm-type clojure.lang.Keyword))
+(def ^:private rt-type (asm-type clojure.lang.RT))
+(def ^:private util-type (asm-type clojure.lang.Util))
+
 (def ^:private arg-types (into-array (for [i (range max-positional-arity)]
                                        (into-array Type (repeat i object-type)))))
 
@@ -111,7 +145,8 @@
     {:vars [(:name ast)]}
 
     :constant
-    {:constants [{:value (:form ast) :type (Type/getType (expression-type ast))}]}
+    (if-let [type (asm-type (expression-type ast))]
+      {:constants [{:value (:form ast) :type type}]})
 
     nil))
 
@@ -166,7 +201,8 @@
       (fn [i v]
         (let [name (str "CONSTANT" i)]
           (.visitField cv (+ Opcodes/ACC_PUBLIC Opcodes/ACC_FINAL Opcodes/ACC_STATIC)
-            name (.getDescriptor (:type v))        nil
+            name (.getDescriptor (:type v))
+            nil
             nil)
           (swap! *frame* assoc-in [:fields (:value v)] (assoc v :name name))))
       constants)))
@@ -191,23 +227,28 @@
     (.visitInsn *gen* (+ Opcodes/LCONST_0 v))
     (.visitLdcInsn *gen* v)))
 
-(defmethod emit-value (Type/getType java.lang.Long) [{v :value}]
+(defmethod emit-value (asm-type java.lang.Long) [{v :value}]
 ;  (.push *gen* (long v))) I'm not smart enough to figure out why this doesn't work, it always emits ICONST
   (push-long v)
-  (.box *gen* (Type/getType Long/TYPE)))
+  (.box *gen* (asm-type Long/TYPE)))
 
-(defmethod emit-value (Type/getType Long/TYPE) [{v :value}]
+(defmethod emit-value (asm-type Long/TYPE) [{v :value}]
   (push-long v))
 
 (defmethod emit-value symbol-type [{v :value}]
   (.push *gen* (namespace v))
   (.push *gen* (name v))
-  (.invokeStatic *gen* (Type/getType clojure.lang.Symbol) (Method/getMethod "clojure.lang.Symbol intern(String,String)")))
+  (.invokeStatic *gen* (asm-type clojure.lang.Symbol) (Method/getMethod "clojure.lang.Symbol intern(String,String)")))
 
 (defmethod emit-value var-type [{v :value}]
   (.push *gen* (namespace v))
   (.push *gen* (name v))
   (.invokeStatic *gen* rt-type (Method/getMethod "clojure.lang.Var var(String,String)")))
+
+(defmethod emit-value keyword-type [{v :value}]
+  (.push *gen* (namespace v))
+  (.push *gen* (name v))
+  (.invokeStatic *gen* rt-type (Method/getMethod "clojure.lang.Keyword keyword(String,String)")))
 
 (defmethod emit-value :default [ast]
   (println "Don't know how to emit value: " ast))
@@ -306,34 +347,6 @@
   ; Java clojure calls method.emitClearLocals here, but it does nothing?
   (.invokeInterface *gen* ifn-type (Method. "invoke" object-type (get arg-types (count args)))))
 
-(def ^:private prims
-  {"byte" Byte/TYPE "bool" Boolean/TYPE "char" Character/TYPE "int" Integer/TYPE "long" Long/TYPE "float" Float/TYPE "double" Double/TYPE})
-
-(defn- try-class [s]
-  (try
-    (RT/classForName s)
-    (catch Exception e nil)))
-
-(defmulti maybe-class class)
-(defmethod maybe-class Class [c] c)
-(defmethod maybe-class String [s]
-  (if-let [ret (prims s)] ret (try-class s)))
-(defmethod maybe-class clojure.lang.Symbol [sym]
-  (when-not (namespace sym)
-    ; TODO: I have no idea what this used to do
-    ;    (if(Util.equals(sym,COMPILE_STUB_SYM.get()))
-    ;    return (Class) COMPILE_STUB_CLASS.get();
-    (let [ret (resolve sym)]
-      (if (instance? Class ret)
-        ret
-        (maybe-class (name sym))))))
-
-(defn- primitive? [o]
-  (let [c (maybe-class o)]
-    (and
-      (not (or (nil? c) (= c Void/TYPE)))
-      (.isPrimitive c))))
-
 (defmethod expression-type :default [{tag :tag}]
   (if tag tag java.lang.Object))
 
@@ -382,7 +395,7 @@
 
       :else
       (do
-        (.checkCast *gen* number-type)
+        (.checkCast *gen* (asm-type java.lang.Number))
         (if *unchecked-math*
           (emit-unchecked-cast t p)
           (emit-checked-cast t p))))))
@@ -402,12 +415,6 @@
 (defn- emit-typed-args [param-types args]
   (doall (map emit-typed-arg param-types args)))
 
-(defn- asm-type [s]
-  (Type/getType (maybe-class s)))
-
-(defn- asm-method [nm return-type & args]
-  (Method. (str nm) (asm-type return-type) (into-array Type (map asm-type args))))
-
 (defn- emit-invoke-proto [{:keys [f args]}]
   (let [{:keys [class fields protos]} @*frame*
         on-label (.newLabel *gen*)
@@ -421,17 +428,17 @@
     ; load the first arg, so we can see its type
     (emit e)
     (.dup *gen*)
-    (.invokeStatic *gen* util-type (Method/getMethod "Class classOf(Object)"))
+    (.invokeStatic *gen* (asm-type clojure.lang.Util) (Method/getMethod "Class classOf(Object)"))
     (.loadThis *gen*)
     (.getField *gen* class (-> protos fsym :cached-class ) class-type) ; target,class,cached-class
     ; Check if first arg type is same as cached
     (.visitJumpInsn *gen* Opcodes/IF_ACMPEQ call-label) ; target
     (when protocol-on
       (.dup *gen*) ; target, target
-      (.instanceOf *gen* (Type/getType protocol-on))
+      (.instanceOf *gen* (asm-type protocol-on))
       (.ifZCmp *gen* GeneratorAdapter/NE on-label))
     (.dup *gen*) ; target, target
-    (.invokeStatic *gen* util-type (Method/getMethod "Class classOf(Object)")) ; target, class
+    (.invokeStatic *gen* (asm-type clojure.lang.Util) (Method/getMethod "Class classOf(Object)")) ; target, class
     (.loadThis *gen*)
     (.swap *gen*)
     (.putField *gen* class (-> protos fsym :cached-class ) class-type) ; target
@@ -449,16 +456,17 @@
     (when protocol-on
       (let [mmap (:method-map proto)
             key (or (-> fsym name keyword mmap)
-          (throw (IllegalArgumentException.
-                   (str "No method of interface: " protocol-on
-                                                   " found for function: " fsym " of protocol: " (-> fvar meta :protocol )
-                                                   " (The protocol method may have been defined before and removed.)"))))
+                    (throw (IllegalArgumentException.
+                      (str "No method of interface: " protocol-on
+                        " found for function: " fsym " of protocol: " (-> fvar meta :protocol )
+                        " (The protocol method may have been defined before and removed.)"))))
             meth-name (-> key name munge)
             members (-> protocol-on type-reflect :members )
             methods (select #(and (= (:name %) meth-name) (= (dec (count args)) (-> % :parameter-types count))) members)
             _ (when-not (= (count methods) 1)
-          (throw (IllegalArgumentException. (str "No single method: " meth-name " of interface: " protocol-on
-                                                                      " found for function: " fsym " of protocol: " (-> fvar meta :protocol )))))
+                (throw (IllegalArgumentException.
+                  (str "No single method: " meth-name " of interface: " protocol-on
+                    " found for function: " fsym " of protocol: " (-> fvar meta :protocol )))))
             meth (first methods)]
         (emit-typed-args (:parameter-types meth) (rest args))
         (when (= (-> f :info :env :context ) :return )
@@ -467,7 +475,7 @@
           )
         (let [r (:return-type meth)
               m (apply asm-method (:name meth) r (:parameter-types meth))]
-          (.invokeInterface *gen* (Type/getType protocol-on) m)
+          (.invokeInterface *gen* (asm-type protocol-on) m)
           (when (primitive? r)
             (.box *gen* (-> meth :return-type asm-type))))
         (.mark *gen* end-label)))))
@@ -499,6 +507,35 @@
       (emit-var v)
       (emit-local v))))
 
+(defmulti emit-test (fn emit-test-dispatch [ast null-label false-label] (:op ast)))
+
+(defmethod emit-test :default [ast null-label false-label]
+  (emit ast)
+  (doto *gen*
+    .dup
+    (.ifNull null-label)
+    (.getStatic (asm-type java.lang.Boolean) "FALSE" (asm-type java.lang.Boolean))
+    (.visitJumpInsn Opcodes/IF_ACMPEQ false-label)))
+
+(defmethod emit-boxed :if
+  [{:keys [test then else env]}]
+  (let [line (:line env)
+        null-label (.newLabel *gen*)
+        false-label (.newLabel *gen*)
+        end-label (.newLabel *gen*)]
+    (.visitLineNumber *gen* line (.mark *gen*))
+    (emit-test test null-label false-label)
+    (emit then)
+    (.goTo *gen* end-label)
+
+    (.mark *gen* null-label)
+    (.pop *gen*) ; Why?
+
+    (.mark *gen* false-label)
+    (emit else)
+
+    (.mark *gen* end-label)))
+
 (defmethod emit-boxed :def [{:keys [name form init env doc export] :as args}]
   (let [var (var! name)
         {:keys [class fields]} @*frame*]
@@ -513,15 +550,16 @@
       (emit init)
       (.invokeVirtual *gen* var-type (Method/getMethod "void bindRoot(Object)")))))
 
-(defmulti ^:private emit-constant (fn [& r] first r))
-(defmethod emit-constant :default [t v]
-  (let [{:keys [class fields]} @*frame*
+(defn- emit-constant [t v]
+  (if v
+    (let [{:keys [class fields]} @*frame*
         {:keys [name type]} (fields v)]
-    (.getStatic *gen* class name type)
-    (.box *gen* type)))
+      (.getStatic *gen* class name type)
+      (.box *gen* type))
+    (.visitInsn *gen* Opcodes/ACONST_NULL)))
 
 (defmethod emit-boxed :constant [{:keys [form env]}]
-  (emit-constant Object form))
+  (emit-constant java.lang.Object form))
 
 (defmethod emit-unboxed :constant [{:keys [form env]}]
   (emit-constant (expression-type form) form))
@@ -530,12 +568,14 @@
   [ast]
   (let [class (-> ast :form class)
         unboxed (:unboxed ast)]
-  (cond
-    (= class java.lang.Integer) (if unboxed Long/TYPE Long)
-    (= class java.lang.Long) (if unboxed Long/TYPE Long)
-    (= class java.lang.Float) (if unboxed Double/TYPE Double)
-    (= class java.lang.Double) (if unboxed Double/TYPE Double)
-    :else java.lang.Object)))
+  (condp = class
+    java.lang.Integer (if unboxed Long/TYPE Long)
+    java.lang.Long (if unboxed Long/TYPE Long)
+    java.lang.Float (if unboxed Double/TYPE Double)
+    java.lang.Double (if unboxed Double/TYPE Double)
+    clojure.lang.Keyword clojure.lang.Keyword
+    nil nil
+    java.lang.Object)))
 
 (defn- notsup [& args]
   (Util/runtimeException (apply str "Unsupported: " args)))
@@ -565,18 +605,19 @@
   (let [name (str (or (:name ast) (gensym)))
         cw (emit-class name ast emit-fns)
         bytecode (.toByteArray cw)
-        class (load-class name bytecode ast)]
-    (.newInstance *gen* (Type/getType class))
+        class (load-class name bytecode ast)
+        type (asm-type class)]
+    (.newInstance *gen* type)
     (.dup *gen*)
-    (.invokeConstructor *gen* (Type/getType class) constructor-method)))
+    (.invokeConstructor *gen* type constructor-method)))
 
 (defmethod emit-boxed :let [{:keys [bindings statements ret env loop]}]
   (let [bs
         (into {} (map-indexed
-          (fn [idx {:keys [name init]}]
+          (fn [i {:keys [name init]}]
             (emit init)
-            (.visitVarInsn *gen* (.getOpcode object-type Opcodes/ISTORE) idx)
-            [name {:index idx :type (expression-type init)}])
+            (.visitVarInsn *gen* (.getOpcode object-type Opcodes/ISTORE) i)
+            [name {:index i :type (expression-type init)}])
           bindings))]
   (swap! *frame* assoc :locals bs)
   (when statements
@@ -584,16 +625,5 @@
   (emit ret)
   ; TODO: visit vars for debug
   ))
-;  (let [context (:context env)
-;        bs (map (fn [{:keys [name init]}]
-;                  (str "var " name " = " (emits init) ";\n"))
-;      bindings)]
-;    (when (= :expr context) (print "(function (){"))
-;    (print (str (apply str bs) "\n"))
-;    (when loop (print "while(true){\n"))
-;    (emit-block (if (= :expr context) :return context) statements ret)
-;    (when loop (print "break;\n}\n"))
-;    ; (print "}")
-;    (when (= :expr context) (print "})()"))))
 
 (defmethod emit-boxed :default [args] (Util/runtimeException (str "Unknown operator: " (:op args) "\nForm: " args)))
