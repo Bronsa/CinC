@@ -264,7 +264,7 @@
 (defn- emit-constructors [cv ast]
   (let [ctor (GeneratorAdapter. Opcodes/ACC_PUBLIC constructor-method nil nil cv)]
     (.loadThis ctor)
-    (.invokeConstructor ctor object-type constructor-method)
+    (.invokeConstructor ctor (asm-type (:super ast)) constructor-method)
     (.returnValue ctor)
     (.endMethod ctor))
   (let [m (Method/getMethod "void <clinit> ()")
@@ -298,7 +298,7 @@
     (let [cw (ClassWriter. ClassWriter/COMPUTE_MAXS)]
       (swap! *frame* merge ast {:class (Type/getType internal-name)})
       (doto cw
-        (.visit Opcodes/V1_5 (+ Opcodes/ACC_PUBLIC Opcodes/ACC_SUPER) internal-name nil "java/lang/Object" nil)
+        (.visit Opcodes/V1_5 (+ Opcodes/ACC_PUBLIC Opcodes/ACC_SUPER) internal-name nil (:super ast) nil)
         ;                (.visitSource internal-name (debug-info internal-name "NO_SOURCE_PATH" (-> ast :env :line)))
         (.visitSource internal-name nil)
         (emit-vars ast)
@@ -322,16 +322,16 @@
              *check-bytecode* check]
      (eval form)))
   ([form]
-   (let [env {:ns (@namespaces *ns*) :context :statement :locals {}}
-         ast (analyze env form)
-         ast (process-frames ast)
-         internal-name (str "repl/Temp" (RT/nextID))
-         cw (emit-class internal-name ast emit-statement)]
-     (binding [*loader* (DynamicClassLoader.)]
+   (binding [*loader* (DynamicClassLoader.)]
+     (let [env {:ns (@namespaces *ns*) :context :statement :locals {}}
+           ast (analyze env form)
+           ast (process-frames ast)
+           internal-name (str "repl/Temp" (RT/nextID))
+           cw (emit-class internal-name (assoc ast :super "clojure/lang/AFn") emit-statement)]
        (let [bytecode (.toByteArray cw)
              class (load-class internal-name bytecode form)
              instance (.newInstance class)]
-         (.invoke instance))))))
+         (instance))))))
 
 (defn load [f]
   (let [res (or (io/resource f) (io/as-url (io/as-file f)))]
@@ -589,7 +589,7 @@
     java.lang.Object)))
 
 (defn emit-fn-method [cv {:keys [name params statements ret env recurs] :as ast}]
-  (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (asm-method "invoke" "Object") nil nil cv)]
+  (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (apply asm-method "invoke" "Object" (map expression-type params)) nil nil cv)]
     (.visitCode *gen*)
     (when recurs (notsup "recurs"))
     (when statements
@@ -611,7 +611,7 @@
 
 (defmethod emit-boxed :fn [ast]
   (let [name (str (or (:name ast) (gensym)))
-        cw (emit-class name ast emit-fns)
+        cw (emit-class name (assoc ast :super "clojure/lang/AFn") emit-fns)
         bytecode (.toByteArray cw)
         class (load-class name bytecode ast)
         type (asm-type class)]
