@@ -178,7 +178,7 @@
               (let [res (walk pre-fn post-fn ast)]
                 (merge res @*frame*)))
             (walk pre-fn post-fn ast)))]
-    (if (unboxed-parent? ast)
+    (if false #_(unboxed-parent? ast)
       (binding [*unboxed* true] (main f ast))
       (main f ast))
     ))
@@ -540,7 +540,7 @@
     (.goTo *gen* end-label)
 
     (.mark *gen* null-label)
-    (.pop *gen*) ; Why?
+    (.pop *gen*)
 
     (.mark *gen* false-label)
     (emit else)
