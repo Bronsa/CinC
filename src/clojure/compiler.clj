@@ -510,7 +510,7 @@
 
 (defn- emit-local [v]
   (let [lb (-> @*frame* :locals v)]
-    (.visitVarInsn *gen* (.getOpcode object-type Opcodes/ILOAD) (:index lb))))
+    (.loadLocal *gen* (:index lb))))
 
 (defmethod emit-boxed :var [{:keys [info env]}]
   (let [v (:name info)]
@@ -621,18 +621,21 @@
 
 (defmethod emit-boxed :let [{:keys [bindings statements ret env loop]}]
   (let [bs
-        (into {} (map-indexed
-          (fn [i {:keys [name init]}]
+        (into {} (map
+          (fn [{:keys [name init]}]
             (emit init)
-            (.visitVarInsn *gen* (.getOpcode object-type Opcodes/ISTORE) i)
-            [name {:index i :type (expression-type init)}])
+            (let [type (asm-type (expression-type init))
+                  i (.newLocal *gen* type)]
+            (.storeLocal *gen* i)
+            [name {:index i :type type :label (.mark *gen*)}]))
           bindings))]
   (swap! *frame* assoc :locals bs)
   (when statements
     (dorun (map emit statements)))
   (emit ret)
-  ; TODO: visit vars for debug
-  ))
+  (let [end-label (.mark *gen*)]
+    (doseq [[name binding] bs]
+      (.visitLocalVariable *gen* (str name) (-> binding :type .getDescriptor) nil (:label binding) end-label (:index binding))))))
 
 (defn- emit-field
   [env target field box-result]
