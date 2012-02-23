@@ -648,19 +648,40 @@
       (.getField *gen* (asm-type class) field (asm-type type))
       (when box-result (emit-box-return type)))
     (do
-;      (.format (RT/errPrintWriter)
-;        "Reflection warning, %s:%d - reference to field %s can't be resolved.\n"
-;         *file* (-> target :env :line) field)
+      (when *warn-on-reflection*
+        (.format (RT/errPrintWriter)
+          "Reflection warning, %s:%d - reference to field %s can't be resolved.\n"
+          *file* (make-array (-> target :env :line) field)))
       (.push *gen* (name field))
       (.invokeStatic *gen* (asm-type clojure.lang.Reflector)
                            (Method/getMethod "Object invokeNoArgInstanceMember(Object,String)"))))))
+
+(defn- match [name args]
+  (fn match-method [method]
+    (and (= name (:name method))
+         (= (count args) (-> method :parameter-types count))
+         (every? true? (map convertible? args (:parameter-types method))))))
+
+(defn- emit-method-call [target name args]
+  (let [class (expression-type target)
+        members (-> class type-reflect :members )
+        methods (select (match name args) members)
+        _ (when-not (= (count methods) 1)
+            (throw (IllegalArgumentException.
+              (str "No single method: " name " of class: " class " founds with args: " args))))
+        meth (first methods)]
+  (emit-typed-args (:parameter-types meth) (rest args))
+  (let [r (:return-type meth)
+        m (apply asm-method (:name meth) r (:parameter-types meth))]
+    (.invokeVirtual *gen* (asm-type class) m)
+    (emit-box-return r))))
 
 (defmethod emit-boxed :dot
   [{:keys [target field method args env]}]
   (emit target)
   (if field
     (emit-field env target field true)
-    (notsup '(emit-method-call ast))))
+    (emit-method-call target method args)))
 
 
 (defmethod emit-boxed :default [args] (Util/runtimeException (str "Unknown operator: " (:op args) "\nForm: " args)))

@@ -22,6 +22,10 @@
 (def rec-implements (test-record-implements.))
 (def rec-extends (test-record-extends.))
 
+(defrecord test-field [a])
+
+(def rec-field (test-field. 1))
+
 (in-ns 'test.clojure.compiler)
 
 (deftest test-eval
@@ -38,4 +42,7 @@
     (is (c/eval '(def b 3))))
   (testing "protocol invocation"
     (is (= 1 (c/eval '(foo rec-implements))))
-    (is (= 2 (c/eval '(foo rec-extends))))))
+    (is (= 2 (c/eval '(foo rec-extends)))))
+  (testing "interop"
+    (is (= 1 (c/eval '(.-a rec-field))))
+    (is (= "1" (c/eval '(. 1 (toString)))))))
