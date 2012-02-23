@@ -74,7 +74,11 @@
       (.isPrimitive c))))
 
 (defn- asm-type [s]
-  (when s (Type/getType (maybe-class s))))
+  (when s
+    (let [class (maybe-class s)]
+      (if class
+        (Type/getType (maybe-class s))
+        (Type/getType s)))))
 
 (defn- asm-method [nm return-type & args]
   (Method. (str nm) (asm-type return-type) (into-array Type (map asm-type args))))
