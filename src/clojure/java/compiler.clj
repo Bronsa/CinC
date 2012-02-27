@@ -1,17 +1,19 @@
-(ns clojure.compiler
+(ns clojure.java.compiler
   (:refer-clojure :exclude [eval load munge *ns* type])
   (:require [clojure.java.io :as io]
-   [clojure.string :as string])
+            [clojure.string :as string])
   (:use [clojure
-         [analyzer :only [analyze namespaces *ns*]]
-         [walk :only [walk]]
-         [reflect :only [type-reflect]]
-         [set :only [select]]
-         [pprint]]) ; pprint is for debugging
+          [analyzer :only [analyze namespaces *ns*]]
+          [walk :only [walk]]
+          [reflect :only [type-reflect]]
+          [set :only [select]]
+          [pprint]]) ; pprint is for debugging
   (:import [org.objectweb.asm Type Opcodes ClassReader ClassWriter]
-   [org.objectweb.asm.commons Method GeneratorAdapter]
-   [org.objectweb.asm.util CheckClassAdapter TraceClassVisitor]
-   [clojure.lang DynamicClassLoader RT Util]))
+           [org.objectweb.asm.commons Method GeneratorAdapter]
+           [org.objectweb.asm.util CheckClassAdapter TraceClassVisitor]
+           [clojure.lang DynamicClassLoader RT Util]))
+
+(clojure.core/load "compiler/analysis")
 
 (def max-positional-arity 20)
 
@@ -45,54 +47,15 @@
 (defn munge [s]
   (symbol (apply str (map #(char-map % %) (str s)))))
 
-(def ^:private prims
-  {"byte" Byte/TYPE "bool" Boolean/TYPE "char" Character/TYPE "int" Integer/TYPE "long" Long/TYPE "float" Float/TYPE "double" Double/TYPE})
-
-(defmulti maybe-class class)
-(defmethod maybe-class Class [c] c)
-(defmethod maybe-class String [s]
-  (if-let [ret (prims s)]
-    ret
-    (if-let [ret (maybe-class (symbol s))]
-      ret
-      (try
-        (RT/classForName s)
-      (catch Exception e nil)))))
-(defmethod maybe-class clojure.lang.Symbol [sym]
-  (when-not (namespace sym)
-    ; TODO: I have no idea what this used to do
-    ;    (if(Util.equals(sym,COMPILE_STUB_SYM.get()))
-    ;    return (Class) COMPILE_STUB_CLASS.get();
-    (let [ret (resolve sym)]
-      (when (class? ret)
-        ret))))
-
-(defn- primitive? [o]
-  (let [c (maybe-class o)]
-    (and
-      (not (or (nil? c) (= c Void/TYPE)))
-      (.isPrimitive c))))
-
-(defn- asm-type [s]
-  (when s
-    (let [class (maybe-class s)]
-      (if class
-        (Type/getType (maybe-class s))
-        (Type/getType s)))))
-
-(defn- asm-method [nm return-type & args]
-  (Method. (str nm) (asm-type return-type) (into-array Type (map asm-type args))))
-
-(defmulti expression-type
-  "Returns the type of the ast node provided, or Object if unknown. Respects :tag metadata"
-  :op )
-
 (defn- notsup [& args]
-  (Util/runtimeException (apply str "Unsupported: " args)))
+  (throw (Util/runtimeException (apply str "Unsupported: " args))))
 
-(def ^:dynamic ^:private *gen* nil)
+(def ^:dynamic ^:private *frame*) ; Contains per-class information
+(defn- new-frame [] (atom {}))
 
-(def ^:dynamic ^:private *loader* (DynamicClassLoader.))
+(def ^:dynamic ^:private ^GeneratorAdapter *gen* nil) ; Current GeneratorAdapter to emit to
+
+(def ^:dynamic ^:private ^DynamicClassLoader *loader* (DynamicClassLoader.))
 
 (def ^:private object-type (asm-type java.lang.Object))
 (def ^:private class-type (asm-type java.lang.Class))
@@ -112,15 +75,17 @@
 (def ^:private var-get-method (Method/getMethod "Object get()"))
 (def ^:private var-get-raw-method (Method/getMethod "Object getRawRoot()"))
 
-(defn- var! [sym]
-  (RT/var (namespace sym) (name sym)))
-
-(defn dynamic? [v]
-  (or (:dynamic (meta v)) (when-let [var (or (when (symbol? v) (resolve v)) (when (var? v) v))] (.isDynamic var))))
-
-
 (def ^:dynamic *trace-bytecode* false)
 (def ^:dynamic *check-bytecode* false)
+
+(defmulti ^:private emit-boxed :op )
+(defmulti ^:private emit-unboxed :op )
+
+(defn ^:private emit [ast]
+  (if false #_(:unboxed ast)
+    (emit-unboxed ast)
+    (emit-boxed ast)))
+
 (defn load-class [name bytecode form]
   (let [binary-name (.replace name \/ \.)]
     (when (or *trace-bytecode* *check-bytecode*)
@@ -131,69 +96,39 @@
         (.accept cr v 0)))
     (.defineClass *loader* binary-name bytecode form)))
 
-(def ^:dynamic ^:private *frame*)
-(defn- new-frame [] (atom {}))
+(declare emit-class emit-statement)
 
-(defn- collect-frame [ast]
-  (case (:op ast)
-    :invoke
-    (let [s (-> ast :f :info :name )]
-      (when (-> s var! meta :protocol )
-        {:callsites [s]}))
+(defn eval
+  ([form & {:keys [trace check]}]
+   (binding [*trace-bytecode* trace
+             *check-bytecode* check]
+     (eval form)))
+  ([form]
+   (binding [*loader* (DynamicClassLoader.)]
+     (let [env {:ns (@namespaces *ns*) :context :statement :locals {}}
+           ast (analyze env form)
+           ast (process-frames ast)
+           internal-name (str "repl/Temp" (RT/nextID))
+           cw (emit-class internal-name (assoc ast :super "clojure/lang/AFn") emit-statement)]
+       (let [bytecode (.toByteArray cw)
+             class (load-class internal-name bytecode form)
+             instance (.newInstance class)]
+         (instance))))))
 
-    :var
-    (let [sym (-> ast :info :name)
-          lb (-> ast :env :locals sym)
-          v (clojure.analyzer/resolve-var (:env ast) sym)]
-      (when-not (:name v)
-        (throw (Util/runtimeException (str "No such var: " sym))))
-      (when-not lb {:vars [sym]}))
-
-    :def
-    {:vars [(:name ast)]}
-
-    :constant
-    (if-let [type (asm-type (expression-type ast))]
-      {:constants [{:value (:form ast) :type type}]})
-
-    nil))
-
-(defn- new-frame? [form]
-  (#{:fn } (:op form)))
-
-(defn- unboxed-parent? [ast] (#{:let} (:op ast))) ; TODO: this is probably insufficient, need to figure out if a "mismatch" happens that requires boxing
-(def ^:dynamic *unboxed* false)
-(defn- process-frames-helper [f ast]
-  (let [pre-fn
-       (fn [form]
-          (process-frames-helper f (if (:op form) (assoc form :unboxed *unboxed*) form)))
-        post-fn
-        (fn [form]
-          (swap! *frame* (partial merge-with (comp vec distinct concat)) (f form))
-          form)
-        main
-        (fn [f ast]
-          (if (new-frame? ast)
-            (binding [*frame* (new-frame)]
-              (let [res (walk pre-fn post-fn ast)]
-                (merge res @*frame*)))
-            (walk pre-fn post-fn ast)))]
-    (if false #_(unboxed-parent? ast)
-      (binding [*unboxed* true] (main f ast))
-      (main f ast))
-    ))
-
-(defn process-frames [ast]
-  (binding [*frame* (new-frame)]
-    (merge (process-frames-helper collect-frame ast) @*frame*)))
-
-(defmulti ^:private emit-boxed :op )
-(defmulti ^:private emit-unboxed :op )
-
-(defn ^:private emit [ast]
-  (if false #_(:unboxed ast)
-    (emit-unboxed ast)
-    (emit-boxed ast)))
+(defn load [f]
+  (let [res (or (io/resource f) (io/as-url (io/as-file f)))]
+    (assert res (str "Can't find " f " in classpath"))
+    (binding [*file* (.getPath res)]
+      (with-open [r (io/reader res)]
+        (let [env {:ns (@namespaces *ns*) :context :statement :locals {}}
+              pbr (clojure.lang.LineNumberingPushbackReader. r)
+              eof (java.lang.Object.)]
+          (loop [r (read pbr false eof false)]
+            (let [env (assoc env :ns (@namespaces *ns*))]
+              (when-not (identical? eof r)
+                (eval r)
+                (recur
+                  (read pbr false eof false))))))))))
 
 (defn- emit-vars [cv {:keys [vars env]}]
   (doseq [v vars]
@@ -201,18 +136,20 @@
           var (var! v)]
       (.visitField cv
         (+ Opcodes/ACC_PUBLIC Opcodes/ACC_FINAL Opcodes/ACC_STATIC) name (.getDescriptor var-type) nil nil)
-      (swap! *frame* assoc-in [:fields var] {:name name :type var-type :value v}))))
+      (swap! *frame* assoc-in [:fields var] {:name name :type clojure.lang.Var :value v}))))
 
 (defn- emit-constants [cv {constants :constants}]
   (dorun
     (map-indexed
       (fn [i v]
-        (let [name (str "CONSTANT" i)]
-          (.visitField cv (+ Opcodes/ACC_PUBLIC Opcodes/ACC_FINAL Opcodes/ACC_STATIC)
-            name (.getDescriptor (:type v))
-            nil
-            nil)
-          (swap! *frame* assoc-in [:fields (:value v)] (assoc v :name name))))
+        (when-not (nil? (:value v))
+          (let [name (str "CONSTANT" i)]
+            (.visitField cv (+ Opcodes/ACC_PUBLIC Opcodes/ACC_FINAL Opcodes/ACC_STATIC)
+              name
+              (-> v :type asm-type .getDescriptor)
+              nil
+              nil)
+            (swap! *frame* assoc-in [:fields (:value v)] (assoc v :name name)))))
       constants)))
 
 (defn- emit-proto-callsites [cv {:keys [callsites env]}]
@@ -230,33 +167,43 @@
 
 (defmulti ^:private emit-value :type)
 
-(defn- push-long [v]
-  (if (or (= v 0) (= v 1))
-    (.visitInsn *gen* (+ Opcodes/LCONST_0 v))
-    (.visitLdcInsn *gen* v)))
-
-(defmethod emit-value (asm-type java.lang.Long) [{v :value}]
-;  (.push *gen* (long v))) I'm not smart enough to figure out why this doesn't work, it always emits ICONST
-  (push-long v)
+(defmethod emit-value java.lang.Long [{v :value}]
+  (.push *gen* (long v))
   (.box *gen* (asm-type Long/TYPE)))
 
-(defmethod emit-value (asm-type Long/TYPE) [{v :value}]
+(defmethod emit-value Long/TYPE [{v :value}]
   (push-long v))
 
-(defmethod emit-value symbol-type [{v :value}]
+(defmethod emit-value clojure.lang.Symbol [{v :value}]
   (.push *gen* (namespace v))
   (.push *gen* (name v))
   (.invokeStatic *gen* symbol-type (Method/getMethod "clojure.lang.Symbol intern(String,String)")))
 
-(defmethod emit-value var-type [{v :value}]
+(defmethod emit-value clojure.lang.Var [{v :value}]
   (.push *gen* (namespace v))
   (.push *gen* (name v))
   (.invokeStatic *gen* rt-type (Method/getMethod "clojure.lang.Var var(String,String)")))
 
-(defmethod emit-value keyword-type [{v :value}]
-  (.push *gen* (namespace v))
+(defmethod emit-value clojure.lang.Keyword [{v :value}]
+  (.push *gen* ^String (namespace v))
   (.push *gen* (name v))
   (.invokeStatic *gen* rt-type (Method/getMethod "clojure.lang.Keyword keyword(String,String)")))
+
+(defn- emit-list-as-array [list]
+  (.push *gen* (int (count list)))
+  (.newArray *gen* object-type)
+  (dorun
+    (map-indexed
+      (fn [i item]
+        (.dup *gen*)
+        (.push *gen* (int i))
+        (emit-value {:value item :type (class item)})
+        (.arrayStore *gen* object-type))
+      list)))
+
+(defmethod emit-value clojure.lang.IPersistentMap [{v :value}]
+  (emit-list-as-array (reduce into [] v))
+  (.invokeStatic *gen* rt-type (Method/getMethod "clojure.lang.IPersistentMap map(Object[])")))
 
 (defmethod emit-value :default [ast]
   (notsup "Don't know how to emit value: " ast))
@@ -277,7 +224,7 @@
       (doseq [[v field] fields]
         (emit-value field)
 ;        (.checkCast *gen* (:type field))
-        (.putStatic *gen* class (:name field) (:type field)))
+        (.putStatic *gen* class (:name field) (asm-type (:type field))))
       (.returnValue *gen*)
       (.endMethod *gen*))))
 
@@ -315,38 +262,6 @@
     (emit ast)
     (.returnValue *gen*)
     (.endMethod *gen*)))
-
-(defn eval
-  ([form & {:keys [trace check]}]
-   (binding [*trace-bytecode* trace
-             *check-bytecode* check]
-     (eval form)))
-  ([form]
-   (binding [*loader* (DynamicClassLoader.)]
-     (let [env {:ns (@namespaces *ns*) :context :statement :locals {}}
-           ast (analyze env form)
-           ast (process-frames ast)
-           internal-name (str "repl/Temp" (RT/nextID))
-           cw (emit-class internal-name (assoc ast :super "clojure/lang/AFn") emit-statement)]
-       (let [bytecode (.toByteArray cw)
-             class (load-class internal-name bytecode form)
-             instance (.newInstance class)]
-         (instance))))))
-
-(defn load [f]
-  (let [res (or (io/resource f) (io/as-url (io/as-file f)))]
-    (assert res (str "Can't find " f " in classpath"))
-    (binding [*file* (.getPath res)]
-      (with-open [r (io/reader res)]
-        (let [env {:ns (@namespaces *ns*) :context :statement :locals {}}
-              pbr (clojure.lang.LineNumberingPushbackReader. r)
-              eof (java.lang.Object.)]
-          (loop [r (read pbr false eof false)]
-            (let [env (assoc env :ns (@namespaces *ns*))]
-              (when-not (identical? eof r)
-                (eval r)
-                (recur
-                  (read pbr false eof false))))))))))
 
 (defn- emit-args-and-call [args first-to-emit]
   ; TODO: Handle (> (count args) max-positional-arity)
@@ -548,14 +463,18 @@
     (.mark *gen* end-label)))
 
 (defmethod emit-boxed :def [{:keys [name form init env doc export] :as args}]
-  (let [var (var! name)
+  (let [sym (second form)
+        var (var! name)
         {:keys [class fields]} @*frame*]
     (.getStatic *gen* class (:name (fields var)) var-type)
     (when (dynamic? name)
       (.push *gen* true)
       (.invokeVirtual *gen* var-type (Method/getMethod "clojure.lang.Var setDynamic(boolean)")))
-    (when (meta form)
-      (println "TODO: Copy meta on def"))
+    (when-let [meta (meta sym)]
+      (.dup *gen*)
+      (emit-value {:value meta :type clojure.lang.IPersistentMap})
+      (.checkCast *gen* (asm-type clojure.lang.IPersistentMap))
+      (.invokeVirtual *gen* var-type (Method/getMethod "void setMeta(clojure.lang.IPersistentMap)")))
     (when init
       (.dup *gen*)
       (emit init)
@@ -565,7 +484,8 @@
   (if (nil? v)
     (.visitInsn *gen* Opcodes/ACONST_NULL)
     (let [{:keys [class fields]} @*frame*
-        {:keys [name type]} (fields v)]
+        {:keys [name type]} (fields v)
+        type (asm-type type)]
       (.getStatic *gen* class name type)
       (.box *gen* type))))
 
@@ -574,19 +494,6 @@
 
 (defmethod emit-unboxed :constant [{:keys [form env]}]
   (emit-constant (expression-type form) form))
-
-(defmethod expression-type :constant [ast]
-  [ast]
-  (let [class (-> ast :form class)
-        unboxed (:unboxed ast)]
-  (condp = class
-    java.lang.Integer (if unboxed Long/TYPE Long)
-    java.lang.Long (if unboxed Long/TYPE Long)
-    java.lang.Float (if unboxed Double/TYPE Double)
-    java.lang.Double (if unboxed Double/TYPE Double)
-    clojure.lang.Keyword clojure.lang.Keyword
-    nil nil
-    java.lang.Object)))
 
 (defn emit-fn-method [cv {:keys [name params statements ret env recurs] :as ast}]
   (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (apply asm-method "invoke" "Object" (map expression-type params)) nil nil cv)]
@@ -621,21 +528,22 @@
 
 (defmethod emit-boxed :let [{:keys [bindings statements ret env loop]}]
   (let [bs
-        (into {} (map
-          (fn [{:keys [name init]}]
-            (emit init)
-            (let [type (asm-type (expression-type init))
-                  i (.newLocal *gen* type)]
-            (.storeLocal *gen* i)
-            [name {:index i :type type :label (.mark *gen*)}]))
-          bindings))]
+        (into {}
+          (map
+            (fn [{:keys [name init]}]
+              (emit init)
+              (let [type (expression-type init)
+                    i (.newLocal *gen* (asm-type type))]
+                (.storeLocal *gen* i)
+                [name {:index i :type type :label (.mark *gen*)}]))
+            bindings))]
   (swap! *frame* assoc :locals bs)
   (when statements
     (dorun (map emit statements)))
   (emit ret)
   (let [end-label (.mark *gen*)]
     (doseq [[name binding] bs]
-      (.visitLocalVariable *gen* (str name) (-> binding :type .getDescriptor) nil (:label binding) end-label (:index binding))))))
+      (.visitLocalVariable *gen* (str name) (-> binding :type asm-type .getDescriptor) nil (:label binding) end-label (:index binding))))))
 
 (defn- emit-field
   [env target field box-result]
