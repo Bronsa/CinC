@@ -13,7 +13,7 @@
 (def ^:dynamic *file* nil)
 (def ^:dynamic *warn-on-undeclared* false)
 
-(def specials '#{if def fn* let* .})
+(def specials '#{if def fn* let* . reify})
 
 (def ^:dynamic *recur-frames* nil)
 
@@ -409,3 +409,11 @@ facilitate code walking without knowing the details of the op set."
          :target targetexpr
          :method method
          :args argexprs})))))
+
+(defmethod parse 'reify
+  [op encl-env [_ & args] name]
+  (let [m (apply hash-map (partition-by symbol? args))
+        parents (map first (keys m))
+        meths (map #(map (fn [f] (analyze-seq encl-env (cons 'fn f) nil)) %) (vals m))
+        methods (zipmap parents meths)]
+    {:env encl-env :op :reify :opts {} :methods methods}))
