@@ -593,4 +593,4 @@
     (emit-method-call target method args)))
 
 
-(defmethod emit-boxed :default [args] (Util/runtimeException (str "Unknown operator: " (:op args) "\nForm: " args)))
+(defmethod emit-boxed :default [args] (throw (Util/runtimeException (str "Unknown operator: " (:op args) "\nForm: " args))))
