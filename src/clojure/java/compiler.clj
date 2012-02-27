@@ -7,7 +7,7 @@
           [walk :only [walk]]
           [reflect :only [type-reflect]]
           [set :only [select]]
-          [pprint]]) ; pprint is for debugging
+          pprint repl]) ; pprint is for debugging
   (:import [org.objectweb.asm Type Opcodes ClassReader ClassWriter]
            [org.objectweb.asm.commons Method GeneratorAdapter]
            [org.objectweb.asm.util CheckClassAdapter TraceClassVisitor]
@@ -269,9 +269,6 @@
     (emit arg))
   ; Java clojure calls method.emitClearLocals here, but it does nothing?
   (.invokeInterface *gen* ifn-type (Method. "invoke" object-type (get arg-types (count args)))))
-
-(defmethod expression-type :default [{tag :tag}]
-  (if tag tag java.lang.Object))
 
 (defmulti convertible? (fn [t1 t2] [t1 t2]))
 (defmethod convertible? :default [t1 t2]

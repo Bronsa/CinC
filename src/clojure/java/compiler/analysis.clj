@@ -52,6 +52,9 @@
   "Returns the type of the ast node provided, or Object if unknown. Respects :tag metadata"
   :op )
 
+(defmethod expression-type :default [{tag :tag}]
+  (if tag tag java.lang.Object))
+
 (defmethod expression-type :constant [ast]
   [ast]
   (let [class (-> ast :form class)
