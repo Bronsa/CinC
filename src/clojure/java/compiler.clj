@@ -172,7 +172,7 @@
   (.box *gen* (asm-type Long/TYPE)))
 
 (defmethod emit-value Long/TYPE [{v :value}]
-  (push-long v))
+  (.push *gen* (long v)))
 
 (defmethod emit-value clojure.lang.Symbol [{v :value}]
   (.push *gen* (namespace v))
@@ -331,9 +331,10 @@
     (convertible? (expression-type arg) param-type)
     (emit-convert param-type arg)
 
-    :else (do
-    (emit arg)
-    (emit-cast-arg param-type arg))))
+    :else
+    (do
+      (emit arg)
+      (emit-cast-arg param-type arg))))
 
 (defn- emit-typed-args [param-types args]
   (doall (map emit-typed-arg param-types args)))
