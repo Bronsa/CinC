@@ -10,7 +10,7 @@ To get started:
 
 Start your repl of choice (ie, lein repl)
 
-=>(use 'clojure.compiler)
+=>(use 'clojure.java.compiler)
 
 user=> (pprint (clojure.analyzer/analyze '(+ 1 2)))  
 > {...ast is printed...}
@@ -26,3 +26,10 @@ user=> (eval '(+ 1 2) :trace true)
 
 user=> (eval '(+ 1 2) :trace true :check true)  
 >... textual representation of the class is printed and additional verification is done by ASMStart typing in the blue box...
+
+For some reason, "lein test" doesn't seem to work currently. Until I figure that out, do:
+
+(require 'test.clojure.java.compiler)
+(in-ns 'test.clojure.java.compiler)
+(test-eval)
+
