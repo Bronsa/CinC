@@ -165,26 +165,27 @@
                               {:cached-class cached-class :cached-proto-fn cached-proto-fn :cached-proto-impl cached-proto-impl})))
            callsites)))
 
-(defmulti ^:private emit-value :type)
 
-(defmethod emit-value java.lang.Long [{v :value}]
+(defmulti ^:private emit-value (fn [type value] type))
+
+(defmethod emit-value java.lang.Long [t v]
   (.push *gen* (long v))
   (.box *gen* (asm-type Long/TYPE)))
 
-(defmethod emit-value Long/TYPE [{v :value}]
+(defmethod emit-value Long/TYPE [t v]
   (.push *gen* (long v)))
 
-(defmethod emit-value clojure.lang.Symbol [{v :value}]
+(defmethod emit-value clojure.lang.Symbol [t v]
   (.push *gen* (namespace v))
   (.push *gen* (name v))
   (.invokeStatic *gen* symbol-type (Method/getMethod "clojure.lang.Symbol intern(String,String)")))
 
-(defmethod emit-value clojure.lang.Var [{v :value}]
+(defmethod emit-value clojure.lang.Var [t v]
   (.push *gen* (namespace v))
   (.push *gen* (name v))
   (.invokeStatic *gen* rt-type (Method/getMethod "clojure.lang.Var var(String,String)")))
 
-(defmethod emit-value clojure.lang.Keyword [{v :value}]
+(defmethod emit-value clojure.lang.Keyword [t v]
   (.push *gen* ^String (namespace v))
   (.push *gen* (name v))
   (.invokeStatic *gen* rt-type (Method/getMethod "clojure.lang.Keyword keyword(String,String)")))
@@ -197,16 +198,16 @@
       (fn [i item]
         (.dup *gen*)
         (.push *gen* (int i))
-        (emit-value {:value item :type (class item)})
+        (emit-value (class item) item)
         (.arrayStore *gen* object-type))
       list)))
 
-(defmethod emit-value clojure.lang.IPersistentMap [{v :value}]
+(defmethod emit-value clojure.lang.IPersistentMap [t v]
   (emit-list-as-array (reduce into [] v))
   (.invokeStatic *gen* rt-type (Method/getMethod "clojure.lang.IPersistentMap map(Object[])")))
 
-(defmethod emit-value :default [ast]
-  (notsup "Don't know how to emit value: " ast))
+(defmethod emit-value :default [t v]
+  (notsup "Don't know how to emit value: " v))
 
 (defn- emit-constructors [cv ast]
   (let [ctor (GeneratorAdapter. Opcodes/ACC_PUBLIC constructor-method nil nil cv)]
@@ -222,7 +223,7 @@
       (when line
         (.visitLineNumber *gen* line (.mark *gen*)))
       (doseq [[v field] fields]
-        (emit-value field)
+        (emit-value (:type field) (:value field))
 ;        (.checkCast *gen* (:type field))
         (.putStatic *gen* class (:name field) (asm-type (:type field))))
       (.returnValue *gen*)
@@ -470,7 +471,7 @@
       (.invokeVirtual *gen* var-type (Method/getMethod "clojure.lang.Var setDynamic(boolean)")))
     (when-let [meta (meta sym)]
       (.dup *gen*)
-      (emit-value {:value meta :type clojure.lang.IPersistentMap})
+      (emit-value clojure.lang.IPersistentMap meta)
       (.checkCast *gen* (asm-type clojure.lang.IPersistentMap))
       (.invokeVirtual *gen* var-type (Method/getMethod "void setMeta(clojure.lang.IPersistentMap)")))
     (when init
