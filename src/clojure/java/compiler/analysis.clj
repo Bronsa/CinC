@@ -120,9 +120,8 @@
   [attribute form]
   (attribute form))
 
-(defmethod exported :fn
-  [_ _]
-  #{})
+(defmethod exported :fn [_ _] #{})
+(defmethod exported :reify [_ _] #{})
 
 (defn- collect
   [attribute form]
