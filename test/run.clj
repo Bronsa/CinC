@@ -1,3 +1,10 @@
+(defn trace-class [class]
+  (let [binary-name (.getInternalName (asm-type class))
+        cr (ClassReader. binary-name)
+        w (java.io.PrintWriter. *out*)
+        v (TraceClassVisitor. w)]
+    (.accept cr v 0)))
+
 (defn unmap [& nss]
     (doseq [ns nss
             :when (find-ns ns)
