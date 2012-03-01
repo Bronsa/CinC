@@ -25,7 +25,7 @@ user=> (eval '(+ 1 2) :trace true)
 >... textual representation of the class is printed
 
 user=> (eval '(+ 1 2) :trace true :check true)  
->... textual representation of the class is printed and additional verification is done by ASMStart typing in the blue box...
+>... textual representation of the class is printed and additional verification is done by ASM
 
 For some reason, "lein test" doesn't seem to work currently. Until I figure that out, do:
 
