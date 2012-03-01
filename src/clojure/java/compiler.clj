@@ -52,6 +52,7 @@
 
 (def ^:dynamic ^:private *frame*) ; Contains per-class information
 (defn- new-frame [& m] (atom (apply hash-map m)))
+(defn- copy-frame [& {:as m}] (atom (merge @*frame* m)))
 
 (def ^:dynamic ^:private ^GeneratorAdapter *gen* nil) ; Current GeneratorAdapter to emit to
 
@@ -536,13 +537,13 @@
                 (.storeLocal *gen* i)
                 [name {:index i :type type :label (.mark *gen*)}]))
             bindings))]
-  (swap! *frame* assoc :locals bs)
-  (when statements
-    (dorun (map emit statements)))
-  (emit ret)
-  (let [end-label (.mark *gen*)]
-    (doseq [[name {:keys [type label index]}] bs]
-      (.visitLocalVariable *gen* (str name) (-> type asm-type .getDescriptor) nil label end-label index)))))
+  (binding [*frame* (copy-frame :locals (-> @*frame* :locals (merge bs)))]
+    (when statements
+      (dorun (map emit statements)))
+    (emit ret)
+    (let [end-label (.mark *gen*)]
+      (doseq [[name {:keys [type label index]}] bs]
+        (.visitLocalVariable *gen* (str name) (-> type asm-type .getDescriptor) nil label end-label index))))))
 
 (defn- emit-field
   [env target field box-result]

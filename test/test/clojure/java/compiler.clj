@@ -32,7 +32,8 @@
     (is (= :false (c/eval '(if nil :true :false)))))
   (testing "let"
     (is (= 9 (c/eval '(let [x 9] x))))
-    (is (= 10 (c/eval '(let [x 8] (+ x 2))))))
+    (is (= 10 (c/eval '(let [x 8] (+ x 2)))))
+    (is (= [1 2] (c/eval '(let [x 1] (let [y 2] [x y])))) "Nested lets"))
   (testing "vars"
     (is (= 3 (c/eval '(+ a 2))))
     (is (c/eval '(def b 3)))
