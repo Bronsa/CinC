@@ -27,6 +27,10 @@
 (deftest test-eval
   (is (= 1 (c/eval '1)))
   (is (= 3 (c/eval '(+ 1 2))))
+  (testing "vector"
+    (is (= [1 2] (c/eval '[1 2]))))
+  (testing "map"
+    (is (= {:x 1 :y 2} (c/eval '{:x 1 :y 2}))))
   (testing "if"
     (is (= :true (c/eval '(if :true :true :false))))
     (is (= :false (c/eval '(if nil :true :false)))))

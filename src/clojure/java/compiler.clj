@@ -194,7 +194,7 @@
   (.push *gen* (name v))
   (.invokeStatic *gen* rt-type (Method/getMethod "clojure.lang.Keyword keyword(String,String)")))
 
-(defn- emit-list-as-array [list]
+(defn- emit-vals-as-array [list]
   (.push *gen* (int (count list)))
   (.newArray *gen* object-type)
   (dorun
@@ -207,8 +207,12 @@
       list)))
 
 (defmethod emit-value clojure.lang.IPersistentMap [t v]
-  (emit-list-as-array (reduce into [] v))
+  (emit-vals-as-array (reduce into [] v))
   (.invokeStatic *gen* rt-type (Method/getMethod "clojure.lang.IPersistentMap map(Object[])")))
+
+(defmethod emit-value clojure.lang.IPersistentVector [t v]
+  (emit-vals-as-array v)
+  (.invokeStatic *gen* rt-type (Method/getMethod "clojure.lang.IPersistentVector vector(Object[])")))
 
 (defmethod emit-value :default [t v]
   (notsup "Don't know how to emit value: " [t v]))
@@ -605,5 +609,25 @@
     (.newInstance *gen* type)
     (.dup *gen*)
     (.invokeConstructor *gen* type constructor-method)))
+
+(defn- emit-as-array [list]
+  (.push *gen* (int (count list)))
+  (.newArray *gen* object-type)
+  (dorun
+    (map-indexed
+      (fn [i item]
+        (.dup *gen*)
+        (.push *gen* (int i))
+        (emit item)
+        (.arrayStore *gen* object-type))
+      list)))
+
+(defmethod emit-boxed :vector [args]
+  (emit-as-array (:children args))
+  (.invokeStatic *gen* rt-type (Method/getMethod "clojure.lang.IPersistentVector vector(Object[])")))
+
+(defmethod emit-boxed :map [{:keys [keys vals]}]
+  (emit-as-array (interleave keys vals))
+  (.invokeStatic *gen* rt-type (Method/getMethod "clojure.lang.IPersistentMap map(Object[])")))
 
 (defmethod emit-boxed :default [args] (throw (Util/runtimeException (str "Unknown operator: " (:op args) "\nForm: " args))))
