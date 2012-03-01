@@ -35,8 +35,11 @@
         (Type/getType class)
         (Type/getType s)))))
 
-(defn- asm-method [nm return-type & args]
-  (Method. (str nm) (asm-type return-type) (into-array Type (map asm-type args))))
+(defn- asm-method
+  ([{:keys [name return-types parameter-types]}]
+    (apply asm-method name return-types parameter-types))
+  ([name return-type & args]
+    (Method. (str name) (asm-type return-type) (into-array Type (map asm-type args)))))
 
 (defn- var! [sym]
   (RT/var (namespace sym) (name sym)))
@@ -64,10 +67,21 @@
              java.lang.Long (if unboxed Long/TYPE Long)
              java.lang.Float (if unboxed Double/TYPE Double)
              java.lang.Double (if unboxed Double/TYPE Double)
+             java.lang.String java.lang.String
              clojure.lang.Keyword clojure.lang.Keyword
              nil nil
              java.lang.Object)))
 
+(defmulti convertible? (fn [t1 t2] [(maybe-class t1) (maybe-class t2)]))
+(defmethod convertible? :default [t1 t2]
+  (if (= t1 t2) true (println "Conversion not implemented: " [t1 t2])))
+
+
+(defn- match [name args]
+  (fn match-method [method]
+    (and (= name (:name method))
+      (= (count args) (-> method :parameter-types count))
+      #_(every? true? (map #(do (println %) (convertible? %)) args (:parameter-types method))))))
 
 ;; ---
 
@@ -84,9 +98,13 @@
           (if (node? child) (f child) child))
         walk-children
         (fn [[key child]]
-          (when-let [new-child (if-let [s (and (sequential? child) (seq child))]
-            (into (empty child) (map walk-child s))
-            (walk-child child))]
+          (when-let [new-child (cond
+                                  (node? child) (f child)
+
+                                  (instance? clojure.lang.Seqable child)
+                                  (into (empty child) (map walk-child  (seq child)))
+
+                                  :else child)]
             [key new-child]))]
     (into {} (map walk-children (seq form)))))
 
@@ -172,5 +190,25 @@
   [form]
   (assoc form :vars #{(:name form)}))
 
+(defmulti compute-type :op)
+(defmethod compute-type :default [form] form)
 
-(def process-frames (ast-processor [set-unbox] [collect-constants collect-vars collect-callsites]))
+(defn- compute-host-method
+  [class meth]
+  (let [t (-> class type-reflect :members)
+        matches (select (match (:name meth) (:params meth)) t)
+        _ (when-not (= (count matches) 1)
+            (throw (IllegalArgumentException.
+              (str "No single method: " (:name meth) " of " class " found with arguments: " (:params meth)))))]
+    (first matches)))
+
+(defmethod compute-type :method
+  [form]
+  (if (:class form)
+    (let [class (maybe-class (:class form))
+          host-method (compute-host-method class form)]
+      (assoc form :host-method host-method :type (:return-type host-method)))
+    form))
+
+(def process-frames (ast-processor [set-unbox]
+                      [collect-constants collect-vars collect-callsites compute-type]))

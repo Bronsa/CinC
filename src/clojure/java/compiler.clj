@@ -51,7 +51,7 @@
   (throw (Util/runtimeException (apply str "Unsupported: " args))))
 
 (def ^:dynamic ^:private *frame*) ; Contains per-class information
-(defn- new-frame [] (atom {}))
+(defn- new-frame [& m] (atom (apply hash-map m)))
 
 (def ^:dynamic ^:private ^GeneratorAdapter *gen* nil) ; Current GeneratorAdapter to emit to
 
@@ -175,6 +175,9 @@
 (defmethod emit-value Long/TYPE [t v]
   (.push *gen* (long v)))
 
+(defmethod emit-value java.lang.String [t ^String v]
+  (.push *gen* v))
+
 (defmethod emit-value clojure.lang.Symbol [t v]
   (.push *gen* (namespace v))
   (.push *gen* (name v))
@@ -207,7 +210,7 @@
   (.invokeStatic *gen* rt-type (Method/getMethod "clojure.lang.IPersistentMap map(Object[])")))
 
 (defmethod emit-value :default [t v]
-  (notsup "Don't know how to emit value: " v))
+  (notsup "Don't know how to emit value: " [t v]))
 
 (defn- emit-constructors [cv ast]
   (let [ctor (GeneratorAdapter. Opcodes/ACC_PUBLIC constructor-method nil nil cv)]
@@ -242,11 +245,12 @@
     "*E"))
 
 (defn- emit-class [internal-name ast emit-methods]
-  (binding [*frame* (new-frame)]
-    (let [cw (ClassWriter. ClassWriter/COMPUTE_MAXS)]
-      (swap! *frame* merge ast {:class (Type/getType internal-name)})
+  (binding [*frame* (new-frame :class (Type/getType internal-name))]
+    (let [cw (ClassWriter. ClassWriter/COMPUTE_MAXS)
+          super (-> ast :super asm-type .getInternalName)
+          interfaces (into-array String (map #(-> % asm-type .getInternalName) (:interfaces ast)))]
       (doto cw
-        (.visit Opcodes/V1_5 (+ Opcodes/ACC_PUBLIC Opcodes/ACC_SUPER) internal-name nil (:super ast) nil)
+        (.visit Opcodes/V1_5 (+ Opcodes/ACC_PUBLIC Opcodes/ACC_SUPER) internal-name nil super interfaces)
         ;                (.visitSource internal-name (debug-info internal-name "NO_SOURCE_PATH" (-> ast :env :line)))
         (.visitSource internal-name nil)
         (emit-vars ast)
@@ -270,10 +274,6 @@
     (emit arg))
   ; Java clojure calls method.emitClearLocals here, but it does nothing?
   (.invokeInterface *gen* ifn-type (Method. "invoke" object-type (get arg-types (count args)))))
-
-(defmulti convertible? (fn [t1 t2] [t1 t2]))
-(defmethod convertible? :default [t1 t2]
-  (if (= t1 t2) true (println "Conversion not implemented: " [t1 t2])))
 
 (defmulti emit-convert (fn [t e] [t (class e)]))
 (defmethod emit-convert :default [t e]
@@ -483,8 +483,8 @@
   (if (nil? v)
     (.visitInsn *gen* Opcodes/ACONST_NULL)
     (let [{:keys [class fields]} @*frame*
-        {:keys [name type]} (fields v)
-        type (asm-type type)]
+          {:keys [name type]} (fields v)
+          type (asm-type type)]
       (.getStatic *gen* class name type)
       (.box *gen* type))))
 
@@ -494,8 +494,8 @@
 (defmethod emit-unboxed :constant [{:keys [form env]}]
   (emit-constant (expression-type form) form))
 
-(defn emit-fn-method [cv {:keys [name params statements ret env recurs] :as ast}]
-  (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (apply asm-method "invoke" "Object" (map expression-type params)) nil nil cv)]
+(defn emit-method [cv {:keys [name params statements ret env recurs type] :as ast :or {name "invoke" type java.lang.Object}}]
+  (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (apply asm-method name type (map expression-type params)) nil nil cv)]
     (.visitCode *gen*)
     (when recurs (notsup "recurs"))
     (when statements
@@ -504,20 +504,20 @@
     (.returnValue *gen*)
     (.endMethod *gen*)))
 
-(defn- emit-fns [cv {:keys [name env methods max-fixed-arity variadic recur-frames] :as ast}]
+(defn- emit-fn-methods [cv {:keys [name env methods max-fixed-arity variadic recur-frames] :as ast}]
   (let [loop-locals (seq (mapcat :names (filter #(and % @(:flag %)) recur-frames)))]
     (when loop-locals
       (notsup "loop-locals"))
     (doseq [meth methods]
       (if (:variadic meth)
         (notsup '(emit-variadic-fn-method meth))
-        (emit-fn-method cv meth)))
+        (emit-method cv meth)))
     (when loop-locals
       (notsup "loop-locals"))))
 
 (defmethod emit-boxed :fn [ast]
   (let [name (str (or (:name ast) (gensym)))
-        cw (emit-class name (assoc ast :super "clojure/lang/AFn") emit-fns)
+        cw (emit-class name (assoc ast :super "clojure/lang/AFn") emit-fn-methods)
         bytecode (.toByteArray cw)
         class (load-class name bytecode ast)
         type (asm-type class)]
@@ -541,8 +541,8 @@
     (dorun (map emit statements)))
   (emit ret)
   (let [end-label (.mark *gen*)]
-    (doseq [[name binding] bs]
-      (.visitLocalVariable *gen* (str name) (-> binding :type asm-type .getDescriptor) nil (:label binding) end-label (:index binding))))))
+    (doseq [[name {:keys [type label index]}] bs]
+      (.visitLocalVariable *gen* (str name) (-> type asm-type .getDescriptor) nil label end-label index)))))
 
 (defn- emit-field
   [env target field box-result]
@@ -563,19 +563,13 @@
       (.invokeStatic *gen* (asm-type clojure.lang.Reflector)
                            (Method/getMethod "Object invokeNoArgInstanceMember(Object,String)"))))))
 
-(defn- match [name args]
-  (fn match-method [method]
-    (and (= name (:name method))
-         (= (count args) (-> method :parameter-types count))
-         (every? true? (map convertible? args (:parameter-types method))))))
-
 (defn- emit-method-call [target name args]
   (let [class (expression-type target)
         members (-> class type-reflect :members )
         methods (select (match name args) members)
         _ (when-not (= (count methods) 1)
             (throw (IllegalArgumentException.
-              (str "No single method: " name " of class: " class " founds with args: " args))))
+              (str "No single method: " name " of class: " class " found with args: " args))))
         meth (first methods)]
   (emit-typed-args (:parameter-types meth) (rest args))
   (let [r (:return-type meth)
@@ -590,5 +584,25 @@
     (emit-field env target field true)
     (emit-method-call target method args)))
 
+(defn- emit-fns
+  [cv {:as ast :keys [name type fns]}]
+  (doseq [fn fns]
+    (emit-fn-methods cv fn)))
+
+(defmethod emit-boxed :reify
+  [{:as ast :keys [methods ancestors]}]
+  (let [name (str (gensym "reify__"))
+        c (-> ancestors first maybe-class)
+        [super interfaces] (if (and c (.isInterface c))
+                             [java.lang.Object ancestors]
+                             [(first ancestors) (rest ancestors)])
+        ast (assoc ast :super super :interfaces interfaces)
+        cw (emit-class name ast emit-fn-methods)
+        bytecode (.toByteArray cw)
+        class (load-class name bytecode ast)
+        type (asm-type class)]
+    (.newInstance *gen* type)
+    (.dup *gen*)
+    (.invokeConstructor *gen* type constructor-method)))
 
 (defmethod emit-boxed :default [args] (throw (Util/runtimeException (str "Unknown operator: " (:op args) "\nForm: " args))))

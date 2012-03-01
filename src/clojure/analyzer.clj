@@ -169,14 +169,14 @@ facilitate code walking without knowing the details of the op set."
             (cond
               (= (first opname) \.) (let [[target & args] (next form)]
                                       (list* '. target (symbol (subs opname 1)) args))
-                                    (= (last opname) \.) (list* 'new (symbol (subs opname 0 (dec (count opname)))) (next form))
-                                    :else form))
+              (= (last opname) \.) (list* 'new (symbol (subs opname 0 (dec (count opname)))) (next form))
+              :else form))
           form)))))
 
 (defn analyze-seq
   [env form name]
   (let [env (assoc env :line (or (-> form meta :line )
-    (:line env)))]
+                                 (:line env)))]
     (let [op (first form)]
       (assert (not (nil? op)) "Can't call nil")
       (let [mform (macroexpand-1 env form)]
@@ -278,14 +278,14 @@ facilitate code walking without knowing the details of the op set."
           block (binding [*recur-frames* (cons recur-frame *recur-frames*)]
         (analyze-block (assoc env :context :return :locals locals) body))]
 
-      (merge {:env env :variadic variadic :params params
+      (merge {:env env :op :method :variadic variadic :params params
               :max-fixed-arity fixed-arity :recurs @(:flag recur-frame)} block))))
 
 (defmethod parse 'fn*
   [op env [_ & args] name]
   (let [[name meths] (if (symbol? (first args))
-    [(first args) (next args)]
-    [name (seq args)])
+                       [(first args) (next args)]
+                       [name (seq args)])
         ;;turn (fn [] ...) into (fn ([]...))
         meths (if (vector? (first meths)) (list meths) meths)
         locals (:locals env)
@@ -410,10 +410,24 @@ facilitate code walking without knowing the details of the op set."
          :method method
          :args argexprs})))))
 
+(defn analyze-method-impls
+  [env meth]
+  (let [name (or (first meth) (throw (Error. "Must specify a method to implement")))
+        params (fnext meth)
+        this (or (first params) (throw (Error. (str "Must supply at least one argument for 'this' in: " name))))
+        params (next params)
+        meth (cons params (nnext meth))
+        locals (assoc (:locals env) this {:name :this})
+        method (analyze-fn-method env locals meth)]
+    (assoc method :name name)))
+
 (defmethod parse 'reify
-  [op encl-env [_ & args] name]
-  (let [m (apply hash-map (partition-by symbol? args))
-        parents (map first (keys m))
-        meths (map #(map (fn [f] (analyze-seq encl-env (cons 'fn f) nil)) %) (vals m))
-        methods (zipmap parents meths)]
-    {:env encl-env :op :reify :opts {} :methods methods}))
+  [op env [_ & args] _]
+  (let [aargs (map #(if (symbol? %) % (analyze-method-impls env %)) args)
+        m (apply hash-map (partition-by symbol? aargs))
+        ancestors (map first (keys m))
+        methods (reduce into []
+                   (for [[[class] meths] m]
+                     (for [meth meths]
+                       (assoc meth :class class))))]
+    {:env env :op :reify :opts {} :methods methods :ancestors ancestors}))

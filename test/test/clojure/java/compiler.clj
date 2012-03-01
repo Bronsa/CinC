@@ -42,4 +42,8 @@
     (is (= 2 (c/eval '(foo rec-extends)))))
   (testing "interop"
     (is (= 1 (c/eval '(.-a rec-field))))
-    (is (= "1" (c/eval '(. 1 (toString)))))))
+    (is (= "1" (c/eval '(. 1 (toString))))))
+  (testing "reify"
+    (is (= 1 ((c/eval '(reify clojure.lang.IFn (invoke [this] 1))))))
+    (is (= "1" (str (c/eval '(reify Object (toString [this] "1"))))))
+    (is (= 3 ((c/eval '(reify clojure.lang.IFn (invoke [this a] (+ a 2)))) 1)))))
