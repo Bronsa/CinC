@@ -22,11 +22,17 @@
 (def rec-extends (test-record-extends.))
 (def rec-field (test-field. 1))
 
+(defn max-args-fn [a & rest]
+  (println :success))
+
 (in-ns 'test.clojure.java.compiler)
 
 (deftest test-eval
   (is (= 1 (c/eval '1)))
-  (is (= 3 (c/eval '(+ 1 2))))
+  (testing "invocation"
+    (is (= 3 (c/eval '(+ 1 2))))
+    (is (= :success (c/eval '(user/max-args-fn :a :b :c :d :e :f :g :h :i :j :k :l :m :n :o :p :q :r :s :t :u :v :w :x :y :z)))
+      (str "functions with more than " clojure.java.compiler/max-positional-arity " arguments")))
   (testing "vector"
     (is (= [1 2] (c/eval '[1 2]))))
   (testing "map"

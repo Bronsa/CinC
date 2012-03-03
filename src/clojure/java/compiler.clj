@@ -59,6 +59,7 @@
 (def ^:dynamic ^:private ^DynamicClassLoader *loader* (DynamicClassLoader.))
 
 (def ^:private object-type (asm-type java.lang.Object))
+(def ^:private obj-array-type (Type/getType (class (make-array Object 0))))
 (def ^:private class-type (asm-type java.lang.Class))
 
 (def ^:private ifn-type (asm-type clojure.lang.IFn))
@@ -69,8 +70,13 @@
 (def ^:private rt-type (asm-type clojure.lang.RT))
 (def ^:private util-type (asm-type clojure.lang.Util))
 
-(def ^:private arg-types (into-array (for [i (range max-positional-arity)]
-                                       (into-array Type (repeat i object-type)))))
+(def ^:private arg-types (into-array
+                           (concat
+                             (for [i (range (inc max-positional-arity))]
+                               (into-array Type (repeat i object-type)))
+                             [(into-array Type
+                               (concat
+                                 (repeat max-positional-arity object-type) [obj-array-type]))])))
 
 (def ^:private constructor-method (Method/getMethod "void <init> ()"))
 (def ^:private var-get-method (Method/getMethod "Object get()"))
@@ -206,6 +212,18 @@
         (.arrayStore *gen* object-type))
       list)))
 
+(defn- emit-as-array [list]
+  (.push *gen* (int (count list)))
+  (.newArray *gen* object-type)
+  (dorun
+    (map-indexed
+      (fn [i item]
+        (.dup *gen*)
+        (.push *gen* (int i))
+        (emit item)
+        (.arrayStore *gen* object-type))
+      list)))
+
 (defmethod emit-value clojure.lang.IPersistentMap [t v]
   (emit-vals-as-array (reduce into [] v))
   (.invokeStatic *gen* rt-type (Method/getMethod "clojure.lang.IPersistentMap map(Object[])")))
@@ -274,11 +292,14 @@
     (.endMethod *gen*)))
 
 (defn- emit-args-and-call [args first-to-emit]
-  ; TODO: Handle (> (count args) max-positional-arity)
-  (doseq [arg (nthrest args first-to-emit)]
-    (emit arg))
-  ; Java clojure calls method.emitClearLocals here, but it does nothing?
-  (.invokeInterface *gen* ifn-type (Method. "invoke" object-type (get arg-types (count args)))))
+  (let [count (- (count args) first-to-emit)]
+    (doseq [arg (subvec args first-to-emit (min count max-positional-arity))]
+      (emit arg))
+    (when (> count max-positional-arity)
+      (emit-as-array (subvec args max-positional-arity)))
+
+    ; Java clojure calls method.emitClearLocals here, but it does nothing?
+    (.invokeInterface *gen* ifn-type (Method. "invoke" object-type (get arg-types (min count (inc max-positional-arity)))))))
 
 (defmulti emit-convert (fn [t e] [t (class e)]))
 (defmethod emit-convert :default [t e]
@@ -609,18 +630,6 @@
     (.newInstance *gen* type)
     (.dup *gen*)
     (.invokeConstructor *gen* type constructor-method)))
-
-(defn- emit-as-array [list]
-  (.push *gen* (int (count list)))
-  (.newArray *gen* object-type)
-  (dorun
-    (map-indexed
-      (fn [i item]
-        (.dup *gen*)
-        (.push *gen* (int i))
-        (emit item)
-        (.arrayStore *gen* object-type))
-      list)))
 
 (defmethod emit-boxed :vector [args]
   (emit-as-array (:children args))

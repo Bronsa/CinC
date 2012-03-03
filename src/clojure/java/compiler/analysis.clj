@@ -210,5 +210,10 @@
       (assoc form :host-method host-method :type (:return-type host-method)))
     form))
 
+;(defmethod compute-type :fn
+  ; Symbol meta have a :tag?
+  ; Var have a :tag?
+  ; Find the correct overload in arglists, does it have a tag? )
+
 (def process-frames (ast-processor [set-unbox]
                       [collect-constants collect-vars collect-callsites compute-type]))
