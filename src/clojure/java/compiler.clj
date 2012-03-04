@@ -103,7 +103,7 @@
         (.accept cr v 0)))
     (.defineClass *loader* binary-name bytecode form)))
 
-(declare emit-class emit-statement)
+(declare emit-class emit-repl)
 
 (defn eval
   ([form & {:keys [trace check]}]
@@ -116,7 +116,7 @@
            ast (analyze env form)
            ast (process-frames ast)
            internal-name (str "repl/Temp" (RT/nextID))
-           cw (emit-class internal-name (assoc ast :super "clojure/lang/AFn") emit-statement)]
+           cw (emit-class internal-name (assoc ast :super "clojure/lang/AFn") emit-repl)]
        (let [bytecode (.toByteArray cw)
              class (load-class internal-name bytecode form)
              instance (.newInstance class)]
@@ -284,7 +284,7 @@
         .visitEnd)
       cw)))
 
-(defn- emit-statement [cv ast]
+(defn- emit-repl [cv ast]
   (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (Method/getMethod "Object invoke()") nil nil cv)]
     (.visitCode *gen*)
     (emit ast)
@@ -519,12 +519,16 @@
 (defmethod emit-unboxed :constant [{:keys [form env]}]
   (emit-constant (expression-type form) form))
 
+(defn- emit-statement [form]
+  (emit form)
+  (.pop *gen*))
+
 (defn emit-method [cv {:keys [name params statements ret env recurs type] :or {name "invoke" type java.lang.Object}}]
   (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (apply asm-method name type (map expression-type params)) nil nil cv)]
     (.visitCode *gen*)
     (when recurs (notsup "recurs"))
     (when statements
-      (dorun (map emit statements)))
+      (dorun (map emit-statement statements)))
     (emit ret)
     (.returnValue *gen*)
     (.endMethod *gen*)))
@@ -563,7 +567,7 @@
             bindings))]
   (binding [*frame* (copy-frame :locals (-> @*frame* :locals (merge bs)))]
     (when statements
-      (dorun (map emit statements)))
+      (dorun (map emit-statement statements)))
     (emit ret)
     (let [end-label (.mark *gen*)]
       (doseq [[name {:keys [type label index]}] bs]
