@@ -47,8 +47,8 @@
 (defn munge [s]
   (symbol (apply str (map #(char-map % %) (str s)))))
 
-(defn- notsup [& args]
-  (throw (Util/runtimeException (apply str "Unsupported: " args))))
+(defmacro notsup [& args]
+  `(throw (RuntimeException. (str "Unsupported: " ~@args))))
 
 (def ^:dynamic ^:private *frame*) ; Contains per-class information
 (defn- new-frame [& m] (atom (apply hash-map m)))
@@ -642,4 +642,4 @@
   (emit-as-array (interleave keys vals))
   (.invokeStatic *gen* rt-type (Method/getMethod "clojure.lang.IPersistentMap map(Object[])")))
 
-(defmethod emit-boxed :default [args] (throw (Util/runtimeException (str "Unknown operator: " (:op args) "\nForm: " args))))
+(defmethod emit-boxed :default [args] (notsup "Unknown operator: " (:op args) "\nForm: " args))
