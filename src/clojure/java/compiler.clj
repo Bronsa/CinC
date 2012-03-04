@@ -196,7 +196,7 @@
   (.invokeStatic *gen* rt-type (Method/getMethod "clojure.lang.Var var(String,String)")))
 
 (defmethod emit-value clojure.lang.Keyword [t v]
-  (.push *gen* ^String (namespace v))
+  (.push *gen* (namespace v))
   (.push *gen* (name v))
   (.invokeStatic *gen* rt-type (Method/getMethod "clojure.lang.Keyword keyword(String,String)")))
 
@@ -292,14 +292,13 @@
     (.endMethod *gen*)))
 
 (defn- emit-args-and-call [args first-to-emit]
-  (let [count (- (count args) first-to-emit)]
-    (doseq [arg (subvec args first-to-emit (min count max-positional-arity))]
+  (let [n (- (count args) first-to-emit)]
+    (doseq [arg (subvec args first-to-emit (min (+ first-to-emit n) max-positional-arity))]
       (emit arg))
-    (when (> count max-positional-arity)
+    (when (> n max-positional-arity)
       (emit-as-array (subvec args max-positional-arity)))
-
     ; Java clojure calls method.emitClearLocals here, but it does nothing?
-    (.invokeInterface *gen* ifn-type (Method. "invoke" object-type (get arg-types (min count (inc max-positional-arity)))))))
+    (.invokeInterface *gen* ifn-type (Method. "invoke" object-type (get arg-types (min (count args) (inc max-positional-arity)))))))
 
 (defmulti emit-convert (fn [t e] [t (class e)]))
 (defmethod emit-convert :default [t e]
@@ -520,7 +519,7 @@
 (defmethod emit-unboxed :constant [{:keys [form env]}]
   (emit-constant (expression-type form) form))
 
-(defn emit-method [cv {:keys [name params statements ret env recurs type] :as ast :or {name "invoke" type java.lang.Object}}]
+(defn emit-method [cv {:keys [name params statements ret env recurs type] :or {name "invoke" type java.lang.Object}}]
   (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (apply asm-method name type (map expression-type params)) nil nil cv)]
     (.visitCode *gen*)
     (when recurs (notsup "recurs"))

@@ -22,8 +22,7 @@
 (def rec-extends (test-record-extends.))
 (def rec-field (test-field. 1))
 
-(defn max-args-fn [a & rest]
-  (println :success))
+(defn max-args-fn [a & rest] :success)
 
 (in-ns 'test.clojure.java.compiler)
 
