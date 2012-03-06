@@ -51,7 +51,7 @@
   `(throw (RuntimeException. (str "Unsupported: " ~@args))))
 
 (def ^:dynamic ^:private *frame*) ; Contains per-class information
-(defn- new-frame [& m] (atom (apply hash-map m)))
+(defn- new-frame [& m] (atom (apply hash-map :next-local-index 1 m))) ; 0 is "this"
 (defn- copy-frame [& {:as m}] (atom (merge @*frame* m)))
 
 (def ^:dynamic ^:private ^GeneratorAdapter *gen* nil) ; Current GeneratorAdapter to emit to
@@ -103,7 +103,14 @@
         (.accept cr v 0)))
     (.defineClass *loader* binary-name bytecode form)))
 
-(declare emit-class emit-repl)
+(declare emit-class)
+
+(defn- emit-wrapper-fn [cv ast]
+  (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (Method/getMethod "Object invoke()") nil nil cv)]
+    (.visitCode *gen*)
+    (emit ast)
+    (.returnValue *gen*)
+    (.endMethod *gen*)))
 
 (defn eval
   ([form & {:keys [trace check]}]
@@ -116,7 +123,7 @@
            ast (analyze env form)
            ast (process-frames ast)
            internal-name (str "repl/Temp" (RT/nextID))
-           cw (emit-class internal-name (assoc ast :super "clojure/lang/AFn") emit-repl)]
+           cw (emit-class internal-name (assoc ast :super "clojure/lang/AFn") emit-wrapper-fn)]
        (let [bytecode (.toByteArray cw)
              class (load-class internal-name bytecode form)
              instance (.newInstance class)]
@@ -284,13 +291,6 @@
         .visitEnd)
       cw)))
 
-(defn- emit-repl [cv ast]
-  (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (Method/getMethod "Object invoke()") nil nil cv)]
-    (.visitCode *gen*)
-    (emit ast)
-    (.returnValue *gen*)
-    (.endMethod *gen*)))
-
 (defn- emit-args-and-call [args first-to-emit]
   (let [n (- (count args) first-to-emit)]
     (doseq [arg (subvec args first-to-emit (min (+ first-to-emit n) max-positional-arity))]
@@ -448,8 +448,10 @@
     (.invokeVirtual *gen* var-type (if (dynamic? var) var-get-method var-get-raw-method))))
 
 (defn- emit-local [v]
-  (let [lb (-> @*frame* :locals v)]
-    (.loadLocal *gen* (:index lb))))
+  (let [lb (-> @*frame* :locals v)
+        opcode (-> lb :type asm-type (.getOpcode Opcodes/ILOAD))
+        index (:index lb)]
+    (.visitVarInsn *gen* opcode index)))
 
 (defmethod emit-boxed :var [{:keys [info env]}]
   (let [v (:name info)]
@@ -523,15 +525,38 @@
   (emit form)
   (.pop *gen*))
 
-(defn emit-method [cv {:keys [name params statements ret env recurs type] :or {name "invoke" type java.lang.Object}}]
-  (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (apply asm-method name type (map expression-type params)) nil nil cv)]
+(defn- next-local [class]
+  (let [next (:next-local-index @*frame*)
+        size (condp = class Float/TYPE 2 Double/TYPE 2 1)]
+    (swap! *frame* assoc :next-local-index (+ next size))
+    next))
+
+(defn compute-locals [{:keys [params env]}]
+  (into {}
+    (concat
+      (let [type java.lang.Object] ; TODO: compute actual type for prims
+        (for [sym params]
+          [sym {:index (next-local type) :type type :label (.mark *gen*)}]))
+      (for [[sym lb] (:locals env)]
+        (let [type java.lang.Object ; TODO: compute actual type for prims
+              index (if (:this lb) 0 (next-local type))]
+          [sym {:index index :type type :label (.mark *gen*)}])))))
+
+(defn emit-method [cv {:as form :keys [name params statements ret env recurs type] :or {name "invoke" type java.lang.Object}}]
+  (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (apply asm-method name type (map expression-type params)) nil nil cv)
+            *frame* (copy-frame :locals (-> @*frame* :locals (merge (compute-locals form))))]
     (.visitCode *gen*)
-    (when recurs (notsup "recurs"))
-    (when statements
-      (dorun (map emit-statement statements)))
-    (emit ret)
-    (.returnValue *gen*)
-    (.endMethod *gen*)))
+    (let [loop-label (.mark *gen*)
+          end-label (.newLabel *gen*)]
+      (when statements
+        (dorun (map emit-statement statements)))
+      (emit ret)
+      (.mark *gen* end-label)
+      (doseq [[name {:keys [type label index]}] (:locals @*frame*)]
+        (.visitLocalVariable *gen* (str name) (-> type asm-type .getDescriptor) nil label end-label index))
+      (.unbox *gen* (asm-type type))
+      (.returnValue *gen*)
+      (.endMethod *gen*))))
 
 (defn- emit-fn-methods [cv {:keys [name env methods max-fixed-arity variadic recur-frames] :as ast}]
   (let [loop-locals (seq (mapcat :names (filter #(and % @(:flag %)) recur-frames)))]
@@ -561,8 +586,9 @@
             (fn [{:keys [name init]}]
               (emit init)
               (let [type (expression-type init)
-                    i (.newLocal *gen* (asm-type type))]
-                (.storeLocal *gen* i)
+                    opcode (-> type asm-type (.getOpcode Opcodes/ISTORE))
+                    i (next-local type)]
+                (.visitVarInsn *gen* opcode i)
                 [name {:index i :type type :label (.mark *gen*)}]))
             bindings))]
   (binding [*frame* (copy-frame :locals (-> @*frame* :locals (merge bs)))]

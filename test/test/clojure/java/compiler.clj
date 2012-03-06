@@ -53,8 +53,16 @@
   (testing "interop"
     (is (= 1 (c/eval '(.-a rec-field))))
     (is (= "1" (c/eval '(. 1 (toString))))))
+  (testing "fn"
+    (is (= 1 ((c/eval '(fn [a] 1)) 1))))
+    ; Recursion is broken (is (= 10 ((c/eval '(fn b [a] a) (if (< a 10) (b (inc a)) a) 1))
   (testing "reify"
     (is (= 1 ((c/eval '(reify clojure.lang.IFn (invoke [this] 1))))))
     (is (= "1" (str (c/eval '(reify Object (toString [this] "1"))))))
-    ; Params don't work yet
-    #_(is (= 3 ((c/eval '(reify clojure.lang.IFn (invoke [this a] (+ a 2)))) 1)))))
+    (is (= 3 ((c/eval '(reify clojure.lang.IFn (invoke [this a] (+ a 2)))) 1)))
+    (is (= "9" ((c/eval '(reify
+                           Object
+                           (toString [this] (str (.hashCode this)))
+                           (hashCode [this] 9)
+                           clojure.lang.IFn
+                           (invoke [this] (str this)))))))))

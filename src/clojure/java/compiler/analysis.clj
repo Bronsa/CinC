@@ -14,13 +14,15 @@
         (RT/classForName s)
         (catch Exception e nil)))))
 (defmethod maybe-class clojure.lang.Symbol [sym]
+  ; TODO: I have no idea what this used to do
+  ;    (if(Util.equals(sym,COMPILE_STUB_SYM.get()))
+  ;    return (Class) COMPILE_STUB_CLASS.get();
   (when-not (namespace sym)
-    ; TODO: I have no idea what this used to do
-    ;    (if(Util.equals(sym,COMPILE_STUB_SYM.get()))
-    ;    return (Class) COMPILE_STUB_CLASS.get();
-    (let [ret (resolve sym)]
-      (when (class? ret)
-        ret))))
+    (if-let [ret (prims (name sym))]
+      ret
+      (let [ret (resolve sym)]
+        (when (class? ret)
+          ret)))))
 
 (defn- primitive? [o]
   (let [c (maybe-class o)]

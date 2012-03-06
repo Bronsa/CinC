@@ -417,7 +417,8 @@ facilitate code walking without knowing the details of the op set."
         this (or (first params) (throw (Error. (str "Must supply at least one argument for 'this' in: " name))))
         params (next params)
         meth (cons params (nnext meth))
-        locals (assoc (:locals env) this {:name :this})
+        locals (assoc (:locals env) this {:name this :this true})
+        env (assoc env :locals locals)
         method (analyze-fn-method env locals meth)]
     (assoc method :name name)))
 
