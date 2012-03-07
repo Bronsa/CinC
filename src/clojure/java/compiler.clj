@@ -437,7 +437,7 @@
 
 (defmethod emit-boxed :invoke [ast]
   (.visitLineNumber *gen* (-> ast :env :line ) (.mark *gen*))
-  (if (:protocol (meta (-> ast :f :info :name var!)))
+  (if (-> ast :f :info :name var! meta :protocol)
     (emit-invoke-proto ast)
     (emit-invoke-fn ast)))
 

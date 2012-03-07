@@ -44,7 +44,8 @@
     (Method. (str name) (asm-type return-type) (into-array Type (map asm-type args)))))
 
 (defn- var! [sym]
-  (RT/var (namespace sym) (name sym)))
+  (when-let [ns (namespace sym)]
+    (RT/var ns (name sym))))
 
 (defn dynamic? [v]
   (or (:dynamic (meta v))
@@ -165,10 +166,13 @@
   [form]
   (collect :callsites form))
 
+(defn- pprints [& args]
+  (binding [*print-level* 4] (apply pprint args)))
+
 (defmethod collect-callsites :invoke
   [form]
-  (let [s (-> form :f :info :name )]
-    (if (-> s var! meta :protocol )
+  (let [s (-> form :f :info :name)]
+    (if (and s (-> s var! meta :protocol))
       (assoc form :callsites #{s})
       form)))
 

@@ -54,8 +54,8 @@
     (is (= 1 (c/eval '(.-a rec-field))))
     (is (= "1" (c/eval '(. 1 (toString))))))
   (testing "fn"
-    (is (= 1 ((c/eval '(fn [a] 1)) 1))))
-    ; Recursion is broken (is (= 10 ((c/eval '(fn b [a] a) (if (< a 10) (b (inc a)) a) 1))
+    (is (= 1 ((c/eval '(fn [a] 1)) 1)))
+    (is (= 10 ((c/eval '(fn b [a] (if (< a 10) (b (inc a)) a))) 1))))
   (testing "reify"
     (is (= 1 ((c/eval '(reify clojure.lang.IFn (invoke [this] 1))))))
     (is (= "1" (str (c/eval '(reify Object (toString [this] "1"))))))
