@@ -366,6 +366,13 @@
   (when (primitive? type)
     (.box *gen* (asm-type type))))
 
+(defn- find-method [class filter error-msg]
+  (let [members (-> class type-reflect :members )
+        methods (select filter members)
+        _ (when-not (= (count methods) 1)
+            (throw (IllegalArgumentException. error-msg)))]
+    (first methods)))
+
 (defn- emit-invoke-proto [{:keys [f args]}]
   (let [{:keys [class fields protos]} @*frame*
         on-label (.newLabel *gen*)
@@ -379,7 +386,7 @@
     ; load the first arg, so we can see its type
     (emit e)
     (.dup *gen*)
-    (.invokeStatic *gen* (asm-type clojure.lang.Util) (Method/getMethod "Class classOf(Object)"))
+    (.invokeStatic *gen* util-type (Method/getMethod "Class classOf(Object)"))
     (.loadThis *gen*)
     (.getField *gen* class (-> protos fsym :cached-class ) class-type) ; target,class,cached-class
     ; Check if first arg type is same as cached
@@ -389,7 +396,7 @@
       (.instanceOf *gen* (asm-type protocol-on))
       (.ifZCmp *gen* GeneratorAdapter/NE on-label))
     (.dup *gen*) ; target, target
-    (.invokeStatic *gen* (asm-type clojure.lang.Util) (Method/getMethod "Class classOf(Object)")) ; target, class
+    (.invokeStatic *gen* util-type (Method/getMethod "Class classOf(Object)")) ; target, class
     (.loadThis *gen*)
     (.swap *gen*)
     (.putField *gen* class (-> protos fsym :cached-class) class-type) ; target
@@ -412,13 +419,8 @@
                         " found for function: " fsym " of protocol: " (-> fvar meta :protocol )
                         " (The protocol method may have been defined before and removed.)"))))
             meth-name (-> key name munge)
-            members (-> protocol-on type-reflect :members )
-            methods (select #(and (= (:name %) meth-name) (= (dec (count args)) (-> % :parameter-types count))) members)
-            _ (when-not (= (count methods) 1)
-                (throw (IllegalArgumentException.
-                  (str "No single method: " meth-name " of interface: " protocol-on
-                    " found for function: " fsym " of protocol: " (-> fvar meta :protocol )))))
-            meth (first methods)]
+            meth (find-method protocol-on #(and (= (:name %) meth-name) (= (dec (count args)) (-> % :parameter-types count)))
+                                          (str "No single method: " meth-name " of class: " protocol-on " found with args: " args))]
         (emit-typed-args (:parameter-types meth) (rest args))
         (when (= (-> f :info :env :context ) :return )
           ; emit-clear-locals
@@ -546,8 +548,8 @@
   (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (apply asm-method name type (map expression-type params)) nil nil cv)
             *frame* (copy-frame :locals (-> @*frame* :locals (merge (compute-locals form))))]
     (.visitCode *gen*)
-    (let [loop-label (.mark *gen*)
-          end-label (.newLabel *gen*)]
+    (let [end-label (.newLabel *gen*)]
+      (swap! *frame* assoc :loop-label (.mark *gen*))
       (when statements
         (dorun (map emit-statement statements)))
       (emit ret)
@@ -579,25 +581,38 @@
     (.dup *gen*)
     (.invokeConstructor *gen* type constructor-method)))
 
+(defn- emit-bindings [bindings]
+  (into {}
+    (map
+      (fn [{:keys [name init]}]
+        (emit init)
+        (let [type (expression-type init)
+              opcode (-> type asm-type (.getOpcode Opcodes/ISTORE))
+              i (next-local type)]
+          (.visitVarInsn *gen* opcode i)
+          [name {:index i :type type :label (.mark *gen*)}]))
+      bindings)))
+
 (defmethod emit-boxed :let [{:keys [bindings statements ret env loop]}]
-  (let [bs
-        (into {}
-          (map
-            (fn [{:keys [name init]}]
-              (emit init)
-              (let [type (expression-type init)
-                    opcode (-> type asm-type (.getOpcode Opcodes/ISTORE))
-                    i (next-local type)]
-                (.visitVarInsn *gen* opcode i)
-                [name {:index i :type type :label (.mark *gen*)}]))
-            bindings))]
-  (binding [*frame* (copy-frame :locals (-> @*frame* :locals (merge bs)))]
-    (when statements
-      (dorun (map emit-statement statements)))
-    (emit ret)
-    (let [end-label (.mark *gen*)]
-      (doseq [[name {:keys [type label index]}] bs]
-        (.visitLocalVariable *gen* (str name) (-> type asm-type .getDescriptor) nil label end-label index))))))
+  (let [bs (emit-bindings bindings)]
+    (binding [*frame* (copy-frame :locals (-> @*frame* :locals (merge bs)))]
+      (when loop
+        (swap! *frame* assoc :loop-label (.mark *gen*)))
+      (when statements
+        (dorun (map emit-statement statements)))
+      (emit ret)
+      (let [end-label (.mark *gen*)]
+        (doseq [[name {:keys [type label index]}] bs]
+          (.visitLocalVariable *gen* (str name) (-> type asm-type .getDescriptor) nil label end-label index))))))
+
+(defmethod emit-boxed :recur [{:as form :keys [env frame exprs]}]
+  (emit-typed-args (map expression-type exprs) exprs)
+  (dorun (map
+           (fn [name]
+             (let [{:keys [type index]} (-> @*frame* :locals name)]
+               (.visitVarInsn *gen* (-> type asm-type (.getOpcode Opcodes/ISTORE)) index)))
+           (:names frame)))
+  (.goTo *gen* (:loop-label @*frame*)))
 
 (defn- emit-field
   [env target field box-result]
@@ -620,12 +635,8 @@
 
 (defn- emit-method-call [target name args]
   (let [class (expression-type target)
-        members (-> class type-reflect :members )
-        methods (select (match name args) members)
-        _ (when-not (= (count methods) 1)
-            (throw (IllegalArgumentException.
-              (str "No single method: " name " of class: " class " found with args: " args))))
-        meth (first methods)]
+        meth (find-method class (match name args)
+               (str "No single method: " name " of class: " class " found with args: " args))]
   (emit-typed-args (:parameter-types meth) (rest args))
   (let [r (:return-type meth)
         m (apply asm-method (:name meth) r (:parameter-types meth))]

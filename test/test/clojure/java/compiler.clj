@@ -65,4 +65,7 @@
                            (toString [this] (str (.hashCode this)))
                            (hashCode [this] 9)
                            clojure.lang.IFn
-                           (invoke [this] (str this)))))))))
+                           (invoke [this] (str this))))))))
+  (testing "loop/recur"
+    (is (= 10 ((eval '(fn [x] (if (< x 10) (recur (inc x)) x))) 1)))
+    (is (= 10 (c/eval '(loop [x 1] (if (< x 10) (recur (inc x)) x)))))))

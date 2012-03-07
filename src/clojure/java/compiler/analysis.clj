@@ -167,7 +167,7 @@
   (collect :callsites form))
 
 (defn- pprints [& args]
-  (binding [*print-level* 4] (apply pprint args)))
+  (binding [*print-level* 5] (apply pprint args)))
 
 (defmethod collect-callsites :invoke
   [form]

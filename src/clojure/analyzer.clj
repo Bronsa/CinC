@@ -13,7 +13,7 @@
 (def ^:dynamic *file* nil)
 (def ^:dynamic *warn-on-undeclared* false)
 
-(def specials '#{if def fn* let* . reify})
+(def specials '#{if def fn* let* loop* recur . reify})
 
 (def ^:dynamic *recur-frames* nil)
 
@@ -327,6 +327,21 @@ facilitate code walking without knowing the details of the op set."
 (defmethod parse 'let*
   [op encl-env form _]
   (analyze-let encl-env form false))
+
+(defmethod parse 'loop*
+  [op encl-env form _]
+  (analyze-let encl-env form true))
+
+(defmethod parse 'recur
+  [op env [_ & exprs] _]
+  (let [context (:context env)
+        frame (first *recur-frames*)]
+    (assert frame "Can't recur here")
+    (assert (= (count exprs) (count (:names frame))) "recur argument count mismatch")
+    (reset! (:flag frame) true)
+    (assoc {:env env :op :recur}
+      :frame frame
+      :exprs (disallowing-recur (vec (map #(analyze (assoc env :context :expr) %) exprs))))))
 
 ;; dot accessor code
 
