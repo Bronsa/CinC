@@ -1,7 +1,10 @@
 (in-ns 'clojure.java.compiler)
 
+(defn- pprints [& args]
+  (binding [*print-level* 6] (apply pprint args)))
+
 (def ^:private prims
-  {"byte" Byte/TYPE "bool" Boolean/TYPE "char" Character/TYPE "int" Integer/TYPE "long" Long/TYPE "float" Float/TYPE "double" Double/TYPE})
+  {"byte" Byte/TYPE "bool" Boolean/TYPE "char" Character/TYPE "int" Integer/TYPE "long" Long/TYPE "float" Float/TYPE "double" Double/TYPE "void" Void/TYPE})
 
 (defmulti maybe-class class)
 (defmethod maybe-class java.lang.Class [c] c)
