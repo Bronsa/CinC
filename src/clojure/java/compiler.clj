@@ -53,8 +53,9 @@
 
 
 ; Frame members (maybe these should be separate variables?):
-; :class - Internal name of current class being written
+; :class - ASM type of current class being written
 ; :statics - Static fields containing vars and constants, map from sym -> {:type :name [:value]}
+; :fields - Fields containing closed-overs, map from sym -> {:type :name}
 ; :locals - Local variable/Argument/Variable capture info, map from sym -> {:type :index}
 ; :protos - Fields for protocol support
 ; :loop-label - Label of the top of the current loop for recur
@@ -195,7 +196,7 @@
   (doseq [{:as lb :keys [name type]} (closed-overs form)]
     (let [mname (str (munge name))]
       (.visitField cv (+ Opcodes/ACC_PRIVATE Opcodes/ACC_FINAL) mname (-> lb :type asm-type .getDescriptor) nil nil)
-      (swap! *frame* assoc-in [:closed-overs name] (assoc lb :name mname)))))
+      (swap! *frame* assoc-in [:fields name] (assoc lb :name mname)))))
 
 (defmulti ^:private emit-value (fn [type value] type))
 
@@ -265,7 +266,7 @@
     (.invokeConstructor *gen* (asm-type super) constructor-method)
     (dorun (map-indexed
              (fn [i {:keys [name type]}]
-               (let [lb (-> @*frame* :closed-overs name)]
+               (let [lb (-> @*frame* :fields name)]
                  (.loadThis *gen*)
                  (.loadArg *gen* i)
                  (.putField *gen* class (:name lb) (-> lb :type asm-type))))
@@ -574,7 +575,7 @@
       (for [{:keys [name type]} referenced-locals :when (not (some #{name} params))]
         (let [sym name
               this (-> env :locals sym :this)
-              name (-> @*frame* :closed-overs sym :name)
+              name (-> @*frame* :fields sym :name)
               index (if this 0 (next-local type))]
           (when-not this
             (.loadThis *gen*)
