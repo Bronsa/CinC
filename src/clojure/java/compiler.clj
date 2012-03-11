@@ -50,6 +50,14 @@
 (defmacro notsup [& args]
   `(throw (RuntimeException. (str "Unsupported: " ~@args))))
 
+
+
+; Frame members (maybe these should be separate variables?):
+; :class - Internal name of current class being written
+; :statics - Static fields containing vars and constants, map from sym -> {:type :name [:value]}
+; :locals - Local variable/Argument/Variable capture info, map from sym -> {:type :index}
+; :protos - Fields for protocol support
+; :loop-label - Label of the top of the current loop for recur
 (def ^:dynamic ^:private *frame*) ; Contains per-class information
 (defn- new-frame [& m] (atom (apply hash-map :next-local-index 1 m))) ; 0 is "this"
 (defn- copy-frame [& {:as m}] (atom (merge @*frame* m)))
