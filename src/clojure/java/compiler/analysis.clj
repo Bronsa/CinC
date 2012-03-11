@@ -147,17 +147,40 @@
 (defmethod exported :fn [_ _] #{})
 (defmethod exported :reify [_ _] #{})
 
-(defn- collect
+(declare collect-vars)
+
+(defmethod exported :let
   [attribute form]
+  (condp = attribute
+    ; lets shouldn't export their own locals as referenced, they still need to export any locals used in inits though
+    :referenced-locals
+    (let [bindings (:bindings form)
+          inits (map :init bindings)
+          init-vars (map collect-vars inits)
+          init-locals (mapcat :referenced-locals init-vars)
+          init-local-names (into #{} (map :name init-locals))
+          locals (into #{} (map :name bindings))
+          referenced-locals (:referenced-locals form)]
+        (remove #(and (contains? locals (:name %)) (not (contains? init-local-names (:name %)))) referenced-locals))
+
+    ;default
+    (attribute form)))
+
+(defn- collect-attribute
+  [form attribute]
   (->> form
     (map-children (partial exported attribute))
     (reduce into #{})
     (assoc form attribute)))
 
+(defn- collect
+  [form & attributes]
+  (reduce collect-attribute form attributes))
+
 (defmulti collect-constants :op)
 (defmethod collect-constants :default
   [form]
-  (collect :constants form))
+  (collect form :constants))
 
 (defmethod collect-constants :constant
   [form]
@@ -167,10 +190,7 @@
 (defmulti collect-callsites :op)
 (defmethod collect-callsites :default
   [form]
-  (collect :callsites form))
-
-(defn- pprints [& args]
-  (binding [*print-level* 5] (apply pprint args)))
+  (collect form :callsites))
 
 (defmethod collect-callsites :invoke
   [form]
@@ -179,10 +199,11 @@
       (assoc form :callsites #{s})
       form)))
 
+
 (defmulti collect-vars :op)
 (defmethod collect-vars :default
   [form]
-  (collect :vars form))
+  (collect form :vars :referenced-locals))
 
 (defmethod collect-vars :var
   [{:as form :keys [info env]}]
@@ -191,9 +212,9 @@
         v (clojure.analyzer/resolve-var env sym)]
     (when-not (:name v)
       (throw (Util/runtimeException (str "No such var: " sym))))
-    (if-not lb
-      (assoc form :vars #{sym})
-      form)))
+    (if lb
+      (assoc form :referenced-locals #{{:name sym :type (expression-type form)}})
+      (assoc form :vars #{sym}))))
 
 (defmethod collect-vars :def
   [form]
