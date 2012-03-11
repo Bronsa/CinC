@@ -164,29 +164,38 @@
   (dorun
     (map-indexed
       (fn [i v]
-        (when-not (nil? (:value v))
-          (let [name (str "CONSTANT" i)]
-            (.visitField cv (+ Opcodes/ACC_PUBLIC Opcodes/ACC_FINAL Opcodes/ACC_STATIC)
-              name
-              (-> v :type asm-type .getDescriptor)
-              nil
-              nil)
-            (swap! *frame* assoc-in [:fields (:value v)] (assoc v :name name)))))
-      constants)))
+        (let [name (str "CONSTANT" i)]
+          (.visitField cv (+ Opcodes/ACC_PUBLIC Opcodes/ACC_FINAL Opcodes/ACC_STATIC)
+            name
+            (-> v :type asm-type .getDescriptor)
+            nil
+            nil)
+          (swap! *frame* assoc-in [:statics (:value v)] (assoc v :name name))))
+      ;; nil is handled separately with a bytecode instruction
+      (remove #(nil? (:value %)) constants))))
 
 (defn- emit-proto-callsites [cv {:keys [callsites env]}]
-  (dorun (map-indexed
-           (fn [i site]
-             (let [cached-class (str "__cached_class__" i)
-                   cached-proto-fn (str "__cached_proto_fn__" i)
-                   cached-proto-impl (str "__cached_proto_impl__" i)]
-               (.visitField cv (+ Opcodes/ACC_PRIVATE) cached-class (.getDescriptor class-type) nil nil)
-               (.visitField cv (+ Opcodes/ACC_PRIVATE) cached-proto-fn (.getDescriptor afn-type) nil nil)
-               (.visitField cv (+ Opcodes/ACC_PRIVATE) cached-proto-impl (.getDescriptor ifn-type) nil nil)
-               (swap! *frame* assoc-in [:protos site]
-                              {:cached-class cached-class :cached-proto-fn cached-proto-fn :cached-proto-impl cached-proto-impl})))
-           callsites)))
+  (dorun
+    (map-indexed
+      (fn [i site]
+        (let [cached-class (str "__cached_class__" i)
+              cached-proto-fn (str "__cached_proto_fn__" i)
+              cached-proto-impl (str "__cached_proto_impl__" i)]
+          (.visitField cv (+ Opcodes/ACC_PRIVATE) cached-class (.getDescriptor class-type) nil nil)
+          (.visitField cv (+ Opcodes/ACC_PRIVATE) cached-proto-fn (.getDescriptor afn-type) nil nil)
+          (.visitField cv (+ Opcodes/ACC_PRIVATE) cached-proto-impl (.getDescriptor ifn-type) nil nil)
+          (swap! *frame* assoc-in [:protos site]
+            {:cached-class cached-class :cached-proto-fn cached-proto-fn :cached-proto-impl cached-proto-impl})))
+      callsites)))
 
+(defn- closed-overs [{:as form :keys [env referenced-locals params]}]
+  (remove (fn [{name :name}] (or (-> env :locals name :this) (not (contains? (:locals env) name)))) referenced-locals))
+
+(defn- emit-closed-overs [cv {:as form :keys [env params]}]
+  (doseq [{:as lb :keys [name type]} (closed-overs form)]
+    (let [mname (str (munge name))]
+      (.visitField cv (+ Opcodes/ACC_PRIVATE Opcodes/ACC_FINAL) mname (-> lb :type asm-type .getDescriptor) nil nil)
+      (swap! *frame* assoc-in [:closed-overs name] (assoc lb :name mname)))))
 
 (defmulti ^:private emit-value (fn [type value] type))
 
@@ -250,23 +259,36 @@
 (defmethod emit-value :default [t v]
   (notsup "Don't know how to emit value: " [t v]))
 
+(defn- emit-constructor [cv class super params]
+  (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (apply asm-method "<init>" "void" (map :type params)) nil nil cv)]
+    (.loadThis *gen*)
+    (.invokeConstructor *gen* (asm-type super) constructor-method)
+    (dorun (map-indexed
+             (fn [i {:keys [name type]}]
+               (let [lb (-> @*frame* :closed-overs name)]
+                 (.loadThis *gen*)
+                 (.loadArg *gen* i)
+                 (.putField *gen* class (:name lb) (-> lb :type asm-type))))
+             params))
+    (.returnValue *gen*)
+    (.endMethod *gen*)))
+
 (defn- emit-constructors [cv ast]
-  (let [ctor (GeneratorAdapter. Opcodes/ACC_PUBLIC constructor-method nil nil cv)]
-    (.loadThis ctor)
-    (.invokeConstructor ctor (asm-type (:super ast)) constructor-method)
-    (.returnValue ctor)
-    (.endMethod ctor))
+  (let [class (:class @*frame*)
+        super (:super ast)
+        closed-overs (closed-overs ast)]
+    (emit-constructor cv class super closed-overs))
   (let [m (Method/getMethod "void <clinit> ()")
         line (-> ast :env :line )
-        {:keys [class fields]} @*frame*]
+        {:keys [class statics]} @*frame*]
     (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC m nil nil cv)]
       (.visitCode *gen*)
       (when line
         (.visitLineNumber *gen* line (.mark *gen*)))
-      (doseq [[v field] fields]
-        (emit-value (:type field) (:value field))
-;        (.checkCast *gen* (:type field))
-        (.putStatic *gen* class (:name field) (asm-type (:type field))))
+      (doseq [{:keys [name type value]} (vals statics)]
+        (emit-value type value)
+;        (.checkCast *gen* (:type static))
+        (.putStatic *gen* class name (asm-type type)))
       (.returnValue *gen*)
       (.endMethod *gen*))))
 
@@ -294,6 +316,7 @@
         (emit-vars ast)
         (emit-constants ast)
         (emit-proto-callsites ast)
+        (emit-closed-overs ast)
         (emit-constructors ast)
         (emit-methods ast)
         .visitEnd)
@@ -459,6 +482,7 @@
 
 (defn- emit-local [v]
   (let [lb (-> @*frame* :locals v)
+        _ (if-not lb (throw (Exception. (str "No local binding for: " v " in frame: " @*frame*))))
         opcode (-> lb :type asm-type (.getOpcode Opcodes/ILOAD))
         index (:index lb)]
     (.visitVarInsn *gen* opcode index)))
@@ -541,21 +565,28 @@
     (swap! *frame* assoc :next-local-index (+ next size))
     next))
 
-(defn compute-locals [{:keys [params env]}]
+(defn compute-locals [{:as form :keys [env params referenced-locals]}]
   (into {}
     (concat
       (let [type java.lang.Object] ; TODO: compute actual type for prims
         (for [sym params]
           [sym {:index (next-local type) :type type :label (.mark *gen*)}]))
-      (for [[sym lb] (:locals env)]
-        (let [type java.lang.Object ; TODO: compute actual type for prims
-              index (if (:this lb) 0 (next-local type))]
+      (for [{:keys [name type]} referenced-locals :when (not (some #{name} params))]
+        (let [sym name
+              this (-> env :locals sym :this)
+              name (-> @*frame* :closed-overs sym :name)
+              index (if this 0 (next-local type))]
+          (when-not this
+            (.loadThis *gen*)
+            (.getField *gen* (:class @*frame*) name (asm-type type))
+            (.visitVarInsn *gen* (-> type asm-type (.getOpcode Opcodes/ISTORE)) index))
           [sym {:index index :type type :label (.mark *gen*)}])))))
 
 (defn emit-method [cv {:as form :keys [name params statements ret env recurs type] :or {name "invoke" type java.lang.Object}}]
   (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (apply asm-method name type (map expression-type params)) nil nil cv)
-            *frame* (copy-frame :locals (-> @*frame* :locals (merge (compute-locals form))))]
+            *frame* (copy-frame)]
     (.visitCode *gen*)
+    (swap! *frame* assoc :locals (compute-locals form))
     (let [end-label (.newLabel *gen*)]
       (swap! *frame* assoc :loop-label (.mark *gen*))
       (when statements
@@ -569,15 +600,18 @@
       (.endMethod *gen*))))
 
 (defn- emit-fn-methods [cv {:keys [name env methods max-fixed-arity variadic recur-frames] :as ast}]
-  (let [loop-locals (seq (mapcat :names (filter #(and % @(:flag %)) recur-frames)))]
-    (when loop-locals
-      (notsup "loop-locals"))
-    (doseq [meth methods]
-      (if (:variadic meth)
-        (notsup '(emit-variadic-fn-method meth))
-        (emit-method cv meth)))
-    (when loop-locals
-      (notsup "loop-locals"))))
+  (doseq [meth methods]
+    (if (:variadic meth)
+      (notsup '(emit-variadic-fn-method meth))
+      (emit-method cv meth))))
+
+(defn- emit-closure [type form]
+  (.newInstance *gen* type)
+  (.dup *gen*)
+  (let [closed-overs (closed-overs form)]
+    (doseq [{name :name} closed-overs]
+      (emit-local name))
+    (.invokeConstructor *gen* type (apply asm-method "<init>" "void" (map :type closed-overs)))))
 
 (defmethod emit-boxed :fn [ast]
   (let [name (str (or (:name ast) (gensym)))
@@ -585,9 +619,7 @@
         bytecode (.toByteArray cw)
         class (load-class name bytecode ast)
         type (asm-type class)]
-    (.newInstance *gen* type)
-    (.dup *gen*)
-    (.invokeConstructor *gen* type constructor-method)))
+    (emit-closure type ast)))
 
 (defn- emit-bindings [bindings]
   (into {}
@@ -675,9 +707,7 @@
         bytecode (.toByteArray cw)
         class (load-class name bytecode ast)
         type (asm-type class)]
-    (.newInstance *gen* type)
-    (.dup *gen*)
-    (.invokeConstructor *gen* type constructor-method)))
+    (emit-closure type ast)))
 
 (defmethod emit-boxed :vector [args]
   (emit-as-array (:children args))
