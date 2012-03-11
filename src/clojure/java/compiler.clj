@@ -158,7 +158,7 @@
           var (var! v)]
       (.visitField cv
         (+ Opcodes/ACC_PUBLIC Opcodes/ACC_FINAL Opcodes/ACC_STATIC) name (.getDescriptor var-type) nil nil)
-      (swap! *frame* assoc-in [:fields var] {:name name :type clojure.lang.Var :value v}))))
+      (swap! *frame* assoc-in [:statics var] {:name name :type clojure.lang.Var :value v}))))
 
 (defn- emit-constants [cv {constants :constants}]
   (dorun
@@ -382,7 +382,7 @@
     (first methods)))
 
 (defn- emit-invoke-proto [{:keys [f args]}]
-  (let [{:keys [class fields protos]} @*frame*
+  (let [{:keys [class statics protos]} @*frame*
         on-label (.newLabel *gen*)
         call-label (.newLabel *gen*)
         end-label (.newLabel *gen*)
@@ -411,7 +411,7 @@
 
     ; Slow path through proto-fn
     (.mark *gen* call-label) ; target
-    (.getStatic *gen* class (-> fvar fields :name) var-type)
+    (.getStatic *gen* class (-> fvar statics :name) var-type)
     (.invokeVirtual *gen* var-type var-get-raw-method) ; target, proto-fn
     (.swap *gen*)
     (emit-args-and-call args 1)
@@ -453,8 +453,8 @@
 
 (defn- emit-var [v]
   (let [var (var! v)
-        {:keys [class fields]} @*frame*]
-    (.getStatic *gen* class (:name (fields var)) var-type)
+        {:keys [class statics]} @*frame*]
+    (.getStatic *gen* class (:name (statics var)) var-type)
     (.invokeVirtual *gen* var-type (if (dynamic? var) var-get-method var-get-raw-method))))
 
 (defn- emit-local [v]
@@ -501,8 +501,8 @@
 (defmethod emit-boxed :def [{:keys [name form init env doc export] :as args}]
   (let [sym (second form)
         var (var! name)
-        {:keys [class fields]} @*frame*]
-    (.getStatic *gen* class (:name (fields var)) var-type)
+        {:keys [class statics]} @*frame*]
+    (.getStatic *gen* class (:name (statics var)) var-type)
     (when (dynamic? name)
       (.push *gen* true)
       (.invokeVirtual *gen* var-type (Method/getMethod "clojure.lang.Var setDynamic(boolean)")))
@@ -519,8 +519,8 @@
 (defn- emit-constant [t v]
   (if (nil? v)
     (.visitInsn *gen* Opcodes/ACONST_NULL)
-    (let [{:keys [class fields]} @*frame*
-          {:keys [name type]} (fields v)
+    (let [{:keys [class statics]} @*frame*
+          {:keys [name type]} (statics v)
           type (asm-type type)]
       (.getStatic *gen* class name type)
       (.box *gen* type))))
