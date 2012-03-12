@@ -74,6 +74,7 @@
              java.lang.Float (if unboxed Double/TYPE Double)
              java.lang.Double (if unboxed Double/TYPE Double)
              java.lang.String java.lang.String
+             java.lang.Class java.lang.Class
              clojure.lang.Keyword clojure.lang.Keyword
              clojure.lang.Symbol clojure.lang.Symbol
              clojure.lang.IPersistentMap clojure.lang.IPersistentMap
@@ -218,7 +219,7 @@
     (cond
       ;; Transform vars that represent classes into constants
       (instance? java.lang.Class o)
-      (assoc form :op :constant)
+      (assoc form :op :constant :form o)
       lb
       (assoc form :referenced-locals #{{:name sym :type (expression-type form)}})
       :else

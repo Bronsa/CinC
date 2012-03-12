@@ -218,6 +218,9 @@
 (defmethod emit-value java.lang.String [t ^String v]
   (.push *gen* v))
 
+(defmethod emit-value java.lang.Class [t v]
+  (.push *gen* (asm-type v)))
+
 (defmethod emit-value clojure.lang.Symbol [t v]
   (.push *gen* (namespace v))
   (.push *gen* (name v))
