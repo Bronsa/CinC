@@ -127,15 +127,21 @@
      (eval form)))
   ([form]
    (binding [*loader* (if *loader* *loader* (DynamicClassLoader.))]
-     (let [env {:ns (@namespaces *ns*) :context :statement :locals {}}
-           ast (analyze env form)
-           ast (process-frames ast)
-           internal-name (str "repl/Temp" (RT/nextID))
-           cw (emit-class internal-name (assoc ast :super "clojure/lang/AFn") emit-wrapper-fn)]
-       (let [bytecode (.toByteArray cw)
-             class (load-class internal-name bytecode form)
-             instance (.newInstance class)]
-         (instance))))))
+     (if (= (:op form) :do)
+       ;; Special handling for do, pick it apart and eval the pieces
+       (let [{:keys [statements ret]} form]
+         (when statements
+           (dorun (map eval statements)))
+         (eval ret))
+       (let [env {:ns (@namespaces *ns*) :context :statement :locals {}}
+             ast (analyze env form)
+             ast (process-frames ast)
+             internal-name (str "repl/Temp" (RT/nextID))
+             cw (emit-class internal-name (assoc ast :super "clojure/lang/AFn") emit-wrapper-fn)]
+         (let [bytecode (.toByteArray cw)
+               class (load-class internal-name bytecode form)
+               instance (.newInstance class)]
+           (instance)))))))
 
 (defn load [f]
   (let [res (or (io/resource f) (io/as-url (io/as-file f)))]
