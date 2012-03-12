@@ -46,8 +46,10 @@
     (is (= 1 (c/eval '(.-a rec-field))))
     (is (= "1" (c/eval '(. 1 (toString))))))
   (testing "loop/recur"
-    (is (= 10 ((eval '(fn [x] (if (< x 10) (recur (inc x)) x))) 1)))
-    (is (= 10 (c/eval '(loop [x 1] (if (< x 10) (recur (inc x)) x)))))))
+    (is (= 10 ((c/eval '(fn [x] (if (< x 10) (recur (inc x)) x))) 1)))
+    (is (= 10 (c/eval '(loop [x 1] (if (< x 10) (recur (inc x)) x))))))
+  (testing "do"
+    (is (= :success (c/eval '(do (+ 1 2) :success))))))
 
 (deftest let
   (is (= 9 (c/eval '(let [x 9] x))))

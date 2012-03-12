@@ -13,7 +13,7 @@
 (def ^:dynamic *file* nil)
 (def ^:dynamic *warn-on-undeclared* false)
 
-(def specials '#{if def fn* let* loop* recur . reify})
+(def specials '#{if def fn* do let* loop* recur . reify quote})
 
 (def ^:dynamic *recur-frames* nil)
 
@@ -299,6 +299,10 @@ facilitate code walking without knowing the details of the op set."
     {:env env :op :fn :name name :methods methods :variadic variadic :recur-frames *recur-frames*
      :max-fixed-arity max-fixed-arity}))
 
+(defmethod parse 'do
+  [op env [_ & exprs] _]
+  (merge {:env env :op :do} (analyze-block env exprs)))
+
 (defn analyze-let
   [encl-env [_ bindings & exprs :as form] is-loop]
   (assert (and (vector? bindings) (even? (count bindings))) "bindings must be vector of even number of elements")
@@ -342,6 +346,10 @@ facilitate code walking without knowing the details of the op set."
     (assoc {:env env :op :recur}
       :frame frame
       :exprs (disallowing-recur (vec (map #(analyze (assoc env :context :expr) %) exprs))))))
+
+(defmethod parse 'quote
+  [_ env [_ x] _]
+  {:op :constant :env env :form x})
 
 ;; dot accessor code
 

@@ -68,13 +68,16 @@
   [ast]
   (let [class (-> ast :form class)
         unboxed (:unboxed ast)]
-    (condp = class
+    (condp #(isa? %2 %1) class
              java.lang.Integer (if unboxed Long/TYPE Long)
              java.lang.Long (if unboxed Long/TYPE Long)
              java.lang.Float (if unboxed Double/TYPE Double)
              java.lang.Double (if unboxed Double/TYPE Double)
              java.lang.String java.lang.String
              clojure.lang.Keyword clojure.lang.Keyword
+             clojure.lang.Symbol clojure.lang.Symbol
+             clojure.lang.IPersistentMap clojure.lang.IPersistentMap
+             clojure.lang.IPersistentVector clojure.lang.IPersistentVector
              nil nil
              java.lang.Object)))
 

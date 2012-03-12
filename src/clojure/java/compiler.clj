@@ -51,7 +51,6 @@
   `(throw (RuntimeException. (str "Unsupported: " ~@args))))
 
 
-
 ; Frame members (maybe these should be separate variables?):
 ; :class - ASM type of current class being written
 ; :statics - Static fields containing vars and constants, map from sym -> {:type :name [:value]}
@@ -65,7 +64,7 @@
 
 (def ^:dynamic ^:private ^GeneratorAdapter *gen* nil) ; Current GeneratorAdapter to emit to
 
-(def ^:dynamic ^:private ^DynamicClassLoader *loader* (DynamicClassLoader.))
+(def ^:dynamic ^:private ^DynamicClassLoader *loader* nil)
 
 (def ^:private object-type (asm-type java.lang.Object))
 (def ^:private obj-array-type (Type/getType (class (make-array Object 0))))
@@ -127,7 +126,7 @@
              *check-bytecode* check]
      (eval form)))
   ([form]
-   (binding [*loader* (DynamicClassLoader.)]
+   (binding [*loader* (if *loader* *loader* (DynamicClassLoader.))]
      (let [env {:ns (@namespaces *ns*) :context :statement :locals {}}
            ast (analyze env form)
            ast (process-frames ast)
@@ -141,7 +140,8 @@
 (defn load [f]
   (let [res (or (io/resource f) (io/as-url (io/as-file f)))]
     (assert res (str "Can't find " f " in classpath"))
-    (binding [*file* (.getPath res)]
+    (binding [*file* (.getPath res)
+              *loader* (DynamicClassLoader.)] ; Use the same classloader for loading the entire file
       (with-open [r (io/reader res)]
         (let [env {:ns (@namespaces *ns*) :context :statement :locals {}}
               pbr (clojure.lang.LineNumberingPushbackReader. r)
@@ -541,20 +541,22 @@
       (emit init)
       (.invokeVirtual *gen* var-type (Method/getMethod "void bindRoot(Object)")))))
 
-(defn- emit-constant [t v]
-  (if (nil? v)
-    (.visitInsn *gen* Opcodes/ACONST_NULL)
-    (let [{:keys [class statics]} @*frame*
-          {:keys [name type]} (statics v)
-          type (asm-type type)]
-      (.getStatic *gen* class name type)
-      (.box *gen* type))))
+(defn- emit-constant [v box]
+  (let [{:keys [class statics]} @*frame*
+        {:keys [name type]} (statics v)
+        type (asm-type type)]
+    (.getStatic *gen* class name type)
+    (when box (.box *gen* type))))
 
 (defmethod emit-boxed :constant [{:keys [form env]}]
-  (emit-constant java.lang.Object form))
+  (if (nil? form)
+    (.visitInsn *gen* Opcodes/ACONST_NULL)
+    (emit-constant form true)))
 
 (defmethod emit-unboxed :constant [{:keys [form env]}]
-  (emit-constant (expression-type form) form))
+  (if (nil? form)
+    (throw (Exception. "Can't emit primitive null"))
+    (emit-constant form false)))
 
 (defn- emit-statement [form]
   (emit form)
@@ -621,6 +623,12 @@
         class (load-class name bytecode ast)
         type (asm-type class)]
     (emit-closure type ast)))
+
+(defmethod emit-boxed :do
+  [{:keys [statements ret env]}]
+  (when statements
+    (dorun (map emit-statement statements)))
+  (emit ret))
 
 (defn- emit-bindings [bindings]
   (into {}
