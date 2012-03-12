@@ -28,6 +28,7 @@
 
 (deftest test-eval
   (is (= 1 (c/eval '1)))
+  (is (= java.lang.Object (c/eval 'java.lang.Object)))
   (testing "vector"
     (is (= [1 2] (c/eval '[1 2]))))
   (testing "map"
@@ -49,7 +50,8 @@
     (is (= 10 ((c/eval '(fn [x] (if (< x 10) (recur (inc x)) x))) 1)))
     (is (= 10 (c/eval '(loop [x 1] (if (< x 10) (recur (inc x)) x))))))
   (testing "do"
-    (is (= :success (c/eval '(do (+ 1 2) :success))))))
+    (is (= :success (c/eval '(do (+ 1 2) :success)))))
+  (is (instance? java.lang.Object (c/eval '(new java.lang.Object)))))
 
 (deftest let
   (is (= 9 (c/eval '(let [x 9] x))))

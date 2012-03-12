@@ -94,7 +94,6 @@
 
 ;; ---
 
-
 (defn- rprintln [args]
   (println "---" args)
   args)
@@ -212,11 +211,17 @@
   [{:as form :keys [info env]}]
   (let [sym (:name info)
         lb (-> env :locals sym)
-        v (clojure.analyzer/resolve-var env sym)]
+        v (clojure.analyzer/resolve-var env sym)
+        o (resolve sym)]
     (when-not (:name v)
       (throw (Util/runtimeException (str "No such var: " sym))))
-    (if lb
+    (cond
+      ;; Transform vars that represent classes into constants
+      (instance? java.lang.Class o)
+      (assoc form :op :constant)
+      lb
       (assoc form :referenced-locals #{{:name sym :type (expression-type form)}})
+      :else
       (assoc form :vars #{sym}))))
 
 (defmethod collect-vars :def

@@ -190,7 +190,9 @@
       callsites)))
 
 (defn- closed-overs [{:as form :keys [env referenced-locals params]}]
-  (remove (fn [{name :name}] (or (-> env :locals name :this) (not (contains? (:locals env) name)))) referenced-locals))
+  (remove (fn [{name :name}] (or (-> env :locals name :this)
+                                 (not (contains? (:locals env) name))))
+    referenced-locals))
 
 (defn- emit-closed-overs [cv {:as form :keys [env params]}]
   (doseq [{:as lb :keys [name type]} (closed-overs form)]
@@ -475,6 +477,18 @@
     (emit-invoke-proto ast)
     (emit-invoke-fn ast)))
 
+(defn- emit-instance [type args]
+  (.newInstance *gen* type)
+  (.dup *gen*)
+  (doseq [arg args]
+    (emit arg))
+  (.invokeConstructor *gen* type (apply asm-method "<init>" "void" (map expression-type args))))
+
+(defmethod emit-boxed :new
+  [{:keys [ctor args env]}]
+  (let [type (-> ctor :form asm-type)]
+    (emit-instance type args)))
+
 (defn- emit-var [v]
   (let [var (var! v)
         {:keys [class statics]} @*frame*]
@@ -608,13 +622,12 @@
       (notsup '(emit-variadic-fn-method meth))
       (emit-method cv meth))))
 
-(defn- emit-closure [type form]
+(defn- emit-closure [type args]
   (.newInstance *gen* type)
   (.dup *gen*)
-  (let [closed-overs (closed-overs form)]
-    (doseq [{name :name} closed-overs]
-      (emit-local name))
-    (.invokeConstructor *gen* type (apply asm-method "<init>" "void" (map :type closed-overs)))))
+  (doseq [{name :name} args]
+    (emit-local name))
+  (.invokeConstructor *gen* type (apply asm-method "<init>" "void" (map :type args))))
 
 (defmethod emit-boxed :fn [ast]
   (let [name (str (or (:name ast) (gensym)))
@@ -622,7 +635,7 @@
         bytecode (.toByteArray cw)
         class (load-class name bytecode ast)
         type (asm-type class)]
-    (emit-closure type ast)))
+    (emit-closure type (closed-overs ast))))
 
 (defmethod emit-boxed :do
   [{:keys [statements ret env]}]
@@ -716,7 +729,7 @@
         bytecode (.toByteArray cw)
         class (load-class name bytecode ast)
         type (asm-type class)]
-    (emit-closure type ast)))
+    (emit-closure type (closed-overs ast))))
 
 (defmethod emit-boxed :vector [args]
   (emit-as-array (:children args))

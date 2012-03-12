@@ -13,7 +13,7 @@
 (def ^:dynamic *file* nil)
 (def ^:dynamic *warn-on-undeclared* false)
 
-(def specials '#{if def fn* do let* loop* recur . reify quote})
+(def specials '#{if def fn* do let* loop* recur new . reify quote})
 
 (def ^:dynamic *recur-frames* nil)
 
@@ -350,6 +350,14 @@ facilitate code walking without knowing the details of the op set."
 (defmethod parse 'quote
   [_ env [_ x] _]
   {:op :constant :env env :form x})
+
+(defmethod parse 'new
+  [_ env [_ ctor & args] _]
+  (disallowing-recur
+    (let [enve (assoc env :context :expr)
+          ctorexpr (analyze enve ctor)
+          argexprs (vec (map #(analyze enve %) args))]
+      {:env env :op :new :ctor ctorexpr :args argexprs :children (conj argexprs ctorexpr)})))
 
 ;; dot accessor code
 
