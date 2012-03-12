@@ -652,12 +652,13 @@
               opcode (-> type asm-type (.getOpcode Opcodes/ISTORE))
               i (next-local type)]
           (.visitVarInsn *gen* opcode i)
+          (swap! *frame* assoc-in [:locals name] {:index i :type type :label (.mark *gen*)})
           [name {:index i :type type :label (.mark *gen*)}]))
       bindings)))
 
 (defmethod emit-boxed :let [{:keys [bindings statements ret env loop]}]
-  (let [bs (emit-bindings bindings)]
-    (binding [*frame* (copy-frame :locals (-> @*frame* :locals (merge bs)))]
+  (binding [*frame* (copy-frame)]
+    (let [bs (emit-bindings bindings)]
       (when loop
         (swap! *frame* assoc :loop-label (.mark *gen*)))
       (when statements

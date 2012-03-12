@@ -56,6 +56,8 @@
 (deftest let
   (is (= 9 (c/eval '(let [x 9] x))))
   (is (= 10 (c/eval '(let [x 8] (+ x 2)))))
+  (is (= :success (c/eval '(let [{x :x} {:x :success}] x))) "Destructuring")
+  (is (= 1 (c/eval '(let [x 1 y x] y))) "Using a local as init to another")
   (is (= :success (c/eval '(let [a :failure a :success] a))) "Reassigning")
   (is (= [1 2] (c/eval '(let [x 1] (let [y 2] [x y])))) "Nested lets")
   (is (= :success (c/eval '(let [x :success] (let [y x] y)))) "Nested lets"))
