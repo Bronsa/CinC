@@ -96,26 +96,26 @@
 ;; ---
 
 (defn- rprintln [args]
-  (println "---" args)
+  (println "---" args "---")
   args)
 
 (defn- node? [form] (:op form))
 
 (defn- walk-node [f form]
-  (let [walk-child
-        (fn [child]
-          (if (node? child) (f child) child))
-        walk-children
-        (fn [[key child]]
-          (when-let [new-child (cond
-                                  (node? child) (f child)
+  (letfn [(walk-child [child]
+            (if (node? child) (f child) child))
+          (walk-children [child]
+            (cond
+              (node? child) (f child)
 
-                                  (instance? clojure.lang.Seqable child)
-                                  (into (empty child) (map walk-child  (seq child)))
+              (instance? clojure.lang.MapEntry child)
+              (vec (map walk-children (seq child)))
 
-                                  :else child)]
-            [key new-child]))]
-    (into {} (map walk-children (seq form)))))
+              (instance? clojure.lang.Seqable child)
+              (into (empty child) (map walk-children (seq child)))
+
+              :else child))]
+    (into {} (walk-children (seq form)))))
 
 
 (defn- map-children [f form]
