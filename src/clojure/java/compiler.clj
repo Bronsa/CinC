@@ -334,6 +334,20 @@
         .visitEnd)
       cw)))
 
+(defn- size-of [type]
+  (condp = type Long/TYPE 2 Double/TYPE 2 1))
+
+(defn- next-local [class]
+  (let [next (:next-local-index @*frame*)
+        size (size-of class)]
+    (swap! *frame* assoc :next-local-index (+ next size))
+    next))
+
+(defn- asm-pop [type]
+  (if (= 2 (size-of type))
+    (.pop2 *gen*)
+    (.pop *gen*)))
+
 (defn- emit-args-and-call [args first-to-emit]
   (let [n (- (count args) first-to-emit)]
     (doseq [arg (subvec args first-to-emit (min (+ first-to-emit n) max-positional-arity))]
@@ -539,7 +553,7 @@
     (.goTo *gen* end-label)
 
     (.mark *gen* null-label)
-    (.pop *gen*)
+    (asm-pop (expression-type test))
 
     (.mark *gen* false-label)
     (emit else)
@@ -583,13 +597,7 @@
 
 (defn- emit-statement [form]
   (emit form)
-  (.pop *gen*))
-
-(defn- next-local [class]
-  (let [next (:next-local-index @*frame*)
-        size (condp = class Float/TYPE 2 Double/TYPE 2 1)]
-    (swap! *frame* assoc :next-local-index (+ next size))
-    next))
+  (asm-pop (expression-type form)))
 
 (defn compute-locals [{:as form :keys [env params referenced-locals]}]
   (into {}
