@@ -161,11 +161,11 @@
 
 (defn- emit-vars [cv {:keys [vars env]}]
   (doseq [v vars]
-    (let [name (str (munge v))
-          var (var! v)]
+    (let [sym (symbol (namespace v) (name v))
+          name (str (munge v))]
       (.visitField cv
         (+ Opcodes/ACC_PUBLIC Opcodes/ACC_FINAL Opcodes/ACC_STATIC) name (.getDescriptor var-type) nil nil)
-      (swap! *frame* assoc-in [:statics var] {:name name :type clojure.lang.Var :value v}))))
+      (swap! *frame* assoc-in [:statics sym] {:name name :type clojure.lang.Var :value v}))))
 
 (defn- emit-constants [cv {constants :constants}]
   (dorun
@@ -424,7 +424,7 @@
     (.box *gen* (asm-type type))))
 
 (defn- find-method [class filter error-msg]
-  (let [members (-> class type-reflect :members )
+  (let [members (-> class type-reflect :members)
         methods (select filter members)
         _ (when-not (= (count methods) 1)
             (throw (IllegalArgumentException. error-msg)))]
@@ -436,7 +436,7 @@
         call-label (.newLabel *gen*)
         end-label (.newLabel *gen*)
         fsym (-> f :info :name )
-        fvar (var! fsym)
+        fvar (resolve fsym)
         proto @(-> fvar meta :protocol)
         e (get args 0)
         protocol-on (maybe-class (:on proto))]
@@ -460,7 +460,7 @@
 
     ; Slow path through proto-fn
     (.mark *gen* call-label) ; target
-    (.getStatic *gen* class (-> fvar statics :name) var-type)
+    (.getStatic *gen* class (-> fsym statics :name) var-type)
     (.invokeVirtual *gen* var-type var-get-raw-method) ; target, proto-fn
     (.swap *gen*)
     (emit-args-and-call args 1)
@@ -473,7 +473,7 @@
             key (or (-> fsym name keyword mmap)
                     (throw (IllegalArgumentException.
                       (str "No method of interface: " protocol-on
-                        " found for function: " fsym " of protocol: " (-> fvar meta :protocol )
+                        " found for function: " fsym " of protocol: " (-> fvar meta :protocol)
                         " (The protocol method may have been defined before and removed.)"))))
             meth-name (-> key name munge)
             meth (find-method protocol-on #(and (= (:name %) meth-name) (= (dec (count args)) (-> % :parameter-types count)))
@@ -494,9 +494,9 @@
   (.checkCast *gen* ifn-type)
   (emit-args-and-call args 0))
 
-(defmethod emit-boxed :invoke [ast]
+(defmethod emit :invoke [ast]
   (.visitLineNumber *gen* (-> ast :env :line ) (.mark *gen*))
-  (if (-> ast :f :info :name var! meta :protocol)
+  (if (protocol-node? ast)
     (emit-invoke-proto ast)
     (emit-invoke-fn ast)))
 
@@ -512,12 +512,6 @@
   (let [type (-> ctor :form asm-type)]
     (emit-instance type args)))
 
-(defn- emit-var [v]
-  (let [var (var! v)
-        {:keys [class statics]} @*frame*]
-    (.getStatic *gen* class (:name (statics var)) var-type)
-    (.invokeVirtual *gen* var-type (if (dynamic? var) var-get-method var-get-raw-method))))
-
 (defn- emit-local [v]
   (let [lb (-> @*frame* :locals v)
         _ (if-not lb (throw (Exception. (str "No local binding for: " v " in frame: " @*frame*))))
@@ -525,11 +519,17 @@
         index (:index lb)]
     (.visitVarInsn *gen* opcode index)))
 
-(defmethod emit-boxed :var [{:keys [info env]}]
+(defmethod emit :local [{:as form :keys [info box]}]
   (let [v (:name info)]
-    (if (namespace v)
-      (emit-var v)
-      (emit-local v))))
+    (emit-local v))
+  (when box (emit-box (expression-type form))))
+
+(defmethod emit :var [{:keys [info type box]}]
+  (let [v (:name info)
+        {:keys [class statics]} @*frame*]
+    (.getStatic *gen* class (:name (statics v)) var-type)
+    (.invokeVirtual *gen* var-type (if (dynamic? v) var-get-method var-get-raw-method)))
+  (when box (emit-box type)))
 
 (defmulti emit-test (fn emit-test-dispatch [ast null-label false-label] (:op ast)))
 
@@ -560,11 +560,11 @@
 
     (.mark *gen* end-label)))
 
-(defmethod emit-boxed :def [{:keys [name form init env doc export] :as args}]
+(defmethod emit :def [{:keys [name form init env doc export] :as args}]
   (let [sym (second form)
-        var (var! name)
+        symbol (symbol (str *ns*) (str sym))
         {:keys [class statics]} @*frame*]
-    (.getStatic *gen* class (:name (statics var)) var-type)
+    (.getStatic *gen* class (:name (statics symbol)) var-type)
     (when (dynamic? name)
       (.push *gen* true)
       (.invokeVirtual *gen* var-type (Method/getMethod "clojure.lang.Var setDynamic(boolean)")))

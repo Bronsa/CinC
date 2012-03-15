@@ -46,10 +46,6 @@
   ([name return-type & args]
     (Method. (str name) (asm-type return-type) (into-array Type (map asm-type args)))))
 
-(defn- var! [sym]
-  (when-let [ns (namespace sym)]
-    (RT/var ns (name sym))))
-
 (defn dynamic? [v]
   (or (:dynamic (meta v))
       (when-let [var (cond
@@ -198,7 +194,7 @@
 (defmethod collect-callsites :invoke
   [form]
   (let [s (-> form :f :info :name)]
-    (if (and s (-> s var! meta :protocol))
+    (if (protocol-node? form)
       (assoc form :callsites #{s})
       form)))
 
