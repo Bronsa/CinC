@@ -498,7 +498,7 @@
                         " found for function: " fsym " of protocol: " (-> fvar meta :protocol)
                         " (The protocol method may have been defined before and removed.)"))))
             meth-name (-> key name munge)
-            meth (find-method protocol-on #(and (= (:name %) meth-name) (= (dec (count args)) (-> % :parameter-types count)))
+            meth (find-method protocol-on (match meth-name (rest args))
                                           (str "No single method: " meth-name " of class: " protocol-on " found with args: " args))]
         (emit-typed-args (:parameter-types meth) (rest args))
         (when (= (-> f :info :env :context ) :return )
@@ -553,7 +553,7 @@
     (.invokeVirtual *gen* var-type (if (dynamic? v) var-get-method var-get-raw-method)))
   (when box (emit-box type)))
 
-(defmulti emit-test (fn emit-test-dispatch [ast null-label false-label] (:op ast)))
+(defmulti emit-test (fn [ast null-label false-label] (:op ast)))
 
 (defmethod emit-test :default [ast null-label false-label]
   (emit ast)

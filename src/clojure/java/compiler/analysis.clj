@@ -97,7 +97,7 @@
 (defmethod expression-type :var
   [{:as form :keys [info]}]
   (let [sym (:name info)
-        var (resolve (:form form))]
+        var (resolve sym)]
     (if var
       (class @var)
       java.lang.Object)))
@@ -135,9 +135,11 @@
 
 (defn- match [name args]
   (fn match-method [method]
-    (and (= name (:name method))
-      (= (count args) (-> method :parameter-types count))
-      (every? true? (map #(do #_(println (expression-type %1) %2) (convertible? (expression-type %1) (maybe-class %2))) args (:parameter-types method))))))
+    (let [arg-classes (map expression-type args)
+          meth-parms (map maybe-class (:parameter-types method))]
+      (and (= name (:name method))
+           (= (count args) (-> method :parameter-types count))
+           (every? true? (map convertible? arg-classes meth-parms))))))
 
 ;; ---
 
@@ -341,7 +343,6 @@
 (defmethod collect-vars :local
   [form]
   (assoc form :referenced-locals #{{:name (-> form :info :name) :type (expression-type form)}}))
-
 
 (defmethod collect-vars :def
   [form]
