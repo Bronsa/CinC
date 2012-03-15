@@ -43,7 +43,9 @@
 (defmacro type-of [v] `(.test (PrimTester.) ~v))
 
 (deftest primitives
-  ; This test is incorrect, eval is always boxed, type-of has to be inside the eval (is (= :long (type-of (c/eval '1))))
+  (is (= :long (c/eval '(test.clojure.java.compiler/type-of 1))))
+  (is (= :long (c/eval '(let [x 1] (test.clojure.java.compiler/type-of x)))))
+  (is (= :long (c/eval '(loop [x 1] (if (< x 10) (recur (inc x)) (test.clojure.java.compiler/type-of x))))))
   )
 
 (deftest eval
