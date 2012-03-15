@@ -1,4 +1,5 @@
 (ns test.clojure.java.compiler
+  (:refer-clojure :exclude [eval let fn reify])
   (:require [clojure.java.compiler :as c])
   (:use [clojure.test]))
 
@@ -26,7 +27,26 @@
 
 (in-ns 'test.clojure.java.compiler)
 
-(deftest test-eval
+(definterface IPrimTester
+  (test [^int i])
+  (test [^java.lang.Integer i])
+  (test [^long l])
+  (test [^java.lang.Long l]))
+
+(defrecord PrimTester []
+  IPrimTester
+  (test [this ^int i] :int)
+  (test [this ^java.lang.Integer i] :Integer)
+  (test [this ^long l] :long)
+  (test [this ^java.lang.Long l] :Long))
+
+(defmacro type-of [v] `(.test (PrimTester.) ~v))
+
+(deftest primitives
+  ; This test is incorrect, eval is always boxed, type-of has to be inside the eval (is (= :long (type-of (c/eval '1))))
+  )
+
+(deftest eval
   (is (= 1 (c/eval '1)))
   (is (= java.lang.Object (c/eval 'java.lang.Object)))
   (testing "vector"
@@ -50,7 +70,8 @@
     (is (= 10 ((c/eval '(fn [x] (if (< x 10) (recur (inc x)) x))) 1)))
     (is (= 10 (c/eval '(loop [x 1] (if (< x 10) (recur (inc x)) x))))))
   (testing "do"
-    (is (= :success (c/eval '(do (+ 1 2) :success)))))
+    (is (= :success (c/eval '(do (+ 1 2) :success))))
+    (is (= 5 (c/eval '(do 1 {:a 2} 3 {:a 4} 5))) "Multiple sizes in do"))
   (is (instance? java.lang.Object (c/eval '(new java.lang.Object)))))
 
 (deftest let

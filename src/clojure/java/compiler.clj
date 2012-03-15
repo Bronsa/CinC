@@ -13,6 +13,11 @@
            [org.objectweb.asm.util CheckClassAdapter TraceClassVisitor]
            [clojure.lang DynamicClassLoader RT Util]))
 
+;; TODO: It feels like expression-type shouldn't be called in this file, is it a performance problem?
+;;  if it is being called too much, it would be easy
+;; to make compute-type in analysis.clj add a :type key to everything. expression-type would then be able to short-circuit
+;; if there is already a :type
+
 (clojure.core/load "compiler/analysis")
 
 (def max-positional-arity 20)
@@ -58,6 +63,7 @@
 ; :locals - Local variable/Argument/Variable capture info, map from sym -> {:type :index}
 ; :protos - Fields for protocol support
 ; :loop-label - Label of the top of the current loop for recur
+; :loop-types - Types for the current loop top
 (def ^:dynamic ^:private *frame*) ; Contains per-class information
 (defn- new-frame [& m] (atom (apply hash-map :next-local-index 1 m))) ; 0 is "this"
 (defn- copy-frame [& {:as m}] (atom (merge @*frame* m)))
@@ -96,10 +102,12 @@
 (defmulti ^:private emit-boxed :op )
 (defmulti ^:private emit-unboxed :op )
 
-(defn ^:private emit [ast]
-  (if false #_(:unboxed ast)
-    (emit-unboxed ast)
-    (emit-boxed ast)))
+(defmulti ^:private emit :op)
+
+(defmethod emit :default [ast]
+  (if (:box ast)
+    (emit-boxed ast)
+    (emit-unboxed ast)))
 
 (defn load-class [name bytecode form]
   (let [binary-name (.replace name \/ \.)]
@@ -111,10 +119,10 @@
         (.accept cr v 0)))
     (.defineClass *loader* binary-name bytecode form)))
 
-(declare emit-class)
+(declare emit-class emit-box)
 
 (defn- emit-wrapper-fn [cv ast]
-  (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (Method/getMethod "Object invoke()") nil nil cv)]
+  (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (asm-method "invoke" "Object") nil nil cv)]
     (.visitCode *gen*)
     (emit ast)
     (.returnValue *gen*)
@@ -135,7 +143,7 @@
          (eval ret))
        (let [env {:ns (@namespaces *ns*) :context :statement :locals {}}
              ast (analyze env form)
-             ast (process-frames ast)
+             ast (process-frames (assoc ast :box true))
              internal-name (str "repl/Temp" (RT/nextID))
              cw (emit-class internal-name (assoc ast :super "clojure/lang/AFn") emit-wrapper-fn)]
          (let [bytecode (.toByteArray cw)
@@ -357,11 +365,7 @@
     ; Java clojure calls method.emitClearLocals here, but it does nothing?
     (.invokeInterface *gen* ifn-type (Method. "invoke" object-type (get arg-types (min (count args) (inc max-positional-arity)))))))
 
-(defmulti emit-convert (fn [t e] [t (class e)]))
-(defmethod emit-convert :default [t e]
-  (if (= t (class e)) (emit e) (println "Conversion not implemented")))
-
-(defn- emit-unchecked-cast [t p]
+(defn- emit-unchecked-cast [t]
   (let [m
         (cond
           (= t Integer/TYPE) (Method/getMethod "int uncheckedIntCast(Object)")
@@ -372,7 +376,7 @@
           (= t Short/TYPE) (Method/getMethod "short uncheckedShortCast(Object)"))]
     (.invokeStatic *gen* rt-type m)))
 
-(defn- emit-checked-cast [t p]
+(defn- emit-checked-cast [t]
   (let [m
         (cond
           (= t Integer/TYPE) (Method/getMethod "int intCast(Object)")
@@ -383,45 +387,56 @@
           (= t Short/TYPE) (Method/getMethod "short shortCast(Object)"))]
     (.invokeStatic *gen* rt-type m)))
 
-(defn- emit-cast-arg [t p]
-  (if (primitive? t)
-    (cond
-      (= t Boolean/TYPE)
-      (do
-        (.checkCast *gen* Type/BOOLEAN_TYPE)
-        (.invokeVirtual *gen* Type/BOOLEAN_TYPE (Method/getMethod "boolean booleanValue()")))
-
-      (= t Character/TYPE)
-      (do
-        (.checkCast *gen* Type/CHAR_TYPE)
-        (.invokeVirtual *gen* Type/CHAR_TYPE (Method/getMethod "char charValue()")))
-
-      :else
-      (do
-        (.checkCast *gen* (asm-type java.lang.Number))
-        (if *unchecked-math*
-          (emit-unchecked-cast t p)
-          (emit-checked-cast t p))))))
-
-(defn- emit-typed-arg [param-type arg]
+(defn- emit-cast [t]
   (cond
-    (= param-type (expression-type arg))
-    (emit arg)
+    (= t Boolean/TYPE)
+    (do
+      (.checkCast *gen* (asm-type java.lang.Boolean))
+      (.invokeVirtual *gen* Type/BOOLEAN_TYPE (Method/getMethod "boolean booleanValue()")))
 
-    (convertible? (expression-type arg) param-type)
-    (emit-convert param-type arg)
+    (= t Character/TYPE)
+    (do
+      (.checkCast *gen* (asm-type java.lang.Character))
+      (.invokeVirtual *gen* Type/CHAR_TYPE (Method/getMethod "char charValue()")))
+
+    (primitive? t)
+    (do
+      (.checkCast *gen* (asm-type java.lang.Number))
+      (if *unchecked-math*
+        (emit-unchecked-cast t)
+        (emit-checked-cast t)))
 
     :else
-    (do
-      (emit arg)
-      (emit-cast-arg param-type arg))))
+    (.checkCast *gen* (asm-type t))))
+
+(defmulti emit-convert (fn [actual-type desired-type] [actual-type desired-type]))
+(defmethod emit-convert [java.lang.Object Long/TYPE]
+  [actual-type desired-type]
+  (emit-cast desired-type))
+(defmethod emit-convert [java.lang.Object java.lang.Number]
+  [actual-type desired-type]
+  (emit-cast desired-type))
+(defmethod emit-convert :default
+  [actual-type desired-type]
+  (when-not (= actual-type desired-type) (println "Conversion not implemented" [actual-type desired-type])))
+
+(defn- emit-typed-arg [param-type arg]
+  (emit arg)
+  (cond
+    (= param-type (expression-type arg))
+    nil
+
+    (convertible? (expression-type arg) param-type)
+    (emit-convert (expression-type arg) param-type)
+
+    :else
+    (emit-cast param-type)))
 
 (defn- emit-typed-args [param-types args]
   (doall (map emit-typed-arg param-types args)))
 
-(defn- emit-box-return [type]
-  (when (primitive? type)
-    (.box *gen* (asm-type type))))
+(defn- emit-box [type]
+  (.box *gen* (asm-type type)))
 
 (defn- find-method [class filter error-msg]
   (let [members (-> class type-reflect :members)
@@ -430,7 +445,7 @@
             (throw (IllegalArgumentException. error-msg)))]
     (first methods)))
 
-(defn- emit-invoke-proto [{:keys [f args]}]
+(defn- emit-invoke-proto [{:keys [f args box]}]
   (let [{:keys [class statics protos]} @*frame*
         on-label (.newLabel *gen*)
         call-label (.newLabel *gen*)
@@ -483,10 +498,10 @@
           ; emit-clear-locals
           (println "Clear locals")
           )
-        (let [r (:return-type meth)
-              m (apply asm-method (:name meth) r (:parameter-types meth))]
+        (let [{:keys [name return-type parameter-types]} meth
+              m (apply asm-method name return-type parameter-types)]
           (.invokeInterface *gen* (asm-type protocol-on) m)
-          (emit-box-return r))
+          (when box (emit-box return-type)))
         (.mark *gen* end-label)))))
 
 (defn- emit-invoke-fn [{:keys [f args env]}]
@@ -507,7 +522,7 @@
     (emit arg))
   (.invokeConstructor *gen* type (apply asm-method "<init>" "void" (map expression-type args))))
 
-(defmethod emit-boxed :new
+(defmethod emit :new
   [{:keys [ctor args env]}]
   (let [type (-> ctor :form asm-type)]
     (emit-instance type args)))
@@ -541,8 +556,8 @@
     (.getStatic (asm-type java.lang.Boolean) "FALSE" (asm-type java.lang.Boolean))
     (.visitJumpInsn Opcodes/IF_ACMPEQ false-label)))
 
-(defmethod emit-boxed :if
-  [{:keys [test then else env]}]
+(defmethod emit :if
+  [{:keys [test then else env box]}]
   (let [line (:line env)
         null-label (.newLabel *gen*)
         false-label (.newLabel *gen*)
@@ -580,10 +595,9 @@
 
 (defn- emit-constant [v box]
   (let [{:keys [class statics]} @*frame*
-        {:keys [name type]} (statics v)
-        type (asm-type type)]
-    (.getStatic *gen* class name type)
-    (when box (.box *gen* type))))
+        {:keys [name type]} (statics v)]
+    (.getStatic *gen* class name (asm-type type))
+    (when box (emit-box type))))
 
 (defmethod emit-boxed :constant [{:keys [form env]}]
   (if (nil? form)
@@ -617,12 +631,12 @@
           [sym {:index index :type type :label (.mark *gen*)}])))))
 
 (defn emit-method [cv {:as form :keys [name params statements ret env recurs type] :or {name "invoke" type java.lang.Object}}]
-  (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (apply asm-method name type (map expression-type params)) nil nil cv)
+  (binding [*gen* (GeneratorAdapter. Opcodes/ACC_PUBLIC (apply asm-method name type (map tagged-type params)) nil nil cv)
             *frame* (copy-frame)]
     (.visitCode *gen*)
     (swap! *frame* assoc :locals (compute-locals form))
     (let [end-label (.newLabel *gen*)]
-      (swap! *frame* assoc :loop-label (.mark *gen*))
+      (swap! *frame* assoc :loop-label (.mark *gen*) :loop-types (map tagged-type params))
       (when statements
         (dorun (map emit-statement statements)))
       (emit ret)
@@ -646,7 +660,7 @@
     (emit-local name))
   (.invokeConstructor *gen* type (apply asm-method "<init>" "void" (map :type args))))
 
-(defmethod emit-boxed :fn [ast]
+(defmethod emit :fn [ast]
   (let [name (str (or (:name ast) (gensym)))
         cw (emit-class name (assoc ast :super "clojure/lang/AFn") emit-fn-methods)
         bytecode (.toByteArray cw)
@@ -654,8 +668,8 @@
         type (asm-type class)]
     (emit-closure type (closed-overs ast))))
 
-(defmethod emit-boxed :do
-  [{:keys [statements ret env]}]
+(defmethod emit :do
+  [{:keys [statements ret env box]}]
   (when statements
     (dorun (map emit-statement statements)))
   (emit ret))
@@ -673,11 +687,11 @@
           [name {:index i :type type :label (.mark *gen*)}]))
       bindings)))
 
-(defmethod emit-boxed :let [{:keys [bindings statements ret env loop]}]
+(defmethod emit :let [{:keys [bindings statements ret env loop box]}]
   (binding [*frame* (copy-frame)]
     (let [bs (emit-bindings bindings)]
       (when loop
-        (swap! *frame* assoc :loop-label (.mark *gen*)))
+        (swap! *frame* assoc :loop-label (.mark *gen*) :loop-types (map #(-> % :name bs :type) bindings)))
       (when statements
         (dorun (map emit-statement statements)))
       (emit ret)
@@ -685,8 +699,8 @@
         (doseq [[name {:keys [type label index]}] bs]
           (.visitLocalVariable *gen* (str name) (-> type asm-type .getDescriptor) nil label end-label index))))))
 
-(defmethod emit-boxed :recur [{:as form :keys [env frame exprs]}]
-  (emit-typed-args (map expression-type exprs) exprs)
+(defmethod emit :recur [{:as form :keys [env frame exprs box]}]
+  (emit-typed-args (:loop-types @*frame*) exprs)
   (dorun (map
            (fn [name]
              (let [{:keys [type index]} (-> @*frame* :locals name)]
@@ -695,47 +709,50 @@
   (.goTo *gen* (:loop-label @*frame*)))
 
 (defn- emit-field
-  [env target field box-result]
+  [env target field box]
   (let [class (expression-type target)
         members (-> class type-reflect :members)
         field-info (select #(= (:name %) field) members)
         type (:type field-info)]
-  (if type
-    (do
-      (.getField *gen* (asm-type class) field (asm-type type))
-      (when box-result (emit-box-return type)))
-    (do
-      (when *warn-on-reflection*
-        (.format (RT/errPrintWriter)
-          "Reflection warning, %s:%d - reference to field %s can't be resolved.\n"
+    (if type
+      (do
+        (.getField *gen* (asm-type class) field (asm-type type))
+        (when box (emit-box type)))
+      (do
+        (when *warn-on-reflection*
+          (.format (RT/errPrintWriter)
+            "Reflection warning, %s:%d - reference to field %s can't be resolved.\n"
           *file* (make-array (-> target :env :line) field)))
-      (.push *gen* (name field))
-      (.invokeStatic *gen* (asm-type clojure.lang.Reflector)
-                           (Method/getMethod "Object invokeNoArgInstanceMember(Object,String)"))))))
+        (.push *gen* (name field))
+        (.invokeStatic *gen* (asm-type clojure.lang.Reflector)
+                             (Method/getMethod "Object invokeNoArgInstanceMember(Object,String)"))))))
 
-(defn- emit-method-call [target name args]
-  (let [class (expression-type target)
+(defn- emit-method-call [target name args box]
+  (let [class (:type target)
         meth (find-method class (match name args)
-               (str "No single method: " name " of class: " class " found with args: " args))]
-  (emit-typed-args (:parameter-types meth) (rest args))
-  (let [r (:return-type meth)
-        m (apply asm-method (:name meth) r (:parameter-types meth))]
+                                (apply str "No single method: " name " of class: " class " found with args: " (map expression-type args)))
+        {:keys [name return-type parameter-types]} meth
+        m (apply asm-method name return-type parameter-types)
+        return-type (maybe-class return-type)
+        parameter-types (map maybe-class parameter-types)]
+    (.checkCast *gen* (asm-type class))
+    (emit-typed-args parameter-types args)
     (.invokeVirtual *gen* (asm-type class) m)
-    (emit-box-return r))))
+    (when box (emit-box return-type))))
 
-(defmethod emit-boxed :dot
-  [{:keys [target field method args env]}]
+(defmethod emit :dot
+  [{:keys [target field method args env box]}]
   (emit target)
   (if field
-    (emit-field env target field true)
-    (emit-method-call target method args)))
+    (emit-field env target field box)
+    (emit-method-call target method args box)))
 
 (defn- emit-fns
   [cv {:as ast :keys [name type fns]}]
   (doseq [fn fns]
     (emit-fn-methods cv fn)))
 
-(defmethod emit-boxed :reify
+(defmethod emit :reify
   [{:as ast :keys [methods ancestors]}]
   (let [name (str (gensym "reify__"))
         c (-> ancestors first maybe-class)
@@ -749,12 +766,13 @@
         type (asm-type class)]
     (emit-closure type (closed-overs ast))))
 
-(defmethod emit-boxed :vector [args]
+(defmethod emit :vector [args]
   (emit-as-array (:children args))
   (.invokeStatic *gen* rt-type (Method/getMethod "clojure.lang.IPersistentVector vector(Object[])")))
 
-(defmethod emit-boxed :map [{:keys [keys vals]}]
+(defmethod emit :map [{:as form :keys [keys vals]}]
   (emit-as-array (interleave keys vals))
   (.invokeStatic *gen* rt-type (Method/getMethod "clojure.lang.IPersistentMap map(Object[])")))
 
-(defmethod emit-boxed :default [args] (notsup "Unknown operator: " (:op args) "\nForm: " args))
+(defmethod emit-boxed :default [args] (notsup "Unknown boxed operator: " (:op args) "\nForm: " args))
+(defmethod emit-unboxed :default [args] (notsup "Unknown unboxed operator: " (:op args) "\nForm: " args))

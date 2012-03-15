@@ -53,22 +53,32 @@
                        (var? v) v)]
         (.isDynamic var))))
 
+(defn protocol-node? [ast]
+  (when-let [name (-> ast :f :info :name)]
+    (when-let [var (resolve name)]
+      (-> var meta :protocol))))
+
 (defmulti expression-type
   "Returns the type of the ast node provided, or Object if unknown. Respects :tag metadata"
-  :op )
+  :op)
 
-(defmethod expression-type :default [{tag :tag}]
-  (if tag tag java.lang.Object))
+(defn tagged-type [o]
+  (if-let [tag (-> o meta :tag)]
+    tag
+    java.lang.Object))
+
+(defmethod expression-type :default [{type :type}]
+  (if type type java.lang.Object))
 
 (defmethod expression-type :constant [ast]
   [ast]
   (let [class (-> ast :form class)
-        unboxed (:unboxed ast)]
+        boxed (:box ast)]
     (condp #(isa? %2 %1) class
-             java.lang.Integer (if unboxed Long/TYPE Long)
-             java.lang.Long (if unboxed Long/TYPE Long)
-             java.lang.Float (if unboxed Double/TYPE Double)
-             java.lang.Double (if unboxed Double/TYPE Double)
+             java.lang.Integer (if boxed Long Long/TYPE)
+             java.lang.Long (if boxed Long Long/TYPE)
+             java.lang.Float (if boxed Double Double/TYPE)
+             java.lang.Double (if boxed Double Double/TYPE)
              java.lang.String java.lang.String
              java.lang.Class java.lang.Class
              clojure.lang.Keyword clojure.lang.Keyword
@@ -78,7 +88,47 @@
              nil nil
              java.lang.Object)))
 
+(defmethod expression-type :local [{:keys [info]}]
+  (expression-type (:init info)))
+
+(defmethod expression-type :def [form]
+  clojure.lang.Var)
+
+(defmethod expression-type :var
+  [{:as form :keys [info]}]
+  (let [sym (:name info)
+        var (resolve (:form form))]
+    (if var
+      (class @var)
+      java.lang.Object)))
+
+(defmethod expression-type :do
+  [{:keys [ret]}]
+  (expression-type ret))
+
+(defmethod expression-type :let
+  [{:keys [ret]}]
+  (expression-type ret))
+
+(defmethod expression-type :if
+  [{:keys [then else]}]
+  (let [then-type (expression-type then)
+        else-type (expression-type else)]
+    (if (= then-type else-type)
+      then-type
+      (cond
+        (nil? then-type) else-type
+        (nil? else-type) then-type
+        :else java.lang.Object))))
+
+(defmethod expression-type :recur
+  [form]
+  nil)
+
 (defmulti convertible? (fn [t1 t2] [(maybe-class t1) (maybe-class t2)]))
+
+(defmethod convertible? [java.lang.Object java.lang.Number] [t1 ts] true)
+(defmethod convertible? [java.lang.Object Long/TYPE] [t1 ts] true)
 (defmethod convertible? :default [t1 t2]
   (if (= t1 t2) true (println "Conversion not implemented: " [t1 t2])))
 
@@ -87,7 +137,7 @@
   (fn match-method [method]
     (and (= name (:name method))
       (= (count args) (-> method :parameter-types count))
-      #_(every? true? (map #(do (println %) (convertible? %)) args (:parameter-types method))))))
+      (every? true? (map #(do #_(println (expression-type %1) %2) (convertible? (expression-type %1) (maybe-class %2))) args (:parameter-types method))))))
 
 ;; ---
 
@@ -131,11 +181,76 @@
                    form (walk-node this form)]
                (post form)))))
 
-(defmulti set-unbox :op)
+(defmulti set-box :op)
 
-(defmethod set-unbox :default
-  [{:as form :keys [unbox op]}]
-  (walk-node #(assoc % :unbox (or unbox (= op :let))) form))
+(defn boxed? [form]
+  (:box (set-box form)))
+
+(defmethod set-box :map
+  [form]
+  (walk-node #(assoc % :box true) (assoc form :box true)))
+
+(defmethod set-box :vector
+  [form]
+  (walk-node #(assoc % :box true) (assoc form :box true)))
+
+(defmethod set-box :def
+  [form]
+  (assoc-in form [:init :box] true))
+
+(defmethod set-box :invoke
+  [form]
+  (if-not (protocol-node? form)
+    (walk-node #(assoc % :box true) (assoc form :box true))
+    form))
+
+(defmethod set-box :do
+  [form]
+  (if (:box form)
+    (assoc-in form [:ret :box] true)
+    form))
+
+(defmethod set-box :let
+  [form]
+  ;; TODO: Smarter boxing for loops
+  (let [form (if (:loop form) (assoc form :box true) form)]
+    (if (:box form)
+      (assoc-in form [:ret :box] true)
+      form)))
+
+(defmethod set-box :if
+  [form]
+  ;; Always box the test, otherwise (if nil) can't work
+  (let [form (assoc-in form [:test :box] true)]
+    (if (or (:box form) (boxed? (:then form)) (boxed? (:else form)))
+      (-> form
+        (assoc-in [:then :box] true)
+        (assoc-in [:else :box] true))
+      form)))
+
+(defmethod set-box :fn
+  [form]
+  ;; TODO: this needs to check type hints, etc
+  (walk-node #(assoc % :box true) form))
+
+(defmethod set-box :reify
+  [form]
+  ;; TODO: this needs to check type hints, etc
+  (walk-node #(assoc % :box true) form))
+
+(defmethod set-box :method
+  [form]
+  (if (:box form)
+    (assoc-in form [:ret :box] true)
+    form))
+
+(defmethod set-box :dot
+  [form]
+  (assoc-in form [:target :box] true))
+
+(defmethod set-box :default
+  [form]
+  form)
 
 (defmulti exported (fn [attribute form] (:op form)))
 
@@ -216,10 +331,17 @@
       ;; Transform vars that represent classes into constants
       (instance? java.lang.Class o)
       (assoc form :op :constant :form o)
+      ;; Transform vars into a new :local op, and track references to them so we know what to capture when we create closures
       lb
-      (assoc form :referenced-locals #{{:name sym :type (expression-type form)}})
+      (let [form (assoc form :op :local)]
+        (assoc form :referenced-locals #{{:name sym :type (expression-type form)}}))
       :else
       (assoc form :vars #{sym}))))
+
+(defmethod collect-vars :local
+  [form]
+  (assoc form :referenced-locals #{{:name (-> form :info :name) :type (expression-type form)}}))
+
 
 (defmethod collect-vars :def
   [form]
@@ -237,18 +359,34 @@
               (str "No single method: " (:name meth) " of " class " found with arguments: " (:params meth)))))]
     (first matches)))
 
+(defmethod compute-type :constant
+  [form]
+  (assoc form :type (expression-type form)))
+
+(defmethod compute-type :var
+  [form]
+  (assoc form :type (expression-type form)))
+
+(defmethod compute-type :local
+  [form]
+  (assoc form :type (expression-type form)))
+
 (defmethod compute-type :method
   [form]
   (if (:class form)
     (let [class (maybe-class (:class form))
           host-method (compute-host-method class form)]
-      (assoc form :host-method host-method :type (:return-type host-method)))
+      (assoc form :host-method host-method :type (maybe-class (:return-type host-method))))
     form))
+
+(defmethod compute-type :new
+  [{:as form :keys [ctor]}]
+  (assoc form :type (-> ctor :info :name resolve)))
 
 ;(defmethod compute-type :fn
   ; Symbol meta have a :tag?
   ; Var have a :tag?
   ; Find the correct overload in arglists, does it have a tag? )
 
-(def process-frames (ast-processor [set-unbox]
-                      [collect-constants collect-vars collect-callsites compute-type]))
+(def process-frames (ast-processor [set-box]
+                      [compute-type collect-constants collect-vars collect-callsites]))
