@@ -216,6 +216,13 @@
 
 (defmulti ^:private emit-value (fn [type value] type))
 
+(defmethod emit-value java.lang.Boolean [t v]
+  (.push *gen* (boolean v))
+  (.box *gen* (asm-type Boolean/TYPE)))
+
+(defmethod emit-value Boolean/TYPE [t v]
+  (.push *gen* (boolean v)))
+
 (defmethod emit-value java.lang.Long [t v]
   (.push *gen* (long v))
   (.box *gen* (asm-type Long/TYPE)))
@@ -580,7 +587,7 @@
         symbol (symbol (str *ns*) (str sym))
         {:keys [class statics]} @*frame*]
     (.getStatic *gen* class (:name (statics symbol)) var-type)
-    (when (dynamic? name)
+    (when (dynamic? sym)
       (.push *gen* true)
       (.invokeVirtual *gen* var-type (Method/getMethod "clojure.lang.Var setDynamic(boolean)")))
     (when-let [meta (meta sym)]
