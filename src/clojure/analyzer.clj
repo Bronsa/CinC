@@ -28,9 +28,7 @@
   "Given an environment, a map containing {:locals (mapping of names to bindings), :context
 (one of :statement, :expr, :return), :ns (a symbol naming the
 compilation ns)}, and form, returns an expression object (a map
-containing at least :form, :op and :env keys). If expr has any (immediately)
-nested exprs, must have :children [exprs...] entry. This will
-facilitate code walking without knowing the details of the op set."
+containing at least :form, :op and :env keys)."
   ([form] (analyze {:ns (@namespaces *ns*) :context :statement :locals {}} form nil))
   ([env form] (analyze env form nil))
   ([env form name]
@@ -45,6 +43,15 @@ facilitate code walking without knowing the details of the op set."
        (vector? form) (analyze-vector env form name)
        (set? form) (analyze-set env form name)
        :else {:op :constant :env env :form form}))))
+
+;; TODO: This could be children-keys that just returns the keys of the children, then walk would probably
+;             be simple to implement in terms of that
+(defmulti children :op)
+(defmulti walk (fn [form f] (:op form)))
+
+(defn- walk-coll [f]
+  (fn [coll]
+    (into (empty coll) (map f coll))))
 
 (defn analyze-file
   [f]
@@ -133,7 +140,17 @@ facilitate code walking without knowing the details of the op set."
     (let [enve (assoc env :context :expr )
           fexpr (analyze enve f)
           argexprs (vec (map #(analyze enve %) args))]
-      {:env env :op :invoke :f fexpr :args argexprs :children (conj argexprs fexpr)})))
+      {:env env :op :invoke :f fexpr :args argexprs})))
+
+(defmethod children :invoke
+  [{:keys [f args]}]
+  (conj args f))
+
+(defmethod walk :invoke
+  [form f]
+  (-> form
+    (update-in [:f] f)
+    (update-in [:args] (walk-coll f))))
 
 (defn analyze-symbol
   "Finds the var associated with sym"
@@ -144,6 +161,11 @@ facilitate code walking without knowing the details of the op set."
       (assoc ret :op :var :info lb)
       (assoc ret :op :var :info (resolve-existing-var env sym)))))
 
+(defmethod children :var
+  [form]
+  nil)
+
+(defmethod walk :var [form f] form)
 
 (defn get-expander [sym env]
   (let [mvar
@@ -191,13 +213,22 @@ facilitate code walking without knowing the details of the op set."
 (defn analyze-map
   [env form name]
   (let [expr-env (assoc env :context :expr )
-        simple-keys? (every? #(or (string? %) (keyword? %))
-      (keys form))
+        simple-keys? (every? #(or (string? %) (keyword? %)) (keys form))
         ks (disallowing-recur (vec (map #(analyze expr-env % name) (keys form))))
         vs (disallowing-recur (vec (map #(analyze expr-env % name) (vals form))))]
-    (analyze-wrap-meta {:op :map :env env :form form :children (vec (concat ks vs))
+    (analyze-wrap-meta {:op :map :env env :form form
                         :keys ks :vals vs :simple-keys? simple-keys?}
       name)))
+
+(defmethod children :map
+  [{:keys [keys vals]}]
+  (concat keys vals))
+
+(defmethod walk :map
+  [form f]
+  (-> form
+    (update-in [:keys] (walk-coll f))
+    (update-in [:vals] (walk-coll f))))
 
 (defn analyze-vector
   [env form name]
@@ -205,24 +236,51 @@ facilitate code walking without knowing the details of the op set."
         items (disallowing-recur (vec (map #(analyze expr-env % name) form)))]
     (analyze-wrap-meta {:op :vector :env env :form form :children items} name)))
 
+(defmethod children :vector
+  [form]
+  (:children form))
+
+(defmethod walk :vector
+  [form f]
+  (update-in form [:children] (walk-coll f)))
+
 (defn analyze-wrap-meta [expr name]
   (let [form (:form expr)]
     (if (meta form)
       (let [env (:env expr) ; take on expr's context ourselves
             expr (assoc-in expr [:env :context ] :expr ) ; change expr to :expr
             meta-expr (analyze-map (:env expr) (meta form) name)]
-        {:op :meta :env env :form form :children [meta-expr expr]
+        {:op :meta :env env :form form
          :meta meta-expr :expr expr})
       expr)))
+
+(defmethod children :meta
+  [{:keys [meta-expr expr]}]
+  [meta-expr expr])
+
+(defmethod walk :meta
+  [form f]
+  (-> form
+    (update-in [:meta-expr] f)
+    (update-in [:meta] f)))
 
 (defmethod parse 'if
   [op env [_ test then else :as form] name]
   (let [test-expr (disallowing-recur (analyze (assoc env :context :expr) test))
         then-expr (analyze env then)
         else-expr (analyze env else)]
-    {:env env :op :if :form form
-     :test test-expr :then then-expr :else else-expr
-     :children [test-expr then-expr else-expr]}))
+    {:env env :op :if :form form :test test-expr :then then-expr :else else-expr}))
+
+(defmethod children :if
+  [{:keys [test then else]}]
+  [test then else])
+
+(defmethod walk :if
+  [form f]
+  (-> form
+    (update-in [:test] f)
+    (update-in [:then] f)
+    (update-in [:else] f)))
 
 (defmethod parse 'def
   [op env form name]
@@ -249,18 +307,27 @@ facilitate code walking without knowing the details of the op set."
                               m))))
       (merge {:env env :op :def :form form
               :name name :doc doc :init init-expr}
-        (when init-expr {:children [init-expr]})
         (when export-as {:export export-as})))))
 
+(defmethod children :def
+  [{:keys [init]}]
+  (when init [init]))
+
+(defmethod walk :def
+  [form f]
+  (if-let [init (:init form)]
+    (assoc form :init (f init))
+    form))
+
 (defn analyze-block
-  "returns {:statements .. :ret .. :children ..}"
+  "returns {:statements .. :ret ..}"
   [env exprs]
   (let [statements (disallowing-recur
     (seq (map #(analyze (assoc env :context :statement ) %) (butlast exprs))))
         ret (if (<= (count exprs) 1)
       (analyze env (first exprs))
       (analyze (assoc env :context (if (= :statement (:context env)) :statement :return )) (last exprs)))]
-    {:statements statements :ret ret :children (vec (cons ret statements))}))
+    {:statements statements :ret ret}))
 
 (defn- analyze-fn-method [env locals meth]
   (letfn [(uniqify [[p & r]]
@@ -276,10 +343,20 @@ facilitate code walking without knowing the details of the op set."
           locals (reduce (fn [m name] (assoc m name {:name name})) locals params)
           recur-frame {:names (vec params) :flag (atom nil)}
           block (binding [*recur-frames* (cons recur-frame *recur-frames*)]
-        (analyze-block (assoc env :context :return :locals locals) body))]
+                  (analyze-block (assoc env :context :return :locals locals) body))]
 
       (merge {:env env :op :method :variadic variadic :params params
               :max-fixed-arity fixed-arity :recurs @(:flag recur-frame)} block))))
+
+(defmethod children :method
+  [{:keys [statements ret]}]
+  (cons ret statements))
+
+(defmethod walk :method
+  [form f]
+  (-> form
+    (update-in [:statements] (walk-coll f))
+    (update-in [:ret] f)))
 
 (defmethod parse 'fn*
   [op env [_ & args] name]
@@ -299,9 +376,27 @@ facilitate code walking without knowing the details of the op set."
     {:env env :op :fn :name name :methods methods :variadic variadic :recur-frames *recur-frames*
      :max-fixed-arity max-fixed-arity}))
 
+(defmethod children :fn
+  [{:keys [methods]}]
+  methods)
+
+(defmethod walk :fn
+  [form f]
+  (update-in form [:methods] (walk-coll f)))
+
 (defmethod parse 'do
   [op env [_ & exprs] _]
   (merge {:env env :op :do} (analyze-block env exprs)))
+
+(defmethod children :do
+  [{:keys [statements ret]}]
+  (cons ret statements))
+
+(defmethod walk :do
+  [form f]
+  (-> form
+    (update-in [:statements] (walk-coll f))
+    (update-in [:ret] f)))
 
 (defn analyze-let
   [encl-env [_ bindings & exprs :as form] is-loop]
@@ -316,17 +411,36 @@ facilitate code walking without knowing the details of the op set."
               (do
                 (assert (not (or (namespace name) (.contains (str name) "."))) (str "Invalid local name: " name))
                 (let [init-expr (analyze env init)
-                      be {:name name :init init-expr}]
+                      be {:name name :op :binding :init init-expr}]
                   (recur (conj bes be)
                     (assoc-in env [:locals name] be)
                     (next bindings))))
               [bes env])))
         recur-frame (when is-loop {:names (vec (map :name bes)) :flag (atom nil)})
-        {:keys [statements ret children]}
+        {:keys [statements ret]}
         (binding [*recur-frames* (if recur-frame (cons recur-frame *recur-frames*) *recur-frames*)]
           (analyze-block (assoc env :context (if (= :expr context) :return context)) exprs))]
     {:env encl-env :op :let :loop is-loop
-     :bindings bes :statements statements :ret ret :form form :children (into [children] (map :init bes))}))
+     :bindings bes :statements statements :ret ret :form form}))
+
+(defmethod children :binding
+  [{:keys [init]}]
+  [init])
+
+(defmethod walk :binding
+  [form f]
+  (update-in form [:init] f))
+
+(defmethod children :let
+  [{:keys [bindings statements ret]}]
+  (-> ret (cons statements) (concat bindings)))
+
+(defmethod walk :let
+  [form f]
+  (-> form
+    (update-in [:bindings] (walk-coll f))
+    (update-in [:statements] (walk-coll f))
+    (update-in [:ret] f)))
 
 (defmethod parse 'let*
   [op encl-env form _]
@@ -347,9 +461,25 @@ facilitate code walking without knowing the details of the op set."
       :frame frame
       :exprs (disallowing-recur (vec (map #(analyze (assoc env :context :expr) %) exprs))))))
 
+(defmethod children :recur
+  [{:keys [exprs]}]
+  exprs)
+
+(defmethod walk :recur
+  [form f]
+  (update-in form [:exprs] (walk-coll f)))
+
 (defmethod parse 'quote
   [_ env [_ x] _]
   {:op :constant :env env :form x})
+
+(defmethod children :constant
+  [form]
+  nil)
+
+(defmethod walk :constant
+  [form f]
+  form)
 
 (defmethod parse 'new
   [_ env [_ ctor & args] _]
@@ -357,7 +487,17 @@ facilitate code walking without knowing the details of the op set."
     (let [enve (assoc env :context :expr)
           ctorexpr (analyze enve ctor)
           argexprs (vec (map #(analyze enve %) args))]
-      {:env env :op :new :ctor ctorexpr :args argexprs :children (conj argexprs ctorexpr)})))
+      {:env env :op :new :ctor ctorexpr :args argexprs})))
+
+(defmethod children :new
+  [{:keys [args ctor]}]
+  (conj args ctor))
+
+(defmethod walk :new
+  [form f]
+  (-> form
+    (update-in [:args] (walk-coll f))
+    (update-in [:ctor] f)))
 
 ;; dot accessor code
 
@@ -430,17 +570,26 @@ facilitate code walking without knowing the details of the op set."
   (disallowing-recur
     (let [{:keys [dot-action target method field args]} (build-dot-form [target field member+])
           enve        (assoc env :context :expr)
-          targetexpr  (analyze enve target)
-          children    [enve]]
+          targetexpr  (analyze enve target)]
       (case dot-action
-        ::access {:env env :op :dot :children children
+        ::access {:env env :op :dot
                   :target targetexpr
                   :field field}
         ::call   (let [argexprs (map #(analyze enve %) args)]
-        {:env env :op :dot :children (into children argexprs)
+        {:env env :op :dot
          :target targetexpr
          :method method
          :args argexprs})))))
+
+(defmethod children :dot
+  [{:keys [target args]}]
+  (cons target args))
+
+(defmethod walk :dot
+  [form f]
+  (-> form
+    (update-in [:target] f)
+    (update-in [:args] (walk-coll f))))
 
 (defn analyze-method-impls
   [env meth]
@@ -464,3 +613,11 @@ facilitate code walking without knowing the details of the op set."
                      (for [meth meths]
                        (assoc meth :class class))))]
     {:env env :op :reify :opts {} :methods methods :ancestors ancestors}))
+
+(defmethod children :reify
+  [{:keys [methods]}]
+  methods)
+
+(defmethod walk :reify
+  [form f]
+  (update-in form [:methods] (walk-coll f)))

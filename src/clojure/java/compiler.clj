@@ -1,24 +1,19 @@
 (ns clojure.java.compiler
   (:refer-clojure :exclude [eval load munge *ns* type])
   (:require [clojure.java.io :as io]
-            [clojure.string :as string])
+            [clojure.string :as string]
+            [clojure.java.ast :as ast])
+  (:refer clojure.java.ast :only [convertible? dynamic? expression-type maybe-class tagged-type])
   (:use [clojure
           [analyzer :only [analyze namespaces *ns*]]
           [walk :only [walk]]
           [reflect :only [type-reflect]]
           [set :only [select]]
-          pprint repl]) ; pprint is for debugging
+          pprint repl]) ; for debugging
   (:import [org.objectweb.asm Type Opcodes ClassReader ClassWriter]
            [org.objectweb.asm.commons Method GeneratorAdapter]
            [org.objectweb.asm.util CheckClassAdapter TraceClassVisitor]
            [clojure.lang DynamicClassLoader RT Util]))
-
-;; TODO: It feels like expression-type shouldn't be called in this file, is it a performance problem?
-;;  if it is being called too much, it would be easy
-;; to make compute-type in analysis.clj add a :type key to everything. expression-type would then be able to short-circuit
-;; if there is already a :type
-
-(clojure.core/load "compiler/analysis")
 
 (def max-positional-arity 20)
 
@@ -55,6 +50,24 @@
 (defmacro notsup [& args]
   `(throw (RuntimeException. (str "Unsupported: " ~@args))))
 
+(defn- primitive? [o]
+  (let [c (maybe-class o)]
+    (and
+      (not (or (nil? c) (= c Void/TYPE)))
+      (.isPrimitive c))))
+
+(defn- asm-type [s]
+  (when s
+    (let [class (maybe-class s)]
+      (if class
+        (Type/getType class)
+        (Type/getType s)))))
+
+(defn- asm-method
+  ([{:keys [name return-types parameter-types]}]
+   (apply asm-method name return-types parameter-types))
+  ([name return-type & args]
+   (Method. (str name) (asm-type return-type) (into-array Type (map asm-type args)))))
 
 ; Frame members (maybe these should be separate variables?):
 ; :class - ASM type of current class being written
@@ -143,7 +156,7 @@
          (eval ret))
        (let [env {:ns (@namespaces *ns*) :context :statement :locals {}}
              ast (analyze env form)
-             ast (process-frames (assoc ast :box true))
+             ast (ast/process-frames (assoc ast :box true))
              internal-name (str "repl/Temp" (RT/nextID))
              cw (emit-class internal-name (assoc ast :super "clojure/lang/AFn") emit-wrapper-fn)]
          (let [bytecode (.toByteArray cw)
@@ -314,7 +327,6 @@
         (.visitLineNumber *gen* line (.mark *gen*)))
       (doseq [{:keys [name type value]} (vals statics)]
         (emit-value type value)
-;        (.checkCast *gen* (:type static))
         (.putStatic *gen* class name (asm-type type)))
       (.returnValue *gen*)
       (.endMethod *gen*))))
@@ -417,6 +429,9 @@
     (.checkCast *gen* (asm-type t))))
 
 (defmulti emit-convert (fn [actual-type desired-type] [actual-type desired-type]))
+(defmethod emit-convert [java.lang.Object Integer/TYPE]
+  [actual-type desired-type]
+  (emit-cast desired-type))
 (defmethod emit-convert [java.lang.Object Long/TYPE]
   [actual-type desired-type]
   (emit-cast desired-type))
@@ -427,14 +442,15 @@
   [actual-type desired-type]
   (when-not (= actual-type desired-type) (println "Conversion not implemented" [actual-type desired-type])))
 
-(defn- emit-typed-arg [param-type arg]
+(defn- emit-typed-arg [param-type {:as arg arg-type :type}]
+  (assert arg-type (str "Missing type for arg " arg))
   (emit arg)
   (cond
-    (= param-type (expression-type arg))
+    (= param-type arg-type)
     nil
 
-    (convertible? (expression-type arg) param-type)
-    (emit-convert (expression-type arg) param-type)
+    (convertible? arg-type param-type)
+    (emit-convert arg-type param-type)
 
     :else
     (emit-cast param-type)))
@@ -446,11 +462,28 @@
   (.box *gen* (asm-type type)))
 
 (defn- find-method [class filter error-msg]
-  (let [members (-> class type-reflect :members)
+  (let [members (-> class (type-reflect :ancestors true) :members)
         methods (select filter members)
         _ (when-not (= (count methods) 1)
             (throw (IllegalArgumentException. error-msg)))]
     (first methods)))
+
+#_(defn- find-best-method [class name args error-msg]
+  (let [members (-> class (type-reflect :ancestors true) :members)
+        methods (select (match name args convertible?) members)
+        arg-classes (map :type args)]
+    (if (= (count methods) 1)
+      (first methods)
+      (let [exacts (into []
+                     (for [meth methods]
+                       [(count (filter true? (map = (map maybe-class (:parameter-types meth)) arg-classes))) meth]))
+            exacts (reverse (sort-by first exacts))
+            [arank a] (first exacts)
+            [brank b] (fnext exacts)]
+        (if-not (= arank brank)
+          a
+          (throw (Exception. error-msg)))))))
+
 
 (defn- emit-invoke-proto [{:keys [f args box]}]
   (let [{:keys [class statics protos]} @*frame*
@@ -498,8 +531,10 @@
                         " found for function: " fsym " of protocol: " (-> fvar meta :protocol)
                         " (The protocol method may have been defined before and removed.)"))))
             meth-name (-> key name munge)
-            meth (find-method protocol-on (match meth-name (rest args))
-                                          (str "No single method: " meth-name " of class: " protocol-on " found with args: " args))]
+            arg-types (map expression-type (rest args))
+            meth (find-method protocol-on (ast/match meth-name arg-types convertible?)
+                                          (apply str "No single method: " meth-name " of class: " protocol-on
+                                                                    " found with args: " arg-types))]
         (emit-typed-args (:parameter-types meth) (rest args))
         (when (= (-> f :info :env :context ) :return )
           ; emit-clear-locals
@@ -518,7 +553,7 @@
 
 (defmethod emit :invoke [ast]
   (.visitLineNumber *gen* (-> ast :env :line ) (.mark *gen*))
-  (if (protocol-node? ast)
+  (if (ast/protocol-node? ast)
     (emit-invoke-proto ast)
     (emit-invoke-fn ast)))
 
@@ -527,7 +562,7 @@
   (.dup *gen*)
   (doseq [arg args]
     (emit arg))
-  (.invokeConstructor *gen* type (apply asm-method "<init>" "void" (map expression-type args))))
+  (.invokeConstructor *gen* type (apply asm-method "<init>" "void" (map :type args))))
 
 (defmethod emit :new
   [{:keys [ctor args env]}]
@@ -541,17 +576,18 @@
         index (:index lb)]
     (.visitVarInsn *gen* opcode index)))
 
-(defmethod emit :local [{:as form :keys [info box]}]
-  (let [v (:name info)]
-    (emit-local v))
-  (when box (emit-box (expression-type form))))
-
-(defmethod emit :var [{:keys [info type box]}]
-  (let [v (:name info)
-        {:keys [class statics]} @*frame*]
+(defn- emit-var [v]
+  (let [{:keys [class statics]} @*frame*]
     (.getStatic *gen* class (:name (statics v)) var-type)
-    (.invokeVirtual *gen* var-type (if (dynamic? v) var-get-method var-get-raw-method)))
-  (when box (emit-box type)))
+    (.invokeVirtual *gen* var-type (if (dynamic? v) var-get-method var-get-raw-method))))
+
+(defmethod emit :var [{:as form :keys [env info box]}]
+  (let [v (:name info)
+        lb (-> env :locals v)]
+    (if lb
+      (emit-local v)
+      (emit-var v)))
+  (when box (emit-box (expression-type form))))
 
 (defmulti emit-test (fn [ast null-label false-label] (:op ast)))
 
@@ -716,43 +752,46 @@
   (.goTo *gen* (:loop-label @*frame*)))
 
 (defn- emit-field
-  [env target field box]
-  (let [class (expression-type target)
-        members (-> class type-reflect :members)
-        field-info (select #(= (:name %) field) members)
-        type (:type field-info)]
-    (if type
-      (do
-        (.getField *gen* (asm-type class) field (asm-type type))
-        (when box (emit-box type)))
-      (do
-        (when *warn-on-reflection*
-          (.format (RT/errPrintWriter)
-            "Reflection warning, %s:%d - reference to field %s can't be resolved.\n"
-          *file* (make-array (-> target :env :line) field)))
-        (.push *gen* (name field))
-        (.invokeStatic *gen* (asm-type clojure.lang.Reflector)
-                             (Method/getMethod "Object invokeNoArgInstanceMember(Object,String)"))))))
+  [env target field host-field box]
+  (if-let [host-field (or host-field (ast/compute-host-field env (expression-type target) field))]
+    (let [class (-> target expression-type asm-type)
+          {:keys [name type]} host-field]
+      (.checkCast *gen* class)
+      (.getField *gen* class (clojure.core/name name) (asm-type type))
+      (when box (emit-box type)))
+    (do
+      (.push *gen* (name field))
+      (.invokeStatic *gen* (asm-type clojure.lang.Reflector)
+                           (Method/getMethod "Object invokeNoArgInstanceMember(Object,String)")))))
 
-(defn- emit-method-call [target name args box]
-  (let [class (:type target)
-        meth (find-method class (match name args)
-                                (apply str "No single method: " name " of class: " class " found with args: " (map expression-type args)))
-        {:keys [name return-type parameter-types]} meth
-        m (apply asm-method name return-type parameter-types)
-        return-type (maybe-class return-type)
-        parameter-types (map maybe-class parameter-types)]
-    (.checkCast *gen* (asm-type class))
-    (emit-typed-args parameter-types args)
-    (.invokeVirtual *gen* (asm-type class) m)
-    (when box (emit-box return-type))))
+(defn- emit-method-call [env target method args host-method box]
+  (if-let [host-method (or host-method (ast/compute-host-method env (expression-type target) method (map expression-type args)))]
+    (let [class (asm-type (expression-type target))
+          {:keys [name parameter-types return-type declaring-class]} host-method
+          meth (apply asm-method name return-type (map maybe-class parameter-types))
+          declaring-class (maybe-class declaring-class)]
+      (.checkCast *gen* class)
+      (emit-typed-args (map maybe-class parameter-types) args)
+      (if (.isInterface declaring-class)
+        (.invokeInterface *gen* class meth)
+        (.invokeVirtual *gen* class meth))
+      (when box (emit-box (maybe-class return-type))))
+    (do
+      (when *warn-on-reflection*
+        (.format (RT/errPrintWriter)
+          "Reflection warning, %s:%d - call to %s can't be resolved.\n"
+          (into-array Object [*file* (:line env) (str method)])))
+      (.push *gen* (name method))
+      (emit-as-array (map #(assoc % :box true) args))
+      (.invokeStatic *gen* (asm-type clojure.lang.Reflector)
+                           (Method/getMethod "Object invokeInstanceMethod(Object,String,Object[])")))))
 
 (defmethod emit :dot
-  [{:keys [target field method args env box]}]
+  [{:as form :keys [target field method host-field host-method args env box]}]
   (emit target)
   (if field
-    (emit-field env target field box)
-    (emit-method-call target method args box)))
+    (emit-field env target field host-field box)
+    (emit-method-call env target method args host-method box)))
 
 (defn- emit-fns
   [cv {:as ast :keys [name type fns]}]
@@ -760,18 +799,16 @@
     (emit-fn-methods cv fn)))
 
 (defmethod emit :reify
-  [{:as ast :keys [methods ancestors]}]
-  (let [name (str (gensym "reify__"))
-        c (-> ancestors first maybe-class)
+  [{:as ast :keys [name ancestors]}]
+  (let [c (-> ancestors first maybe-class)
         [super interfaces] (if (and c (.isInterface c))
-                             [java.lang.Object ancestors]
-                             [(first ancestors) (rest ancestors)])
+          [java.lang.Object ancestors]
+          [(first ancestors) (rest ancestors)])
         ast (assoc ast :super super :interfaces interfaces)
-        cw (emit-class name ast emit-fn-methods)
+        cw (emit-class (str name) ast emit-fn-methods)
         bytecode (.toByteArray cw)
-        class (load-class name bytecode ast)
-        type (asm-type class)]
-    (emit-closure type (closed-overs ast))))
+        class (load-class (str name) bytecode ast)]
+    (emit-closure (asm-type class) (closed-overs ast))))
 
 (defmethod emit :vector [args]
   (emit-as-array (:children args))
