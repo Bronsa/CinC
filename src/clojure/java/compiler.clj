@@ -1,12 +1,9 @@
 (ns clojure.java.compiler
   (:refer-clojure :exclude [eval load munge *ns* type])
   (:require [clojure.java.io :as io]
-            [clojure.string :as string]
-            [clojure.java.ast :as ast])
-  (:refer clojure.java.ast :only [convertible? dynamic? expression-type maybe-class tagged-type])
+            [clojure.string :as string])
   (:use [clojure
-          [analyzer :only [analyze namespaces *ns*]]
-          [walk :only [walk]]
+          [analyzer :only [analyze children resolve-var walk]]
           [reflect :only [type-reflect]]
           [set :only [select]]
           pprint repl]) ; for debugging
@@ -14,6 +11,58 @@
            [org.objectweb.asm.commons Method GeneratorAdapter]
            [org.objectweb.asm.util CheckClassAdapter TraceClassVisitor]
            [clojure.lang DynamicClassLoader RT Util]))
+
+
+(defn- pprints [& args]
+  (binding [*print-level* 6] (apply pprint args)))
+
+(defn- rprintln [args]
+  (println "---" args "---")
+  args)
+
+(def ^:private prims
+  {"byte" Byte/TYPE "bool" Boolean/TYPE "char" Character/TYPE "int" Integer/TYPE "long" Long/TYPE "float" Float/TYPE "double" Double/TYPE "void" Void/TYPE})
+
+(defn array-class [element-type]
+  (RT/classForName (str "[" (.getDescriptor element-type) ";")))
+
+(defmulti maybe-class class)
+(defmethod maybe-class nil [_] nil)
+(defmethod maybe-class java.lang.Class [c] c)
+(defmethod maybe-class java.lang.String [s]
+  (if-let [ret (prims s)]
+    ret
+    (if-let [ret (maybe-class (symbol s))]
+      ret
+      (try
+        (RT/classForName s)
+        (catch Exception e nil)))))
+(defmethod maybe-class clojure.lang.Symbol [sym]
+  ; TODO: I have no idea what this used to do
+  ;    (if(Util.equals(sym,COMPILE_STUB_SYM.get()))
+  ;    return (Class) COMPILE_STUB_CLASS.get();
+  (when-not (namespace sym)
+    (if (.endsWith (name sym) "<>")
+      (let [str (name sym)
+            base-type (maybe-class (subs str 0 (- (count str) 2)))]
+        (array-class base-type))
+      (if-let [ret (prims (name sym))]
+        ret
+        (let [ret (resolve sym)]
+          (when (class? ret)
+            ret))))))
+
+(defn dynamic? [v]
+  (or (:dynamic (meta v))
+      (when-let [var (cond
+                       (symbol? v) (resolve v)
+                       (var? v) v)]
+        (.isDynamic var))))
+
+(defn tagged-type [o]
+  (if-let [tag (-> o meta :tag)]
+    tag
+    java.lang.Object))
 
 (def max-positional-arity 20)
 
@@ -29,7 +78,7 @@
    \@ "_CIRCA_",
    \# "_SHARP_",
    \' "_SINGLEQUOTE_",
-   \" "_DOUBLEQUOTE_",
+   (char 34) "_DOUBLEQUOTE_", ;; \" breaks slimv syntax highlighting
    \% "_PERCENT_",
    \^ "_CARET_",
    \& "_AMPERSAND_",
@@ -68,6 +117,8 @@
    (apply asm-method name return-types parameter-types))
   ([name return-type & args]
    (Method. (str name) (asm-type return-type) (into-array Type (map asm-type args)))))
+
+(load "compiler/ast")
 
 ; Frame members (maybe these should be separate variables?):
 ; :class - ASM type of current class being written
@@ -155,7 +206,7 @@
            (dorun (map eval statements))))
        (let [env {:ns (@namespaces *ns*) :context :statement :locals {}}
              ast (analyze env form)
-             ast (ast/process-frames (assoc ast :box true))
+             ast (process-frames (assoc ast :box true))
              internal-name (str "repl/Temp" (RT/nextID))
              cw (emit-class internal-name (assoc ast :super "clojure/lang/AFn") emit-wrapper-fn)]
          (let [bytecode (.toByteArray cw)
@@ -801,8 +852,8 @@
   [{:as ast :keys [name ancestors]}]
   (let [c (-> ancestors first maybe-class)
         [super interfaces] (if (and c (.isInterface c))
-          [java.lang.Object ancestors]
-          [(first ancestors) (rest ancestors)])
+                             [java.lang.Object ancestors]
+                             [(first ancestors) (rest ancestors)])
         ast (assoc ast :super super :interfaces interfaces)
         cw (emit-class (str name) ast emit-fn-methods)
         bytecode (.toByteArray cw)
