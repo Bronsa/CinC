@@ -148,12 +148,11 @@
      (eval form)))
   ([form]
    (binding [*loader* (if *loader* *loader* (DynamicClassLoader.))]
-     (if (= (:op form) :do)
+     (if (= (first form) 'do)
        ;; Special handling for do, pick it apart and eval the pieces
-       (let [{:keys [statements ret]} form]
+       (let [[op & statements] form]
          (when statements
-           (dorun (map eval statements)))
-         (eval ret))
+           (dorun (map eval statements))))
        (let [env {:ns (@namespaces *ns*) :context :statement :locals {}}
              ast (analyze env form)
              ast (ast/process-frames (assoc ast :box true))
