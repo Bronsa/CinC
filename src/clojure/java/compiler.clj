@@ -582,7 +582,7 @@
                         " (The protocol method may have been defined before and removed.)"))))
             meth-name (-> key name munge)
             arg-types (map expression-type (rest args))
-            meth (find-method protocol-on (ast/match meth-name arg-types convertible?)
+            meth (find-method protocol-on (match meth-name arg-types convertible?)
                                           (apply str "No single method: " meth-name " of class: " protocol-on
                                                                     " found with args: " arg-types))]
         (emit-typed-args (:parameter-types meth) (rest args))
@@ -603,7 +603,7 @@
 
 (defmethod emit :invoke [ast]
   (.visitLineNumber *gen* (-> ast :env :line ) (.mark *gen*))
-  (if (ast/protocol-node? ast)
+  (if (protocol-node? ast)
     (emit-invoke-proto ast)
     (emit-invoke-fn ast)))
 
@@ -803,7 +803,7 @@
 
 (defn- emit-field
   [env target field host-field box]
-  (if-let [host-field (or host-field (ast/compute-host-field env (expression-type target) field))]
+  (if-let [host-field (or host-field (compute-host-field env (expression-type target) field))]
     (let [class (-> target expression-type asm-type)
           {:keys [name type]} host-field]
       (.checkCast *gen* class)
@@ -815,7 +815,7 @@
                            (Method/getMethod "Object invokeNoArgInstanceMember(Object,String)")))))
 
 (defn- emit-method-call [env target method args host-method box]
-  (if-let [host-method (or host-method (ast/compute-host-method env (expression-type target) method (map expression-type args)))]
+  (if-let [host-method (or host-method (compute-host-method env (expression-type target) method (map expression-type args)))]
     (let [class (asm-type (expression-type target))
           {:keys [name parameter-types return-type declaring-class]} host-method
           meth (apply asm-method name return-type (map maybe-class parameter-types))

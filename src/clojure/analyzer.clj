@@ -1,19 +1,17 @@
 (ns clojure.analyzer
-  (:refer-clojure :exclude [*ns* *file* macroexpand-1])
+  (:refer-clojure :exclude [macroexpand-1])
   (:require [clojure.java.io :as io]
-   [clojure.string :as string])
+            [clojure.string :as string])
   (:use [clojure pprint]))
 
-(let [mappings (.getMappings (clojure.lang.Namespace/find 'clojure.core))]
-  (defonce namespaces (atom {'clojure.core {:name 'clojure.core :defs mappings}
-                             'user {:name 'user}}))
-  )
+;; TODO: This is for my convenience when developing, will need to replace this with a real boostrap
+(when-not (resolve 'clojure.core/namespaces)
+  (in-ns 'clojure.core) 
+  (load "core1") 
+  (in-ns 'clojure.analyzer) 
+  (refer 'clojure.core :only '[namespaces])) 
 
-(def ^:dynamic *ns* 'user)
-(def ^:dynamic *file* nil)
-(def ^:dynamic *warn-on-undeclared* false)
-
-(def specials '#{if def fn* do let* loop* recur new . reify quote})
+(def specials '#{quote def fn* if do let* loop* recur new . reify gen-interface})
 
 (def ^:dynamic *recur-frames* nil)
 
@@ -498,6 +496,52 @@ containing at least :form, :op and :env keys)."
   (-> form
     (update-in [:args] (walk-coll f))
     (update-in [:ctor] f)))
+
+(defmethod parse 'ns
+  [_ env [_ name & args] _]
+  (let [excludes
+        (reduce (fn [s [k exclude xs]]
+                  (if (= k :refer-clojure)
+                    (do
+                      (assert (= exclude :exclude) "Only [:refer-clojure :exclude [names]] form supported")
+                      (into s xs))
+                    s))
+                #{} args)
+        {uses :use requires :require :as params}
+        (reduce (fn [m [k & libs]]
+                  (assert (#{:use :require} k)
+                          "Only :refer-clojure, :require, :use libspecs supported")
+                  (assoc m k 
+                    (into {}
+                          (mapcat
+                            (fn [[lib kw expr]]
+                                (case k
+                                  (:require)
+                                  (do (assert (and expr (= :as kw))
+                                              "Only (:require [lib.ns :as alias]*) form of :require is supported")
+                                    [[expr lib]])
+                                  (:use)
+                                  (do (assert (and expr (= :only kw))
+                                              "Only (:use [lib.ns :only [names]]*) form of :use is supported")
+                                    (map vector expr (repeat lib)))))
+                            libs))))
+                {} (remove (fn [[r]] (= r :refer-clojure)) args))]
+    (set! *ns* name)
+    (require 'clojure.core)
+    (swap! namespaces #(-> %
+                           (assoc-in [name :name] name)
+                           (assoc-in [name :excludes] excludes)
+                           (assoc-in [name :uses] uses)
+                           (assoc-in [name :requires] requires)))
+    {:env env :op :ns :name name :uses uses :requires requires :excludes excludes}))
+
+(defmethod children :ns
+  [form]
+  nil)
+
+(defmethod walk :ns
+  [form f]
+  form)
 
 ;; dot accessor code
 
