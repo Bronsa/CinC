@@ -1,5 +1,5 @@
 (ns clojure.analyzer
-  (:refer-clojure :exclude [macroexpand-1])
+  (:refer-clojure :exclude [macroexpand-1 *ns*])
   (:require [clojure.java.io :as io]
             [clojure.string :as string])
   (:use [clojure pprint]))
@@ -9,7 +9,8 @@
   (in-ns 'clojure.core) 
   (load "core1") 
   (in-ns 'clojure.analyzer) 
-  (refer 'clojure.core :only '[namespaces])) 
+  (def ^:dynamic *ns* 'user)
+  (refer 'clojure.core :only '[namespaces *warn-on-undeclared*])) 
 
 (def specials '#{quote def fn* if do let* loop* recur new . reify gen-interface})
 

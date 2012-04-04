@@ -1,4 +1,19 @@
+(in-ns 'clojure.reflect)
+(deftype BetterReflector []
+  Reflector
+  (do-reflect [_ typeref]
+           (let [cls (Class/forName (typename typeref) false (clojure.lang.RT/baseLoader))]
+             {:bases (not-empty (set (map typesym (bases cls))))
+              :flags (parse-flags (.getModifiers cls) :class)
+              :members (set/union (declared-fields cls)
+                                  (declared-methods cls)
+                                  (declared-constructors cls))})))
+
 (in-ns 'clojure.java.compiler)
+
+(let [reflector (clojure.reflect.BetterReflector.)]
+  (defn type-reflect [typeref & options]
+    (apply clojure.reflect/type-reflect typeref :reflector reflector options)))
 
 (declare compute-type)
 
@@ -329,7 +344,7 @@
 (defmethod compute-type :reify
   [{:as form :keys [name]}]
   (let [name (if name name (gensym "reify__"))]
-    (assoc form :name name :class (resolve name))))
+    (assoc form :name name :type (resolve name))))
 
 (defmethod compute-type :new
   [{:as form :keys [ctor]}]

@@ -1,10 +1,10 @@
 (ns clojure.java.compiler
-  (:refer-clojure :exclude [eval load munge *ns* type])
+  (:refer-clojure :exclude [eval load munge type *ns*])
   (:require [clojure.java.io :as io]
             [clojure.string :as string])
   (:use [clojure
-          [analyzer :only [analyze children resolve-var walk]]
-          [reflect :only [type-reflect]]
+          [analyzer :only [analyze children *ns* resolve-var walk]]
+          [reflect :only []]
           [set :only [select]]
           pprint repl]) ; for debugging
   (:import [org.objectweb.asm Type Opcodes ClassReader ClassWriter]
@@ -23,8 +23,23 @@
 (def ^:private prims
   {"byte" Byte/TYPE "bool" Boolean/TYPE "char" Character/TYPE "int" Integer/TYPE "long" Long/TYPE "float" Float/TYPE "double" Double/TYPE "void" Void/TYPE})
 
+(declare asm-type asm-method maybe-class)
+
 (defn array-class [element-type]
-  (RT/classForName (str "[" (.getDescriptor element-type) ";")))
+  (RT/classForName (str "[" (-> element-type maybe-class asm-type .getDescriptor (.replace \/ \.)))))
+
+(defn- asm-type [s]
+  (when s
+    (let [class (maybe-class s)]
+      (if class
+        (Type/getType class)
+        (Type/getType s)))))
+
+(defn- asm-method
+  ([{:keys [name return-types parameter-types]}]
+   (apply asm-method name return-types parameter-types))
+  ([name return-type & args]
+   (Method. (str name) (asm-type return-type) (into-array Type (map asm-type args)))))
 
 (defmulti maybe-class class)
 (defmethod maybe-class nil [_] nil)
@@ -105,20 +120,7 @@
       (not (or (nil? c) (= c Void/TYPE)))
       (.isPrimitive c))))
 
-(defn- asm-type [s]
-  (when s
-    (let [class (maybe-class s)]
-      (if class
-        (Type/getType class)
-        (Type/getType s)))))
-
-(defn- asm-method
-  ([{:keys [name return-types parameter-types]}]
-   (apply asm-method name return-types parameter-types))
-  ([name return-type & args]
-   (Method. (str name) (asm-type return-type) (into-array Type (map asm-type args)))))
-
-(load "compiler/ast")
+(clojure.core/load "compiler/ast")
 
 ; Frame members (maybe these should be separate variables?):
 ; :class - ASM type of current class being written
