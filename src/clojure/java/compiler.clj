@@ -201,7 +201,7 @@
      (eval form)))
   ([form]
    (binding [*loader* (if *loader* *loader* (DynamicClassLoader.))]
-     (if (= (first form) 'do)
+     (if false #_(= (first form) 'do)
        ;; Special handling for do, pick it apart and eval the pieces
        (let [[op & statements] form]
          (when statements
@@ -658,17 +658,79 @@
         false-label (.newLabel *gen*)
         end-label (.newLabel *gen*)]
     (.visitLineNumber *gen* line (.mark *gen*))
+    ;; Emit test
     (emit-test test null-label false-label)
+    ;; True, emit then
     (emit then)
     (.goTo *gen* end-label)
 
     (.mark *gen* null-label)
     (asm-pop (expression-type test))
-
+    ;; False label, emit else
     (.mark *gen* false-label)
     (emit else)
 
     (.mark *gen* end-label)))
+
+(defmethod emit :throw 
+  [{:keys [throw env]}]  
+  (emit throw)
+  (.checkCast *gen* (asm-type java.lang.Throwable))
+  (.throwException *gen*))
+
+(defmethod emit :try
+  [{:keys [try catches finally]}]
+  (let [[start-try-label end-try-label ret-label finally-label] (repeatedly #(.newLabel *gen*))
+        catch-clauses (into [] 
+                        (for [clause catches] 
+                          (let [start-clause-label (.newLabel *gen*)
+                                end-clause-label (.newLabel *gen*)
+                                catch-type-name (-> clause :catch-type maybe-class .getName (.replace \. \/))]  
+                            (.visitTryCatchBlock *gen* start-try-label end-try-label start-clause-label catch-type-name)
+                            {:clause clause :start-clause-label start-clause-label :end-clause-label end-clause-label})))
+        return-type (expression-type try)
+        asm-return-type (asm-type return-type)
+        ret-local (next-local return-type)
+        catch-local-index (next-local java.lang.Object)]
+    (when finally
+      (.visitTryCatchBlock *gen* start-try-label end-try-label finally-label nil)) 
+    (.mark *gen* start-try-label)
+    (emit try)
+    ;; Store the result in ret-local
+    (.visitVarInsn *gen* (.getOpcode asm-return-type Opcodes/ISTORE) ret-local)
+    (.mark *gen* end-try-label)
+    (when finally
+      (emit finally))
+    (.goTo *gen* ret-label)
+    (doseq [{:keys [start-clause-label clause end-clause-label]} catch-clauses] 
+      (let [{:keys [catch-type catch-local]} clause]
+        (binding [*frame* (copy-frame)]
+          (when finally
+            (.visitTryCatchBlock *gen* start-clause-label end-clause-label finally-label nil))    
+          (.mark *gen* start-clause-label)  
+          ;; Make the exception that is on the stack available as the catch-local
+          (swap! *frame* assoc-in [:locals catch-local] {:index catch-local-index :type catch-type})
+          (.visitVarInsn *gen* (.getOpcode object-type Opcodes/ISTORE) catch-local-index)  
+          (emit clause)  
+          ;; Store the result back in ret-local
+          (.visitVarInsn *gen* (.getOpcode asm-return-type Opcodes/ISTORE) ret-local)  
+          (.mark *gen* end-clause-label)  
+          (when finally
+            (emit finally))
+          (.goTo *gen* ret-label)
+          (.visitLocalVariable 
+            *gen* (str catch-local) (.getDescriptor object-type) nil start-clause-label end-clause-label catch-local-index))))
+    ;; Finally for unhandled exceptions
+    (when finally
+      (.mark *gen* finally-label)
+      (let [temp (next-local java.lang.Object)]
+        ;; Save the exception that is on the stack
+        (.visitVarInsn *gen* (.getOpcode object-type Opcodes/ISTORE) temp)
+        (emit finally)
+        (.visitVarInsn *gen* (.getOpcode object-type Opcodes/ILOAD) temp)
+        (.throwException *gen*)))
+    (.mark *gen* ret-label)
+    (.visitVarInsn *gen* (.getOpcode asm-return-type Opcodes/ILOAD) ret-local)))
 
 (defmethod emit :def [{:keys [name form init env doc export] :as args}]
   (let [sym (second form)

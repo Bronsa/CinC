@@ -12,7 +12,7 @@
   (def ^:dynamic *ns* 'user)
   (refer 'clojure.core :only '[namespaces *warn-on-undeclared*])) 
 
-(def specials '#{quote def fn* if do let* loop* recur new . reify gen-interface})
+(def specials '#{quote def fn* if do let* loop* throw try recur new . reify})
 
 (def ^:dynamic *recur-frames* nil)
 
@@ -42,6 +42,16 @@ containing at least :form, :op and :env keys)."
        (vector? form) (analyze-vector env form name)
        (set? form) (analyze-set env form name)
        :else {:op :constant :env env :form form}))))
+
+(defn analyze-block
+  "returns {:statements .. :ret ..}"
+  [env exprs]
+  (let [statements (disallowing-recur
+    (seq (map #(analyze (assoc env :context :statement ) %) (butlast exprs))))
+        ret (if (<= (count exprs) 1)
+      (analyze env (first exprs))
+      (analyze (assoc env :context (if (= :statement (:context env)) :statement :return )) (last exprs)))]
+    {:statements statements :ret ret}))
 
 ;; TODO: This could be children-keys that just returns the keys of the children, then walk would probably
 ;             be simple to implement in terms of that
@@ -120,10 +130,10 @@ containing at least :form, :op and :env keys)."
                 sym)))
 
           (get-in @namespaces [(-> env :ns :name ) :uses sym])
-          (var-fn env (get-in @namespaces [(-> env :ns :name ) :uses sym]) (name sym))
+          (var-fn env (get-in @namespaces [(-> env :ns :name) :uses sym]) (name sym))
 
           :else
-          (let [full-ns (if (core-name? env sym) 'clojure.core (-> env :ns :name ))]
+          (let [full-ns (if (core-name? env sym) 'clojure.core (-> env :ns :name))]
             (var-fn env full-ns sym)))]
     {:name nm})))
 
@@ -281,12 +291,69 @@ containing at least :form, :op and :env keys)."
     (update-in [:then] f)
     (update-in [:else] f)))
 
+(defmethod parse 'throw
+  [op env [_ throw :as form] name]
+  (let [throw-expr (disallowing-recur (analyze (assoc env :context :expr) throw))]
+    {:env env :op :throw :form form
+     :throw throw-expr}))
+
+(defmethod children :throw
+  [{:keys [throw]}]
+  [throw])
+
+(defmethod walk :throw
+  [form f]
+  (update-in form [:throw] f))
+
+(defmethod parse 'try
+  [op env [_ & body :as form] name]
+  (let [catch? #(and (list? %) (= (first %) 'catch))
+        finally? #(and (list? %) (= (first %) 'finally))
+        [body tail] (split-with (complement #(or (catch? %) (finally? %))) body)
+        [cblocks [fblock]] (split-with catch? tail)
+        catchenv (update-in env [:context] #(if (= :expr %) :return %))
+        try (when body
+              (assoc (analyze-block (if (or cblocks fblock) catchenv env) body) :op :do))
+        catches (into [] 
+                  (map 
+                    (fn [[ _ type name & cb]] 
+                      (let [locals (:locals catchenv)
+                            locals (if name
+                                     (assoc locals name {:name name})
+                                     locals)]
+                      (assoc (analyze-block (assoc catchenv :locals locals) cb) :op :do :catch-type type :catch-local name)))
+                   cblocks))
+        finally (when (seq fblock)  
+                  (assoc (analyze-block (assoc env :context :statement) (rest fblock)) :op :do))]
+    (when name (assert (not (namespace name)) "Can't qualify symbol in catch"))
+    {:env env :op :try :form form
+     :try try
+     :finally finally
+     :name name
+     :catches catches}))
+
+(defmethod children :try
+  [{:keys [try catches finally]}]
+  (let [ret (conj catches try)]
+    (if finally
+      (cons finally ret)
+      ret)))
+
+(defmethod walk :try
+  [form f]
+  (let [form (-> form
+               (update-in [:try] f)  
+               (update-in [:catches] (walk-coll f)))]
+    (if-let [finally (:finally form)]
+      (assoc form :finally (f finally))
+      form)))
+
 (defmethod parse 'def
   [op env form name]
   (let [pfn (fn
-    ([_ sym] {:sym sym})
-    ([_ sym init] {:sym sym :init init})
-    ([_ sym doc init] {:sym sym :doc doc :init init}))
+              ([_ sym] {:sym sym})
+              ([_ sym init] {:sym sym :init init})
+              ([_ sym doc init] {:sym sym :doc doc :init init}))
         args (apply pfn form)
         sym (:sym args)]
     (assert (not (namespace sym)) "Can't def ns-qualified name")
@@ -317,16 +384,6 @@ containing at least :form, :op and :env keys)."
   (if-let [init (:init form)]
     (assoc form :init (f init))
     form))
-
-(defn analyze-block
-  "returns {:statements .. :ret ..}"
-  [env exprs]
-  (let [statements (disallowing-recur
-    (seq (map #(analyze (assoc env :context :statement ) %) (butlast exprs))))
-        ret (if (<= (count exprs) 1)
-      (analyze env (first exprs))
-      (analyze (assoc env :context (if (= :statement (:context env)) :statement :return )) (last exprs)))]
-    {:statements statements :ret ret}))
 
 (defn- analyze-fn-method [env locals meth]
   (letfn [(uniqify [[p & r]]

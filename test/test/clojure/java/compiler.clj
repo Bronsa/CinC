@@ -116,3 +116,10 @@
   (is (= :success ((c/eval '(let [a :success] (reify clojure.lang.IFn (invoke [this] (let [a a] a))))))) "locals shadow captures correctly")
   (is (= :success ((c/eval '(reify clojure.lang.IFn (invoke [this a] (let [a :success] a)))) :failure)) "locals shadow args")
   (is (= :success ((c/eval '(reify clojure.lang.IFn (invoke [this a] (let [a a] a)))) :success)) "locals shadow args correctly"))
+
+(deftest exceptions
+  (is (= :success (c/eval '(try :success))))
+  (is (= :success (c/eval '(try :success (catch java.lang.Exception e :failure)))))
+  (is (= :success (c/eval '(try :success (finally :failure)))))
+  (is (= :success (c/eval '(try :success (catch java.lang.Exception e :failure) (finally :failure)))))
+  (is (= :success (c/eval '(try (/ 1 0) :failure (catch Throwable e :success) (finally :failure))))))

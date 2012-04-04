@@ -117,6 +117,12 @@
         (assoc-in [:else :box] true))
       form)))
 
+(defmethod set-box :try
+  [form]
+  (if (:box form)
+    (walk-node #(assoc % :box true) form)
+    form))
+
 (defmethod set-box :fn
   [form]
   ;; TODO: this needs to check type hints, etc
@@ -379,6 +385,11 @@
                  (convertible? then-type else-type) else-type
                  :else nil))]
     (assoc form :type type)))
+
+(defmethod compute-type :try
+  [{:as form :keys [try catch finally]}]
+  ; TODO: Reconcile types, report prim/unboxed mismatches
+  (assoc form :type (expression-type try)))  
 
 (def process-frames (ast-processor [set-box]
                       [collect-constants collect-vars collect-callsites compute-type transform]))
