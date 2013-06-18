@@ -199,7 +199,6 @@
      quote var . set! case* import* try catch
      deftype* reify* throw finally new &})
 
-
 (defn macroexpand-1 [form env]
   (if (seq? form)
     (let [op (first form)]
@@ -207,7 +206,6 @@
         form
         (let [v (try (resolve-var op true)
                      (catch Exception _))]
-
           (if (and (not (-> env :locals op)) ;; locals cannot be macros
                    (:macro (meta v)))
             (apply @v env form (rest form)) ; (m &env &form & args)
@@ -235,10 +233,8 @@
                  :else form))
               (if-let [c (maybe-class op)]
                 (throw (ex-info (str "expecting var but" form "is mapped to " c) {:form form}))
-                form))))))))
+                form))))))
+    form))
 
-;; ;; (defmethod -analyze :seq
-;; ;;   [_ form env])
-;; (if-let [v (and (not (-> env :locals op))
-;;                         (resolve-var namespace op))]
-;; )
+(defmethod -analyze :seq
+  [_ form env])
