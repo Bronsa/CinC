@@ -28,7 +28,7 @@
 
        (symbol? form)   (-analyze :symbol     form env) ;; TODO
        (keyword? form)  (-analyze :keyword    form env) ;; need to register
-       (string? form)   (-analyze :string     (.intern ^String form) env)
+       (string? form)   (-analyze :string     form env)
        (number? form)   (-analyze :number     form env)
 
        ;; don't move those, we need to skip the empty check for records
@@ -58,7 +58,7 @@
   {:op       :string
    :env      env
    :literal? true
-   :form     (.intern ^String form)})
+   :form     form})
 
 (defmethod -analyze :const ;; char, regexes, classes, quoted stuff
   [_ form env type]
