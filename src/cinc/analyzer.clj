@@ -201,6 +201,33 @@
      quote var . set! case* import* try catch
      deftype* reify* throw finally new &})
 
+(defn desugar-dot [[op & expr :as form]]
+  (if (symbol? op)
+    (let [opname (name op)]
+      (cond
+
+       (= (first opname) \.)  ; (.foo bar ..)
+       (let [[target & args] expr
+             target (if (maybe-class target)
+                      (with-meta (list 'clojure.core/identity target) {:tag Class})
+                      target)]
+         (with-meta (list* '. target (symbol (subs opname 1)) args)
+           (meta form)))
+
+       (and (namespace op)
+                      (maybe-class (namespace op))) ; (class/field ..)
+       (let [target (maybe-class (namespace op))]
+         (with-meta (list* '. target opname expr)
+           (meta form)))
+
+       (= (last opname) \.) ;; (class. ..)
+       (list* 'new (symbol (subs opname 0 (dec (count opname)))) expr)
+
+       :else form))
+    (if-let [c (maybe-class op)]
+      (throw (ex-info (str "expecting var but" form "is mapped to " c) {:form form}))
+      form)))
+
 (defn macroexpand-1 [form env]
   (if (seq? form)
     (let [op (first form)]
@@ -211,31 +238,7 @@
           (if (and (not (-> env :locals op)) ;; locals cannot be macros
                    (:macro (meta v)))
             (apply @v env form (rest form)) ; (m &env &form & args)
-            (if (symbol? op)
-              (let [opname (name op)]
-                (cond
-
-                 (= (first opname) \.) ; (.foo bar ..)
-                 (let [[target & args] (next form)
-                       target (if (maybe-class target)
-                                (with-meta (list 'clojure.core/identity target) {:tag Class})
-                                target)]
-                   (with-meta (list* '. target (symbol (subs opname 1)) args)
-                     (meta form)))
-
-                 (and (namespace op)
-                      (maybe-class (namespace op))) ; (class/field ..)
-                 (let [target (maybe-class (namespace op))]
-                   (with-meta (list* '. target opname (next form))
-                     (meta form)))
-
-                 (= (last opname) \.) ;; (class. ..)
-                 (list* 'new (symbol (subs opname 0 (dec (count opname)))) (next form))
-
-                 :else form))
-              (if-let [c (maybe-class op)]
-                (throw (ex-info (str "expecting var but" form "is mapped to " c) {:form form}))
-                form))))))
+            (desugar-dot form)))))
     form))
 
 (defmethod -analyze :seq
