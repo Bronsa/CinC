@@ -1,21 +1,20 @@
 (ns clojure.analyzer
-  (:refer-clojure :exclude [macroexpand-1 *ns*])
+  (:refer-clojure :exclude [macroexpand-1])
   (:require [clojure.java.io :as io]
             [clojure.string :as s])
-  (:import (clojure.lang LazySeq IRecord IType)))
+  (:import (clojure.lang LazySeq IRecord IType ILookup Var RT)))
 
 (defn record? [x]
   (instance? IRecord x))
 (defn type? [x]
   (instance? IType x))
 
-(defmulti -analyze (fn [op form env & _]))
+(defmulti -analyze (fn [op form env & _] op))
 
 (defn analyze [form env]
   "Given an environment, a map containing
    -  :locals (mapping of names to lexical bindings),
    -  :context (one of :statement, :expr, :return, :eval),
-   -  :ns (a symbol naming the compilation ns)
  and form, returns an expression object (a map containing at least :form, :op and :env keys)."
   (let [form (if (instance? LazySeq form)
                (or (seq form) ())  ; we need to force evaluation in order to analyze
@@ -69,6 +68,13 @@
    :literal? true
    :form     form})
 
+(defmethod -analyze :number
+  [_ form env]
+  {:op       :number
+   :env      env
+   :literal? true
+   :form     form})
+
 (defn coll-type [coll]
   (cond
    (seq? coll)    :list
@@ -117,6 +123,9 @@
     :env  env
     :type (coll-type form)
     :form form}))
+
+(defn ^:private analyze-in-env [env]
+  (fn [form] (analyze form env)))
 
 (defmethod -analyze :vector
   [_ form env]
