@@ -1,7 +1,10 @@
+(set! *warn-on-reflection* true)
+
 (ns cinc.analyzer
   (:refer-clojure :exclude [macroexpand-1])
   (:require [clojure.java.io :as io]
-            [clojure.string :as s])
+            [clojure.string :as s]
+            [cinc.host-utils :refer :all])
   (:import (clojure.lang LazySeq IRecord IType ILookup Var RT)))
 
 (defn record? [x]
@@ -173,41 +176,6 @@
         :items items
         :form  form}))))
 
-(defn resolve-ns [ns]
-  (when ns
-    (or (find-ns ns)
-        ((ns-aliases *ns*) ns))))
-
-(defn private? [var]
-  (:private (meta var)))
-(defn macro? [var]
-  (:macro (meta var)))
-
-(defn resolve-var [sym env]
-  (let [name (-> sym name symbol)
-        ns (when-let [ns (namespace sym)]
-             (symbol ns))
-        full-ns (resolve-ns ns)]
-    (when (or (not ns)
-              (and ns full-ns))
-      (if-let [var (if full-ns
-                     ((ns-interns full-ns) name)
-                     ((ns-map *ns*) name))]
-        (let [var-ns (.ns ^Var var)]
-          (when (and (not= *ns* var-ns)
-                     (private? var))
-            (throw (ex-info (str "var: " sym " is not public") {:var sym})))
-          (when (macro? var)
-            (throw (ex-info (str "can't take value of a macro: " var) {:var var})))
-          {:name name
-           :ns   (ns-name var-ns)
-           :var  var})
-        (when full-ns
-          (throw (ex-info (str "no such var: " sym) {:var sym})))))))
-
-(defn maybe-host-expr [sym]
-  )
-
 ;; constans will be detected in a second pass
 ;; will move constant colls detection to that pass too
 (defmethod -analyze :symbol
@@ -215,9 +183,11 @@
   (let [ret (if-let [local-binding (-> env :locals sym)]
               (assoc local-binding
                 :op :local-binding)
-              (if-let [var (resolve-var sym env)]
-                (assoc var
-                  :op :var)
+              (if-let [^Var var (resolve-var sym)]
+                {:op   :var
+                 :name (.sym var)
+                 :ns   (-> var .ns .name)
+                 :var  var}
                 (or (maybe-host-expr sym)
                     (throw (ex-info (str "could not resolve var: " sym) {:var sym})))))]
     (into {:env  env
