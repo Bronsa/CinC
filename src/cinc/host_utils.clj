@@ -102,7 +102,12 @@
         (if (static-field class field)
           {:op    :static-field
            :class class
-           :field field})))
+           :field field}
+          (throw (ex-info (str "unable to find static field: " field " in " class)
+                          {:field field
+                           :class class})))))
     (if-let [class (maybe-class sym)]
       {:op    :class
-       :class class})))
+       :class class}
+      (throw (ex-info (str "Class not found: " sym)
+                      {:class sym})))))
