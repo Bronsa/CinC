@@ -1,4 +1,4 @@
-(ns clojure.analyzer
+(ns cinc.analyzer
   (:refer-clojure :exclude [macroexpand-1])
   (:require [clojure.java.io :as io]
             [clojure.string :as s])
