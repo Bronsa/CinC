@@ -14,25 +14,28 @@
     (or (find-ns ns)
         ((ns-aliases *ns*) ns))))
 
-(defn resolve-var [sym]
-  (let [name (-> sym name symbol)
-        ns (when-let [ns (namespace sym)]
-             (symbol ns))
-        full-ns (resolve-ns ns)]
-    (when (or (not ns)
-              (and ns full-ns))
-      (if-let [var (if full-ns
-                     ((ns-interns full-ns) name)
-                     ((ns-map *ns*) name))]
-        (let [var-ns (.ns ^Var var)]
-          (when (and (not= *ns* var-ns)
-                     (private? var))
-            (throw (ex-info (str "var: " sym " is not public") {:var sym})))
-          (when (macro? var)
-            (throw (ex-info (str "can't take value of a macro: " var) {:var var})))
-          var)
-        (when full-ns
-          (throw (ex-info (str "no such var: " sym) {:var sym})))))))
+(defn resolve-var
+  ([sym] (resolve-var sym false))
+  ([sym allow-macro?]
+     (let [name (-> sym name symbol)
+           ns (when-let [ns (namespace sym)]
+                (symbol ns))
+           full-ns (resolve-ns ns)]
+       (when (or (not ns)
+                 (and ns full-ns))
+         (if-let [var (if full-ns
+                        ((ns-interns full-ns) name)
+                        ((ns-map *ns*) name))]
+           (when (var? var)
+             (let [var-ns (.ns ^Var var)]
+               (when (and (not= *ns* var-ns)
+                          (private? var))
+                 (throw (ex-info (str "var: " sym " is not public") {:var sym})))
+               (if (and (macro? var) (not allow-macro?))
+                 (throw (ex-info (str "can't take value of a macro: " var) {:var var}))
+                 var)))
+           (when full-ns
+             (throw (ex-info (str "no such var: " sym) {:var sym}))))))))
 
 (let [reflector (reflect/->JavaReflector (RT/baseLoader))]
   (defn type-reflect [typeref & options]
