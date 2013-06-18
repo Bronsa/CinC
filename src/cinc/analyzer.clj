@@ -13,6 +13,7 @@
   (instance? IType x))
 
 (defmulti -analyze (fn [op form env & _] op))
+(defmulti parse (fn [op & rest] op))
 
 (defn analyze [form env]
   "Given an environment, a map containing
@@ -237,4 +238,16 @@
     form))
 
 (defmethod -analyze :seq
-  [_ form env])
+  [_ form env]
+  (let [env (assoc env :line
+                   (or (-> form meta :line)
+                       (:line env)))]
+    (let [op (first form)]
+      (if (nil? op)
+        (ex-info "Can't call nil" {:form form}))
+      (let [mform (macroexpand-1 form env)]
+        (if (identical? form mform)
+          (if (specials op)
+            (parse op form env)
+            (parse :invoke form env))
+          (analyze env mform name))))))
