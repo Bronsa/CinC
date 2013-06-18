@@ -284,3 +284,15 @@
      :test test
      :then then
      :else else}))
+
+(defmethod parse 'new
+  [_ [_ class & args :as form] env]
+  {:pre [(>= 2 (count form))]}
+  (if-let [class (maybe-class class)]
+    (let [args-env (or-eval env :expr)
+          args (mapv (analyze-in-env args-env) args)]
+      {:op    :new
+       :env   env
+       :form  form
+       :class class
+       :args  args})))
