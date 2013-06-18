@@ -254,14 +254,14 @@
           (if (specials op)
             (parse op form env)
             (parse :invoke form env))
-          (analyze env mform name))))))
+          (analyze mform env))))))
 
 (defn analyze-block
   "returns {:statements .. :ret ..}"
   [exprs env]
   (let [statements-env (or-eval env :statement)
-        statements (seq (map (analyze-in-env statements-env)
-                             (butlast exprs)))
+        statements (mapv (analyze-in-env statements-env)
+                         (butlast exprs))
         ret (analyze (last exprs) env)]
     {:statements statements
      :ret        ret}))
@@ -281,13 +281,15 @@
         then (analyze then env)
         else (analyze else env)]
     {:op   :if
+     :form form
+     :env  env
      :test test
      :then then
      :else else}))
 
 (defmethod parse 'new
   [_ [_ class & args :as form] env]
-  {:pre [(>= 2 (count form))]}
+  {:pre [(>= (count form) 2)]}
   (if-let [class (maybe-class class)]
     (let [args-env (or-eval env :expr)
           args (mapv (analyze-in-env args-env) args)]
