@@ -184,12 +184,14 @@
   [_ sym env]
   (let [ret (if-let [local-binding (-> env :locals sym)]
               (assoc local-binding
-                :op :local-binding)
+                :op         :local-binding
+                :assignable? true)
               (if-let [^Var var (resolve-var sym)]
-                {:op   :var
-                 :name (.sym var)
-                 :ns   (-> var .ns .name)
-                 :var  var}
+                {:op         :var
+                 :name       (.sym var)
+                 :ns         (-> var .ns .name)
+                 :assignabe? true
+                 :var        var}
                 (or (maybe-host-expr sym)
                     (throw (ex-info (str "could not resolve var: " sym) {:var sym})))))]
     (into {:env  env
@@ -307,3 +309,21 @@
      :form form
      :var  var}
     (throw (ex-info (str "var not found: " var) {:var var}))))
+
+;; clojure parses for empty-colls/numbers/strings
+(defmethod parse 'quote
+  [_ [_ expr :as form] env]
+  {:op   :constant
+   :env  env
+   :form form})
+
+(defmethod parse 'set!
+  [_ [_ target val :as form] env]
+  {:pre [(= (count form) 3)]}
+  (let [target (analyze target (assoc env :context :expr))]
+    (if (:assignable? target) ;; + instance fields
+      {:op     :set!
+       :env    env
+       :form   form
+       :target target
+       :val    val})))

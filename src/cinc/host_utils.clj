@@ -41,10 +41,6 @@
   (try (resolve-var sym true)
        (catch Exception _)))
 
-(let [reflector (reflect/->JavaReflector (RT/baseLoader))]
-  (defn type-reflect [typeref & options]
-    (apply reflect/type-reflect typeref :reflector reflector options)))
-
 (def ^:private prims
   {"byte" Byte/TYPE
    "bool" Boolean/TYPE
@@ -107,9 +103,10 @@
     (if-let [class (maybe-class c)]
       (let [field (-> sym name symbol)]
         (if (static-field class field)
-          {:op    :static-field
-           :class class
-           :field field}
+          {:op          :static-field
+           :assignable? true
+           :class       class
+           :field       field}
           (throw (ex-info (str "unable to find static field: " field " in " class)
                           {:field field
                            :class class})))))
