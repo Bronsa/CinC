@@ -37,6 +37,10 @@
            (when full-ns
              (throw (ex-info (str "no such var: " sym) {:var sym}))))))))
 
+(defn maybe-var [sym]
+  (try (resolve-var sym true)
+       (catch Exception _)))
+
 (let [reflector (reflect/->JavaReflector (RT/baseLoader))]
   (defn type-reflect [typeref & options]
     (apply reflect/type-reflect typeref :reflector reflector options)))

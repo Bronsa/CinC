@@ -233,8 +233,7 @@
     (let [op (first form)]
       (if (specials op)
         form
-        (let [v (try (resolve-var op true)
-                     (catch Exception _))]
+        (let [v (maybe-var op)]
           (if (and (not (-> env :locals op)) ;; locals cannot be macros
                    (:macro (meta v)))
             (apply @v env form (rest form)) ; (m &env &form & args)
@@ -297,4 +296,14 @@
        :env   env
        :form  form
        :class class
-       :args  args})))
+       :args  args})
+    (throw (ex-info (str "class not found: " class) {:class class}))))
+
+(defmethod parse 'var
+  [_ [_ var :as form] env]
+  (if-let [var (maybe-var var)]
+    {:op   :var
+     :env  env
+     :form form
+     :var  var}
+    (throw (ex-info (str "var not found: " var) {:var var}))))
