@@ -15,11 +15,12 @@
 (defmulti -analyze (fn [op form env & _] op))
 (defmulti parse (fn [op & rest] op))
 
-(defn analyze [form env]
+(defn analyze
   "Given an environment, a map containing
    -  :locals (mapping of names to lexical bindings),
    -  :context (one of :statement, :expr, :return, :eval),
  and form, returns an expression object (a map containing at least :form, :op and :env keys)."
+  [form env]
   (let [form (if (instance? LazySeq form)
                (or (seq form) ())  ; we need to force evaluation in order to analyze
                form)]
