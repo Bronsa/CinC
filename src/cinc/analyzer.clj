@@ -13,7 +13,7 @@
   (instance? IType x))
 
 (defmulti -analyze (fn [op form env & _] op))
-(defmulti parse (fn [op & rest] op))
+(defmulti parse (fn [[op & form] & rest] op))
 
 (defn analyze
   "Given an environment, a map containing
@@ -253,8 +253,8 @@
       (let [mform (macroexpand-1 form env)]
         (if (identical? form mform)
           (if (specials op)
-            (parse op form env)
-            (parse :invoke form env))
+            (parse form env)
+            (parse (cons ::invoke form) env))
           (analyze mform env))))))
 
 (defn analyze-block
@@ -268,14 +268,14 @@
      :ret        ret}))
 
 (defmethod parse 'do
-  [_ [_ & exprs :as form] env]
+  [[_ & exprs :as form] env]
   (into {:op   :do
          :env  env
          :form form}
         (analyze-block exprs env)))
 
 (defmethod parse 'if
-  [_ [_ test then [& else] :as form] env]
+  [[_ test then [& else] :as form] env]
   {:pre [(or (= 3 (count form))
              (= 4 (count form)))]}
   (let [test (analyze test (or-eval env :expr))
@@ -289,7 +289,7 @@
      :else else}))
 
 (defmethod parse 'new
-  [_ [_ class & args :as form] env]
+  [[_ class & args :as form] env]
   {:pre [(>= (count form) 2)]}
   (if-let [class (maybe-class class)]
     (let [args-env (or-eval env :expr)
@@ -302,7 +302,7 @@
     (throw (ex-info (str "class not found: " class) {:class class}))))
 
 (defmethod parse 'var
-  [_ [_ var :as form] env]
+  [[_ var :as form] env]
   (if-let [var (maybe-var var)]
     {:op   :var
      :env  env
@@ -312,13 +312,13 @@
 
 ;; clojure parses for empty-colls/numbers/strings
 (defmethod parse 'quote
-  [_ [_ expr :as form] env]
+  [[_ expr :as form] env]
   {:op   :constant
    :env  env
    :form form})
 
 (defmethod parse 'set!
-  [_ [_ target val :as form] env]
+  [[_ target val :as form] env]
   {:pre [(= (count form) 3)]}
   (let [target (analyze target (assoc env :context :expr))]
     (if (:assignable? target) ;; + instance fields
