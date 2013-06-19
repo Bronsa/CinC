@@ -236,7 +236,7 @@
       (if (specials op)
         form
         (let [v (maybe-var op)]
-          (if (and (not (-> env :locals op)) ;; locals cannot be macros
+          (if (and (not (-> env :locals (get op))) ;; locals cannot be macros
                    (:macro (meta v)))
             (apply @v env form (rest form)) ; (m &env &form & args)
             (desugar-dot form)))))
