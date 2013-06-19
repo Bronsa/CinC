@@ -75,7 +75,7 @@
         (if (class? maybe-class)
           maybe-class)))))
 
-(defmethod maybe-class nil [_] nil)
+(defmethod maybe-class :default [_] nil)
 (defmethod maybe-class Class [c] c)
 (defmethod maybe-class String [s]
   (maybe-class (symbol s)))
