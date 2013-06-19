@@ -100,7 +100,7 @@
 
 (defn maybe-host-expr [sym]
   (if-let [c (namespace sym)]
-    (if-let [class (maybe-class c)]
+    (when-let [class (maybe-class c)]
       (let [field (-> sym name symbol)]
         (if (static-field class field)
           {:op          :static-field
@@ -113,5 +113,6 @@
     (if-let [class (maybe-class sym)]
       {:op    :class
        :class class}
-      (throw (ex-info (str "Class not found: " sym)
-                      {:class sym})))))
+      (when (.contains (str sym) ".") ;; otherwise throw var not found
+        (throw (ex-info (str "Class not found: " sym)
+                        {:class sym}))))))
