@@ -15,6 +15,8 @@
 (defmulti -analyze (fn [op form env & _] op))
 (defmulti parse (fn [[op & form] & rest] op))
 
+;; once we have all set working, need to figure out a way to stop depending on :eval
+;; see: https://groups.google.com/forum/?fromgroups#!topic/clojure-dev/KI9fvw9fEMg
 (defn analyze
   "Given an environment, a map containing
    -  :locals (mapping of names to lexical bindings),
@@ -31,7 +33,7 @@
 
       (cond
 
-       (symbol? form)   (-analyze :symbol     form env) ;; TODO
+       (symbol? form)   (-analyze :symbol     form env)
        (keyword? form)  (-analyze :keyword    form env) ;; need to register
        (string? form)   (-analyze :string     form env)
        (number? form)   (-analyze :number     form env)
@@ -44,7 +46,7 @@
             (empty? form))
                         (-analyze :empty-coll form env)
 
-       (seq? form)      (-analyze :seq        form env) ;; TODO
+       (seq? form)      (-analyze :seq        form env)
        (vector? form)   (-analyze :vector     form env)
        (map? form)      (-analyze :map        form env)
        (set? form)      (-analyze :set        form env)
@@ -252,9 +254,7 @@
         (ex-info "Can't call nil" {:form form}))
       (let [mform (macroexpand-1 form env)]
         (if (identical? form mform)
-          (if (specials op)
-            (parse form env)
-            (parse (cons ::invoke form) env))
+          (parse form env) ;; invoke == :default
           (analyze mform env))))))
 
 (defn analyze-block
