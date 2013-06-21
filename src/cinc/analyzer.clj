@@ -89,7 +89,11 @@
    (map? coll)    :map
    (set? coll)    :set))
 
-(defn ^:private or-eval [{:keys [context] :as env} ctx]
+(defn ^:private or-eval
+  "Given an env map and a context ctx, returns the env if the
+   context of the env is :eval, otherwise changes the env context
+   ctx and returns the new env map"
+  [{:keys [context] :as env} ctx]
   (if (= :eval context)
     env
     (assoc env :context ctx)))
