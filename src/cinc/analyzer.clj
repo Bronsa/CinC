@@ -193,11 +193,11 @@
                 :op         :local-binding
                 :assignable? true)
               (if-let [^Var var (resolve-var sym)]
-                {:op         :var
-                 :name       (.sym var)
-                 :ns         (-> var .ns .name)
-                 :assignabe? true
-                 :var        var}
+                {:op          :var
+                 :name        (.sym var)
+                 :ns          (-> var .ns .name)
+                 :assignable? true
+                 :var         var}
                 (or (maybe-host-expr sym)
                     (throw (ex-info (str "could not resolve var: " sym) {:var sym})))))]
     (into {:env  env
