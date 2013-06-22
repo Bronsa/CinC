@@ -364,12 +364,13 @@
   (if-let [ec (maybe-class etype)]
     (if (and (symbol? ename)
              (not (namespace ename)))
-      (into (analyze-block body (update-in env [:locals] assoc ename {:name ename}))
-            {:op    :catch
-             :class ec
-             :local ename
-             :env   env
-             :form  form})
+      {:op    :catch
+       :class ec
+       :local ename
+       :env   env
+       :form  form
+       :body  (parse (cons 'do body) (assoc-in env [:locals] ename {:name ename
+                                                                    :tag  etype}))}
       (throw (ex-info (str "invalid binding form: " ename) {:sym ename})))
     (throw (ex-info (str "unable to resolve classname: " etype) {:class etype}))))
 
