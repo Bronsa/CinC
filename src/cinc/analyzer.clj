@@ -325,7 +325,7 @@
   [[_ target val :as form] env]
   {:pre [(= (count form) 3)]}
   (let [target (analyze target (assoc env :context :expr))]
-    (if (:assignable? target) ;; + instance fields
+    (if (:assignable? target) ;; + fields
       {:op     :set!
        :env    env
        :form   form
@@ -372,3 +372,12 @@
              :form  form})
       (throw (ex-info (str "invalid binding form: " ename) {:sym ename})))
     (throw (ex-info (str "unable to resolve classname: " etype) {:class etype}))))
+
+(defmethod parse 'throw
+  [[_ throw :as form] {:keys [context] :as env}]
+  (if (= context :eval)
+    (analyze `((^:once fn* [] ~form)) env)
+    {:op    :throw
+     :env   env
+     :form  form
+     :throw (analyze throw (assoc env :context :expr))}))
