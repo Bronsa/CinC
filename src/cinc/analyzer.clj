@@ -364,7 +364,7 @@
     (throw (ex-info (str "unable to resolve class: " etype) {:class etype}))))
 
 (defmethod parse 'throw
-  [[_ throw :as form] {:keys [context] :as env}]
+  [[_ throw :as form] env]
   {:op    :throw
    :env   env
    :form  form
