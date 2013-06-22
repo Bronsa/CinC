@@ -15,12 +15,10 @@
 (defmulti -analyze (fn [op form env & _] op))
 (defmulti parse (fn [[op & form] & rest] op))
 
-;; once we have all set working, need to figure out a way to stop depending on :eval
-;; see: https://groups.google.com/forum/?fromgroups#!topic/clojure-dev/KI9fvw9fEMg
 (defn analyze
   "Given an environment, a map containing
    -  :locals (mapping of names to lexical bindings),
-   -  :context (one of :statement, :expr, :return, :eval),
+   -  :context (one of :statement, :expr, :return),
  and form, returns an expression object (a map containing at least :form, :op and :env keys)."
   [form env]
   (let [form (if (instance? LazySeq form)
@@ -89,22 +87,13 @@
    (map? coll)    :map
    (set? coll)    :set))
 
-(defn ^:private or-eval
-  "Given an env map and a context ctx, returns the env if the
-   context of the env is :eval, otherwise changes the env context
-   ctx and returns the new env map"
-  [{:keys [context] :as env} ctx]
-  (if (= :eval context)
-    env
-    (assoc env :context ctx)))
-
 (defn wrapping-meta [{:keys [form env] :as expr}]
   (if (meta form)
     {:op   :meta
      :env  env
      :form form
-     :meta (-analyze :map (meta form) (or-eval env :expr))
-     :expr (update-in expr [:env] or-eval :expr)}
+     :meta (-analyze :map (meta form) (assoc env :context :expr))
+     :expr (assoc-in expr [:env :context] :expr)}
     expr))
 
 (defmethod -analyze :type
@@ -140,7 +129,7 @@
 
 (defmethod -analyze :vector
   [_ form env]
-  (let [items-env (or-eval env :expr)
+  (let [items-env (assoc env :context :expr)
         items (mapv (analyze-in-env items-env) form)
         const? (and (every? :literal? items)
                     (not (meta form)))]
@@ -154,7 +143,7 @@
 
 (defmethod -analyze :map
   [_ form env]
-  (let [kv-env (or-eval env :expr)
+  (let [kv-env (assoc env :context :expr)
         keys (keys form)
         vals (vals form)
         [ks vs] (map (partial mapv (analyze-in-env kv-env)) [keys vals])
@@ -172,7 +161,7 @@
 
 (defmethod -analyze :set
   [_ form env]
-  (let [items-env (or-eval env :expr)
+  (let [items-env (assoc env :context :expr)
         items (mapv (analyze-in-env items-env) form)
         const? (and (every? :literal? items)
                     (not (meta form)))]
@@ -264,7 +253,7 @@
 (defn analyze-block
   "returns {:statements .. :ret ..}"
   [exprs env]
-  (let [statements-env (or-eval env :statement)
+  (let [statements-env (assoc env :context :statement)
         statements (mapv (analyze-in-env statements-env)
                          (butlast exprs))
         ret (analyze (last exprs) env)]
@@ -282,7 +271,7 @@
   [[_ test then [& else] :as form] env]
   {:pre [(or (= 3 (count form))
              (= 4 (count form)))]}
-  (let [test (analyze test (or-eval env :expr))
+  (let [test (analyze test (assoc env :context :expr))
         then (analyze then env)
         else (analyze else env)]
     {:op   :if
@@ -296,7 +285,7 @@
   [[_ class & args :as form] env]
   {:pre [(>= (count form) 2)]}
   (if-let [class (maybe-class class)]
-    (let [args-env (or-eval env :expr)
+    (let [args-env (assoc env :context :expr)
           args (mapv (analyze-in-env args-env) args)]
       {:op    :new
        :env   env
@@ -369,19 +358,17 @@
        :local ename
        :env   env
        :form  form
-       :body  (parse (cons 'do body) (assoc-in env [:locals] ename {:name ename
+       :body  (parse (cons 'do body) (assoc-in env [:locals ename] {:name ename
                                                                     :tag  etype}))}
       (throw (ex-info (str "invalid binding form: " ename) {:sym ename})))
     (throw (ex-info (str "unable to resolve class: " etype) {:class etype}))))
 
 (defmethod parse 'throw
   [[_ throw :as form] {:keys [context] :as env}]
-  (if (= context :eval)
-    (analyze `((^:once fn* [] ~form)) env)
-    {:op    :throw
-     :env   env
-     :form  form
-     :throw (analyze throw (assoc env :context :expr))}))
+  {:op    :throw
+   :env   env
+   :form  form
+   :throw (analyze throw (assoc env :context :expr))})
 
 (defmethod parse 'import*
   [[_ class :as form] env]
