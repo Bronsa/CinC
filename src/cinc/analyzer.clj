@@ -372,7 +372,7 @@
        :body  (parse (cons 'do body) (assoc-in env [:locals] ename {:name ename
                                                                     :tag  etype}))}
       (throw (ex-info (str "invalid binding form: " ename) {:sym ename})))
-    (throw (ex-info (str "unable to resolve classname: " etype) {:class etype}))))
+    (throw (ex-info (str "unable to resolve class: " etype) {:class etype}))))
 
 (defmethod parse 'throw
   [[_ throw :as form] {:keys [context] :as env}]
@@ -382,3 +382,12 @@
      :env   env
      :form  form
      :throw (analyze throw (assoc env :context :expr))}))
+
+(defmethod parse 'import*
+  [[_ class :as form] env]
+  (when-let [class (maybe-class class)]
+    {:op    :import
+     :env   env
+     :form  form
+     :class class}
+    (ex-info (str "class not found: " class) {:class class})))
