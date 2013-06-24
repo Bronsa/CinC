@@ -212,7 +212,7 @@
            (meta form)))
 
        (and (namespace op)
-                      (maybe-class (namespace op))) ; (class/field ..)
+            (maybe-class (namespace op))) ; (class/field ..)
        (let [target (maybe-class (namespace op))]
          (with-meta (list* '. target opname expr)
            (meta form)))
@@ -383,8 +383,8 @@
   [[_ bindings & body :as form] {:keys [context] :as env}]
   {:pre [(vector? bindings)
          (even? (count bindings))]}
-  (let [binds (apply hash-map bindings)
-        fns (keys binds)]
+  (let [bindings (apply hash-map bindings)
+        fns (keys bindings)]
     (when-not (every? #(and (symbol? %)
                        (not (namespace %)))
                  fns)
@@ -394,13 +394,14 @@
                                    {:name name
                                     :local true})
                                  fns))
-          e (update-in env [:locals] into binds)
+          e (update-in env [:locals] (fnil into {}) binds)
           binds (mapv (fn [{:keys [name] :as b}]
                         (assoc b
-                          :init (analyze (fns name) (assoc e :context :expr)))))
-          body (parse (cons 'do body) env)])
-    {:op :letfn
-     :bindings bindings
-     :form form
-     :body body
-     :env env}))
+                          :init (analyze (bindings name) (assoc e :context :expr))))
+                      (vals binds))
+          body (parse (cons 'do body) e)]
+      {:op       :letfn
+       :env      env
+       :form     form
+       :bindings binds
+       :body     body})))
