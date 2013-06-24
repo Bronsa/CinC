@@ -378,3 +378,29 @@
      :form  form
      :class class}
     (ex-info (str "class not found: " class) {:class class})))
+
+(defmethod parse 'letfn*
+  [[_ bindings & body :as form] {:keys [context] :as env}]
+  {:pre [(vector? bindings)
+         (even? (count bindings))]}
+  (let [binds (apply hash-map bindings)
+        fns (keys binds)]
+    (when-not (every? #(and (symbol? %)
+                       (not (namespace %)))
+                 fns)
+      (throw (ex-info (str "bad binding form: " (first (remove symbol? fns)))
+                      {:form form})))
+    (let [binds (zipmap fns (map (fn [name]
+                                   {:name name
+                                    :local true})
+                                 fns))
+          e (update-in env [:locals] into binds)
+          binds (mapv (fn [{:keys [name] :as b}]
+                        (assoc b
+                          :init (analyze (fns name) (assoc e :context :expr)))))
+          body (parse (cons 'do body) env)])
+    {:op :letfn
+     :bindings bindings
+     :form form
+     :body body
+     :env env}))
