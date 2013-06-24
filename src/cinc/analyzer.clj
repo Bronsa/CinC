@@ -179,8 +179,8 @@
   [_ sym env]
   (let [ret (if-let [local-binding (-> env :locals sym)]
               (assoc local-binding
-                :op         :local-binding
-                :assignable? true)
+                :op         :local)
+;;              :assignable? true ;; only ^:*-mutable
               (if-let [^Var var (resolve-var sym)]
                 {:op          :var
                  :name        (.sym var)
