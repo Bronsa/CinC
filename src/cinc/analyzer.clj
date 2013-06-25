@@ -481,9 +481,10 @@
         fixed-arity (if variadic?
                       (dec arity)
                       arity)
-        body-env (assoc (update-in env [:locals] (fnil into {})
+        body-env (into (update-in env [:locals] (fnil into {})
                                    (zipmap params-names params-expr))
-                   :context :return)
+                       {:context     :return
+                        :loop-locals params-expr})
         body (parse (cons 'do body) body-env)]
     (when variadic?
       (let [x (drop-while #(not= % '&) params)]
