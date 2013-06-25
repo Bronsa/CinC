@@ -531,3 +531,15 @@
      :variadic?       variadic?
      :max-fixed-arity max-fixed-arity
      :methods         methods-exprs}))
+
+;; :invoke
+(defmethod parse :default
+  [[f & args :as form] env]
+  (let [e (assoc env :context :expr)
+        fn-expr (analyze f e)
+        args-expr (mapv (analyze-in-env e) args)]
+    {:op   :invoke
+     :form form
+     :env  env
+     :fn   fn-expr
+     :args args-expr}))
