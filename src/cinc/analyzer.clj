@@ -454,6 +454,7 @@
          :form form
          :env  env}
         (analyze-let form env)))
+
 (defmethod parse 'recur
   [[_ & exprs :as form] {:keys [context loop-locals in-try]
                          :as env}]
@@ -463,7 +464,7 @@
          (= (count exprs) (count loop-locals))]}
   (let [exprs (mapv (analyze-in-env (assoc env :context :expr))
                     exprs)]
-    {:op :recur
-     :env env
-     :form form
+    {:op    :recur
+     :env   env
+     :form  form
      :exprs exprs}))
