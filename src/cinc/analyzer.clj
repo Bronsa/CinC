@@ -413,7 +413,7 @@
   (let [loop? (= 'loop* op)]
     (if (and loop?
              (= :expr context))
-      (analyze `((^:once fn [] ~form)) env)
+      (analyze `((^:once fn* [] ~form)) env)
       (loop [bindings (seq (partition 2 bindings))
              env (assoc env :context :expr)
              binds []]
