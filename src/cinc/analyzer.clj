@@ -424,8 +424,8 @@
               (throw (ex-info (str "invalid binding form: " name)
                               {:sym name})))
             (let [init-expr (analyze init env)
-                  bind-expr {:name name
-                             :init init-expr
+                  bind-expr {:name  name
+                             :init  init-expr
                              :local true}]
               (recur (next bindings)
                      (assoc-in env [:locals name] bind-expr)
@@ -468,3 +468,65 @@
      :env   env
      :form  form
      :exprs exprs}))
+
+(defn analyze-fn-method [[params & body :as form] {:keys [locals] :as env}]
+  {:pre [(every? symbol? params)
+         (not-any? namespace params)]}
+  (let [variadic? (boolean (some '#{&} params))
+        params-names (vec (remove '#{&} params))
+        params-expr (mapv (fn [name]
+                            {:name name})
+                          params-names)
+        arity (count params-names)
+        fixed-arity (if variadic?
+                      (dec arity)
+                      arity)
+        body-env (assoc (update-in env [:locals] (fnil into {})
+                                   (zipmap params-names params-expr))
+                   :context :return)
+        body (parse (cons 'do body) body-env)]
+    (when variadic?
+      (let [x (drop-while #(not= % '&) params)]
+        (when (not= 2 (count x))
+          (throw (ex-info (str "unexpected parameter: " (first (drop 2 x)))
+                          {:params params})))))
+    {:op          :fn-method
+     :form        form
+     :env         env
+     :variadic?   variadic?
+     :params      params-expr
+     :fixed-arity fixed-arity
+     :body        body}))
+
+(defmethod parse 'fn*
+  [[_ & args :as form] {:keys [name] :as env}]
+  (let [[name meths] (if (symbol? (first args))
+                       [(first args) (next args)]
+                       [name (seq args)])
+        e (if name (assoc-in env [:locals name] {:name name}) env)
+        meths (if (vector? (first meths)) (list meths) meths) ;;turn (fn [] ...) into (fn ([]...))
+        menv (if (> (count meths) 1) (assoc env :context :expr) e)
+        methods-exprs (mapv #(analyze-fn-method % menv) meths)
+        variadic (seq (filter :variadic? methods-exprs))
+        variadic? (boolean variadic)
+        fixed-arities (map :fixed-arity (remove :variadic? methods-exprs))
+        max-fixed-arity (apply max fixed-arities)]
+    (when (>= (count variadic) 2)
+      (throw (ex-info "can't have more than 1 variadic overload"
+                      {:variadics (mapv :form variadic)})))
+    (when (not= (distinct fixed-arities) fixed-arities)
+      (throw (ex-info "can't have 2 overloads with the same arity"
+                      {:form form})))
+    (when (and variadic?
+               (not-every? #(<= (:fixed-arity %)
+                          (:fixed-arity (first variadic)))
+                      (remove :variadic? methods-exprs)))
+      (throw (ex-info "Can't have fixed arity function with more params than variadic function"
+                      {:form form})))
+    {:op              :fn
+     :env             env
+     :form            form
+     :name            name
+     :variadic?       variadic?
+     :max-fixed-arity max-fixed-arity
+     :methods         methods-exprs}))
