@@ -564,17 +564,43 @@
 
 (defmethod parse 'monitor-enter
   [[_ target :as form] env]
-  {:op :monitor-enter
-   :env env
-   :form form
+  {:op     :monitor-enter
+   :env    env
+   :form   form
    :target (analyze target (ctx env :expr))})
 
 (defmethod parse 'monitor-exit
   [[_ target :as form] env]
-  {:op :monitor-exit
-   :env env
-   :form form
+  {:op     :monitor-exit
+   :env    env
+   :form   form
    :target (analyze target (ctx env :expr))})
+
+(defmethod parse 'def
+  [[_ sym & expr :as form] env]
+  {:pre [(symbol? sym)
+         (or (not (namespace sym))
+             (= *ns* (the-ns (namespace sym))))]}
+  (let [pfn (fn
+              ([])
+              ([init]
+                 {:init init})
+              ([doc init]
+                 {:pre [(string? doc)]}
+                 {:init init :doc doc}))
+        args (apply pfn expr)
+        doc (or (:doc args) (-> sym meta :doc))
+        args (merge args
+                    (when-let [[_ init] (find args :init)]
+                      {:init (analyze init (ctx env :expr))})
+                    (when doc
+                      {:doc doc}))]
+    (into {:op   :def
+           :env  env
+           :form form
+           :name sym
+           :meta (meta sym)}
+          args)))
 ;; :invoke
 (defmethod parse :default
   [[f & args :as form] env]
