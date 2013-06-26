@@ -532,6 +532,32 @@
      :max-fixed-arity max-fixed-arity
      :methods         methods-exprs}))
 
+(defmethod parse 'case*
+  [[_ expr shift mask default case-map switch-type test-type & [skip-check?] :as form] env]
+  (let [k (keys case-map)
+        [low high] ((juxt first last) k)
+        test-expr (analyze expr (assoc env :context :expr))
+        [tests thens] (reduce (fn [[te th] [min-hash [test then]]]
+                                (let [test-expr (analyze test env)
+                                      then-expr (analyze then env)]
+                                  [(conj te test-expr) (conj th then-expr)]))
+                              [(sorted-map) {}] case-map)
+        default-expr (analyze default env)]
+    {:op          :case
+     :form        form
+     :env         env
+     :test        test-expr
+     :default     default-expr
+     :tests       tests
+     :thens       thens
+     :shift       shift
+     :mask        mask
+     :low         low
+     :high        high
+     :switch-type switch-type
+     :test-type   test-type
+     :skip-check? skip-check?}))
+
 ;; :invoke
 (defmethod parse :default
   [[f & args :as form] env]
