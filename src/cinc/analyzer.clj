@@ -273,7 +273,7 @@
         (analyze-block exprs env)))
 
 (defmethod parse 'if
-  [[_ test then [& else] :as form] env]
+  [[_ test then & else :as form] env]
   {:pre [(or (= 3 (count form))
              (= 4 (count form)))]}
   (let [test (analyze test (ctx env :expr))
