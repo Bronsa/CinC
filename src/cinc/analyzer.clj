@@ -540,7 +540,7 @@
   (let [[low high] ((juxt first last) (keys case-map))
         test-expr (analyze expr (ctx env :expr))
         [tests thens] (reduce (fn [[te th] [min-hash [test then]]]
-                                (let [test-expr (analyze test env)
+                                (let [test-expr (analyze (list 'quote test) env)
                                       then-expr (analyze then env)]
                                   [(conj te test-expr) (conj th then-expr)]))
                               [(sorted-map) {}] case-map)
