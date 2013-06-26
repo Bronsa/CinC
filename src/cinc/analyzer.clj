@@ -399,7 +399,7 @@
                                    {:name name
                                     :local true})
                                  fns))
-          e (update-in env [:locals] (fnil into {}) binds)
+          e (update-in env [:locals] merge binds)
           binds (mapv (fn [{:keys [name] :as b}]
                         (assoc b
                           :init (analyze (bindings name) (assoc e :context :expr))))
@@ -486,8 +486,8 @@
         fixed-arity (if variadic?
                       (dec arity)
                       arity)
-        body-env (into (update-in env [:locals] (fnil into {})
-                                   (zipmap params-names params-expr))
+        body-env (into (update-in env [:locals]
+                                  merge (zipmap params-names params-expr))
                        {:context     :return
                         :loop-locals params-expr})
         body (parse (cons 'do body) body-env)]
@@ -596,7 +596,7 @@
            :env  env
            :form form
            :name sym
-           :meta (into (meta sym) (when doc {:doc doc}))}
+           :meta (merge (meta sym) (when doc {:doc doc}))}
           args)))
 
 ;; :invoke
