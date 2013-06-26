@@ -87,12 +87,15 @@
    (map? coll)    :map
    (set? coll)    :set))
 
+(defn ^:private ctx [env ctx]
+  (assoc env :context ctx))
+
 (defn wrapping-meta [{:keys [form env] :as expr}]
   (if (meta form)
     {:op   :meta
      :env  env
      :form form
-     :meta (-analyze :map (meta form) (assoc env :context :expr))
+     :meta (-analyze :map (meta form) (ctx env :expr))
      :expr (assoc-in expr [:env :context] :expr)}
     expr))
 
@@ -129,7 +132,7 @@
 
 (defmethod -analyze :vector
   [_ form env]
-  (let [items-env (assoc env :context :expr)
+  (let [items-env (ctx env :expr)
         items (mapv (analyze-in-env items-env) form)
         const? (and (every? :literal? items)
                     (not (meta form)))]
@@ -143,7 +146,7 @@
 
 (defmethod -analyze :map
   [_ form env]
-  (let [kv-env (assoc env :context :expr)
+  (let [kv-env (ctx env :expr)
         keys (keys form)
         vals (vals form)
         [ks vs] (map (partial mapv (analyze-in-env kv-env)) [keys vals])
@@ -161,7 +164,7 @@
 
 (defmethod -analyze :set
   [_ form env]
-  (let [items-env (assoc env :context :expr)
+  (let [items-env (ctx env :expr)
         items (mapv (analyze-in-env items-env) form)
         const? (and (every? :literal? items)
                     (not (meta form)))]
@@ -253,7 +256,7 @@
 (defn analyze-block
   "returns {:statements .. :ret ..}"
   [exprs env]
-  (let [statements-env (assoc env :context :statement)
+  (let [statements-env (ctx env :statement)
         statements (mapv (analyze-in-env statements-env)
                          (butlast exprs))
         ret (analyze (last exprs) env)]
@@ -271,7 +274,7 @@
   [[_ test then [& else] :as form] env]
   {:pre [(or (= 3 (count form))
              (= 4 (count form)))]}
-  (let [test (analyze test (assoc env :context :expr))
+  (let [test (analyze test (ctx env :expr))
         then (analyze then env)
         else (analyze else env)]
     {:op   :if
@@ -285,7 +288,7 @@
   [[_ class & args :as form] env]
   {:pre [(>= (count form) 2)]}
   (if-let [class (maybe-class class)]
-    (let [args-env (assoc env :context :expr)
+    (let [args-env (ctx env :expr)
           args (mapv (analyze-in-env args-env) args)]
       {:op    :new
        :env   env
@@ -313,7 +316,7 @@
 (defmethod parse 'set!
   [[_ target val :as form] env]
   {:pre [(= (count form) 3)]}
-  (let [target (analyze target (assoc env :context :expr))]
+  (let [target (analyze target (ctx env :expr))]
     (if (:assignable? target) ;; + fields
       {:op     :set!
        :env    env
@@ -338,9 +341,9 @@
                         {:expr fblocks})))
       (let [body (when-not (empty? body)
                    (parse (cons 'do body) (assoc env :in-try true))) ;; avoid recur
-            cenv (assoc env :context :expr)
+            cenv (ctx env :expr)
             cblocks (mapv #(parse % cenv) cblocks)
-            fblock (parse (cons 'do (rest fblock)) (assoc env :context :statement))]
+            fblock (parse (cons 'do (rest fblock)) (ctx env :statement))]
         {:op      :try
          :env     env
          :form    form
@@ -368,7 +371,7 @@
   {:op    :throw
    :env   env
    :form  form
-   :throw (analyze throw (assoc env :context :expr))})
+   :throw (analyze throw (ctx env :expr))})
 
 (defmethod parse 'import*
   [[_ class :as form] env]
@@ -415,7 +418,7 @@
              (= :expr context))
       (analyze `((^:once fn* [] ~form)) env)
       (loop [bindings (seq (partition 2 bindings))
-             env (assoc env :context :expr)
+             env (ctx env :expr)
              binds []]
         (if-let [[name init] (first bindings)]
           (do
@@ -462,7 +465,7 @@
          loop-locals
          (not in-try)
          (= (count exprs) (count loop-locals))]}
-  (let [exprs (mapv (analyze-in-env (assoc env :context :expr))
+  (let [exprs (mapv (analyze-in-env (ctx env :expr))
                     exprs)]
     {:op    :recur
      :env   env
@@ -506,7 +509,7 @@
                        [name (seq args)])
         e (if name (assoc-in env [:locals name] {:name name}) env)
         meths (if (vector? (first meths)) (list meths) meths) ;;turn (fn [] ...) into (fn ([]...))
-        menv (if (> (count meths) 1) (assoc env :context :expr) e)
+        menv (if (> (count meths) 1) (ctx env :expr) e)
         methods-exprs (mapv #(analyze-fn-method % menv) meths)
         variadic (seq (filter :variadic? methods-exprs))
         variadic? (boolean variadic)
@@ -534,9 +537,8 @@
 
 (defmethod parse 'case*
   [[_ expr shift mask default case-map switch-type test-type & [skip-check?] :as form] env]
-  (let [k (keys case-map)
-        [low high] ((juxt first last) k)
-        test-expr (analyze expr (assoc env :context :expr))
+  (let [[low high] ((juxt first last) (keys case-map))
+        test-expr (analyze expr (ctx env :expr))
         [tests thens] (reduce (fn [[te th] [min-hash [test then]]]
                                 (let [test-expr (analyze test env)
                                       then-expr (analyze then env)]
@@ -561,7 +563,7 @@
 ;; :invoke
 (defmethod parse :default
   [[f & args :as form] env]
-  (let [e (assoc env :context :expr)
+  (let [e (ctx env :expr)
         fn-expr (analyze f e)
         args-expr (mapv (analyze-in-env e) args)]
     {:op   :invoke
