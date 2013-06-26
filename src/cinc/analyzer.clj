@@ -197,9 +197,11 @@
           ret)))
 
 (def specials
-  '#{def loop* recur if let* letfn* do fn*
-     quote var . set! case* import* try catch
-     deftype* reify* throw finally new &})
+  '#{do if new var quote set! try
+     catch throw finally clojure.core/import*
+     let* letfn* loop* recur fn* case*
+     monitor-enter monitor-exit &
+     def . deftype* reify*})
 
 (defn desugar-dot [[op & expr :as form]]
   (if (symbol? op)
@@ -373,7 +375,7 @@
    :form  form
    :throw (analyze throw (ctx env :expr))})
 
-(defmethod parse 'import*
+(defmethod parse 'clojure.core/import*
   [[_ class :as form] env]
   (when-let [class (maybe-class class)]
     {:op    :import
@@ -560,6 +562,19 @@
      :test-type   test-type
      :skip-check? skip-check?}))
 
+(defmethod parse 'monitor-enter
+  [[_ target :as form] env]
+  {:op :monitor-enter
+   :env env
+   :form form
+   :target (analyze target (ctx env :expr))})
+
+(defmethod parse 'monitor-exit
+  [[_ target :as form] env]
+  {:op :monitor-exit
+   :env env
+   :form form
+   :target (analyze target (ctx env :expr))})
 ;; :invoke
 (defmethod parse :default
   [[f & args :as form] env]
