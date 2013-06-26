@@ -590,13 +590,17 @@
                  {:init init :doc doc}))
         args (apply pfn expr)
         doc (or (:doc args) (-> sym meta :doc))
+        meta (merge (meta sym) (when doc {:doc doc}))
+        var (doto (intern *ns* sym)
+              (reset-meta! meta))
         args (when-let [[_ init] (find args :init)]
                {:init (analyze init (ctx env :expr))})]
     (into {:op   :def
            :env  env
            :form form
            :name sym
-           :meta (merge (meta sym) (when doc {:doc doc}))}
+           :var  var
+           :meta meta}
           args)))
 
 ;; :invoke
