@@ -182,13 +182,13 @@
   [_ sym env]
   (let [ret (if-let [local-binding (-> env :locals sym)]
               (assoc local-binding
-                :op         :local)
-;;              :assignable? true ;; only ^:*-mutable
+                :op          :local
+                :assignable? (boolean (:mutable local-binding)))
               (if-let [^Var var (resolve-var sym)]
                 {:op          :var
                  :name        (.sym var)
                  :ns          (-> var .ns .name)
-                 :assignable? true
+                 :assignable? (thread-bound? var)
                  :var         var}
                 (or (maybe-host-expr sym)
                     (throw (ex-info (str "could not resolve var: " sym) {:var sym})))))]
