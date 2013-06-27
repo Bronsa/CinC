@@ -350,7 +350,8 @@
        :env    env
        :form   form
        :target target
-       :val    val})))
+       :val    val}
+      (throw (ex-info "cannot set! non-assignable target" {:target target})))))
 
 (defmethod parse 'try
   [[_ & body :as form] {:keys [context] :as env}]
