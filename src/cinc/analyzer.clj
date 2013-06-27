@@ -13,41 +13,46 @@
 (defmulti -analyze (fn [op form env & _] op))
 (defmulti parse (fn [[op & form] & rest] op))
 
+(defn ^:private ctx [env ctx]
+  (assoc env :context ctx))
+
 (defn analyze
   "Given an environment, a map containing
    -  :locals (mapping of names to lexical bindings),
-   -  :context (one of :statement, :expr, :return),
+   -  :context (one of :statement, :expr, :return or :eval),
  and form, returns an expression object (a map containing at least :form, :op and :env keys)."
-  [form env]
-  (let [form (if (instance? LazySeq form)
-               (or (seq form) ())  ; we need to force evaluation in order to analyze
-               form)]
-    (case form
+  [form {:keys [context] :as env}]
+  (if (= :eval context)
+    (recur `((^:once fn* [] ~form)) (ctx env :expr))
+    (let [form (if (instance? LazySeq form)
+                 (or (seq form) ())      ; we need to force evaluation in order to analyze
+                 form)]
+      (case form
 
-      nil                 (-analyze :const form env :nil)
-      (true false)             (-analyze :const form env :bool)
+        nil                 (-analyze :const form env :nil)
+        (true false)             (-analyze :const form env :bool)
 
-      (cond
+        (cond
 
-       (symbol? form)   (-analyze :symbol     form env)
-       (keyword? form)  (-analyze :keyword    form env) ;; need to register
-       (string? form)   (-analyze :string     form env)
-       (number? form)   (-analyze :number     form env)
+         (symbol? form)   (-analyze :symbol     form env)
+         (keyword? form)  (-analyze :keyword    form env) ;; need to register
+         (string? form)   (-analyze :string     form env)
+         (number? form)   (-analyze :number     form env)
 
-       ;; don't move those, we need to skip the empty check for records
-       (type? form)     (-analyze :type       form env)
-       (record? form)   (-analyze :record     form env)
+         ;; don't move those, we need to skip the empty check for records
+         (type? form)     (-analyze :type       form env)
+         (record? form)   (-analyze :record     form env)
 
-       (and (coll? form)
-            (empty? form))
-                        (-analyze :empty-coll form env)
+         (and (coll? form)
+              (empty? form))
+         (-analyze :empty-coll form env)
 
-       (seq? form)      (-analyze :seq        form env)
-       (vector? form)   (-analyze :vector     form env)
-       (map? form)      (-analyze :map        form env)
-       (set? form)      (-analyze :set        form env)
+         (seq? form)      (-analyze :seq        form env)
+         (vector? form)   (-analyze :vector     form env)
+         (map? form)      (-analyze :map        form env)
+         (set? form)      (-analyze :set        form env)
 
-       :else            (-analyze :const      form env :unknown)))))
+         :else            (-analyze :const      form env :unknown))))))
 
 (defmethod -analyze :keyword
   [_ form env]
@@ -84,9 +89,6 @@
    (vector? coll) :vector
    (map? coll)    :map
    (set? coll)    :set))
-
-(defn ^:private ctx [env ctx]
-  (assoc env :context ctx))
 
 (defn wrapping-meta [{:keys [form env] :as expr}]
   (if (meta form)
