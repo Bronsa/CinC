@@ -247,6 +247,9 @@
     (if (identical? ex form)
       form
       (macroexpand ex env))))
+
+;; ^:const vars will be detected in a second pass
+;; will eventually move out constant colls detection to that pass too
 (defmethod -analyze :symbol
   [_ sym env]
   (let [mform (macroexpand-1 sym env)
@@ -507,6 +510,7 @@
      :form  form
      :exprs exprs}))
 
+;; second pass with info to check arity?
 (defn analyze-fn-method [[params & body :as form] {:keys [locals] :as env}]
   {:pre [(every? symbol? params)
          (not-any? namespace params)]}
@@ -538,6 +542,7 @@
      :fixed-arity fixed-arity
      :body        body}))
 
+;; TODO name generation
 (defmethod parse 'fn*
   [[_ & args :as form] {:keys [name] :as env}]
   (let [[name meths] (if (symbol? (first args))
@@ -637,6 +642,9 @@
            :meta meta}
           args)))
 
+;; primitives
+;; keyword callsites
+;; runtime instanceof for constant exprs
 ;; :invoke
 (defmethod parse :default
   [[f & args :as form] env]
@@ -649,6 +657,13 @@
      :fn   fn-expr
      :args args-expr}))
 
+
+;; TODO: passes for:
+;; locals clearing
+;; closing overs
+
+;; make assignable
+;; TODO: reflect to validate calls/require runtime-reflection
 (defn analyze-host-call
   [target-type [method & args] target-expr class? env]
   (let [op (case target-type
