@@ -1,10 +1,8 @@
 (set! *warn-on-reflection* true)
 
 (ns cinc.analyzer
-  (:refer-clojure :exclude [macroexpand-1])
-  (:require [clojure.java.io :as io]
-            [clojure.string :as s]
-            [cinc.host-utils :refer :all])
+  (:refer-clojure :exclude [macroexpand-1 macroexpand])
+  (:require [cinc.host-utils :refer :all])
   (:import (clojure.lang LazySeq IRecord IType ILookup Var RT)))
 
 (defn record? [x]
@@ -241,6 +239,12 @@
             (desugar-host-expr form)))))
     (desugar-host-expr form)))
 
+(defn macroexpand
+  [form env]
+  (let [ex (macroexpand-1 form env)]
+    (if (identical? ex form)
+      form
+      (macroexpand ex env))))
 (defmethod -analyze :symbol
   [_ sym env]
   (let [mform (macroexpand-1 sym env)
