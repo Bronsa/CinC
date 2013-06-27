@@ -176,59 +176,56 @@
         :items items
         :form  form}))))
 
-;; constans will be detected in a second pass
-;; will move constant colls detection to that pass too
-(defmethod -analyze :symbol
-  [_ sym env]
-  (let [ret (if-let [local-binding (-> env :locals sym)]
-              (assoc local-binding
-                :op          :local
-                :assignable? (boolean (:mutable local-binding)))
-              (if-let [^Var var (resolve-var sym)]
-                {:op          :var
-                 :name        (.sym var)
-                 :ns          (-> var .ns .name)
-                 :assignable? (thread-bound? var)
-                 :var         var}
-                (or (maybe-host-expr sym)
-                    (throw (ex-info (str "could not resolve var: " sym) {:var sym})))))]
-    (into {:env  env
-           :form sym}
-          ret)))
-
 (def specials
   '#{do if new var quote set! try
      catch throw finally clojure.core/import*
      let* letfn* loop* recur fn* case*
-     monitor-enter monitor-exit &
-     def . deftype* reify*})
+     monitor-enter monitor-exit & def
+     . deftype* reify*})
 
-(defn desugar-dot [[op & expr :as form]]
-  (if (symbol? op)
-    (let [opname (name op)]
-      (cond
+(defn desugar-host-expr [form]
+  (cond
+   (symbol? form)
+   (let [target (maybe-class (namespace form))
+         field (symbol (name form))]
+     (if (and (namespace form) target)
+       (with-meta (list '. target field)
+         (merge (meta form)
+                {:field true}))
+       form))
 
-       (= (first opname) \.)  ; (.foo bar ..)
-       (let [[target & args] expr
-             target (if (maybe-class target)
-                      (with-meta (list 'clojure.core/identity target) {:tag Class})
-                      target)]
-         (with-meta (list* '. target (symbol (subs opname 1)) args)
-           (meta form)))
+   (seq? form)
+   (let [[op & expr] form]
+     (if (symbol? op)
+       (let [opname (name op)
+             c (maybe-class op)]
+         (cond
 
-       (and (namespace op)
-            (maybe-class (namespace op))) ; (class/field ..)
-       (let [target (maybe-class (namespace op))]
-         (with-meta (list* '. target opname expr)
-           (meta form)))
+          c
+          (throw (ex-info (str "expecting var but" form "is mapped to " c) {:form form}))
 
-       (= (last opname) \.) ;; (class. ..)
-       (list* 'new (symbol (subs opname 0 (dec (count opname)))) expr)
 
-       :else form))
-    (if-let [c (maybe-class op)]
-      (throw (ex-info (str "expecting var but" form "is mapped to " c) {:form form}))
-      form)))
+          (= (first opname) \.)         ; (.foo bar ..)
+          (let [[target & args] expr
+                target (if (maybe-class target)
+                         (with-meta (list 'clojure.core/identity target) {:tag Class})
+                         target)]
+            (with-meta (list '. target (list* (symbol (subs opname 1)) args))
+              (meta form)))
+
+          (and (namespace op)
+               (maybe-class (namespace op))) ; (class/field ..)
+          (let [target (maybe-class (namespace op))]
+            (with-meta (list '. target (list* (symbol opname) expr))
+              (meta form)))
+
+          (= (last opname) \.) ;; (class. ..)
+          (list* 'new (symbol (subs opname 0 (dec (count opname)))) expr)
+
+          :else form))
+       form))
+
+   :else form))
 
 (defn macroexpand-1 [form env]
   (if (seq? form)
@@ -239,8 +236,35 @@
           (if (and (not (-> env :locals (get op))) ;; locals cannot be macros
                    (:macro (meta v)))
             (apply @v env form (rest form)) ; (m &env &form & args)
-            (desugar-dot form)))))
-    form))
+            (desugar-host-expr form)))))
+    (desugar-host-expr form)))
+
+(defmethod -analyze :symbol
+  [_ sym env]
+  (let [mform (macroexpand-1 sym env)
+        ret (if (symbol? mform)
+              (if-let [local-binding (-> env :locals sym)]
+                (assoc local-binding
+                  :op          :local
+                  :assignable? (boolean (:mutable local-binding)))
+                (if-let [^Var var (resolve-var sym)]
+                  {:op          :var
+                   :name        (.sym var)
+                   :ns          (-> var .ns .name)
+                   :assignable? (thread-bound? var)
+                   :var         var}
+                  (if-let [c (maybe-class sym)]
+                    {:op    :class
+                     :class class}
+                    (if (.contains (str sym) ".")
+                      (throw (ex-info (str "class not found: " sym)
+                                      {:class sym}))
+                      (throw (ex-info (str "could not resolve var: " sym)
+                                      {:var sym}))))))
+              (maybe-static mform))]
+    (into {:env  env
+           :form sym}
+          ret)))
 
 (defmethod -analyze :seq
   [_ form env]

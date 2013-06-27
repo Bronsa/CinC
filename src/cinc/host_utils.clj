@@ -98,21 +98,16 @@
       (when (:static (:flags member))
         member))))
 
-(defn maybe-host-expr [sym]
-  (if-let [c (namespace sym)]
-    (when-let [class (maybe-class c)]
-      (let [field (-> sym name symbol)]
-        (if (static-field class field)
-          {:op          :static-field
-           :assignable? true
-           :class       class
-           :field       field}
-          (throw (ex-info (str "unable to find static field: " field " in " class)
-                          {:field field
-                           :class class})))))
-    (if-let [class (maybe-class sym)]
-      {:op    :class
-       :class class}
-      (when (.contains (str sym) ".") ;; otherwise throw var not found
-        (throw (ex-info (str "Class not found: " sym)
-                        {:class sym}))))))
+(defn maybe-static [[_ class sym]]
+  (if-let [{:keys [flags return-type]} (static-field class sym)]
+    (if return-type
+      {:op     :static-method
+       :class  class
+       :method sym}
+      {:op          :static-field
+       :assignable? (not (:final flags))
+       :class       class
+       :field       sym})
+    (throw (ex-info (str "unable to find static field: " sym " in " class)
+                    {:field sym
+                     :class class}))))
