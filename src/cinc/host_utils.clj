@@ -102,6 +102,19 @@
     (when-let [statics (filter (comp :static :flags) members)]
       statics)))
 
+(defn instance-members [class f]
+  (when-let [members (members class f)]
+    (when-let [i-members (remove (comp :static :flags) members)]
+      i-members)))
+
+(defn static-methods [class method argc]
+  (filter #(= argc (count (:paramter-types %)))
+          (filter :return-type (static-members class method))))
+
+(defn instance-methods [class method argc]
+  (filter #(= argc (count (:paramter-types %)))
+          (filter :return-type (instance-members class method))))
+
 (defn static-field [class f]
   (when-let [statics (static-members class f)]
     (when-let [[member] (filter (every-pred (comp nil? seq :parameter-types)
@@ -109,9 +122,12 @@
                                 statics)]
       member)))
 
-(defn static-methods [class method argc]
-  (filter #(= argc (count (:paramter-types %)))
-          (filter :return-type (static-members class method))))
+(defn instance-field [class f]
+  (when-let [i-members (instance-members class f)]
+    (when-let [[member] (filter (every-pred (comp nil? seq :parameter-types)
+                                            (comp nil? :return-type))
+                                i-members)]
+      member)))
 
 (defn maybe-static-field [[_ class sym]]
   (if-let [{:keys [flags]} (static-field class sym)]

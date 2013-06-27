@@ -648,10 +648,13 @@
   (let [op (case target-type
              :static   :static-call
              :instance :instance-call)]
-    {:op     op
-     :target target-expr
-     :method method
-     :args   (mapv (analyze-in-env (ctx env :expr)) args)}))
+    (merge
+     {:op     op
+      :method method
+      :args   (mapv (analyze-in-env (ctx env :expr)) args)}
+     (case target-type
+       :static   {:class (:form target-expr)}
+       :instance {:instance target-expr}))))
 
 (defn analyze-host-expr
   [target-type m-or-f target-expr class? env]
