@@ -480,7 +480,8 @@
   (let [variadic? (boolean (some '#{&} params))
         params-names (vec (remove '#{&} params))
         params-expr (mapv (fn [name]
-                            {:name name})
+                            {:name name
+                             :arg  true})
                           params-names)
         arity (count params-names)
         fixed-arity (if variadic?
