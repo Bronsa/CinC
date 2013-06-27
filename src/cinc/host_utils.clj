@@ -90,24 +90,35 @@
         ret
         (maybe-class-from-string (str sym))))))
 
-(defn static-field [class field]
+(defn members [class member]
   (let [members (-> class
                   (reflect/type-reflect :ancestors true)
                   :members)]
-    (when-let [[member] (filter #(= field (:name %)) members)]
-      (when (:static (:flags member))
-        member))))
+    (when-let [members (filter #(= member (:name %)) members)]
+      members)))
 
-(defn maybe-static [[_ class sym]]
-  (if-let [{:keys [flags return-type]} (static-field class sym)]
-    (if return-type
-      {:op     :static-method
-       :class  class
-       :method sym}
-      {:op          :static-field
-       :assignable? (not (:final flags))
-       :class       class
-       :field       sym})
+(defn static-members [class f]
+  (when-let [members (members class f)]
+    (when-let [statics (filter (comp :static :flags) members)]
+      statics)))
+
+(defn static-field [class f]
+  (when-let [statics (static-members class f)]
+    (when-let [[member] (filter (every-pred (comp nil? seq :parameter-types)
+                                            (comp nil? :return-type))
+                                statics)]
+      member)))
+
+(defn static-methods [class method argc]
+  (filter #(= argc (count (:paramter-types %)))
+          (filter :return-type (static-members class method))))
+
+(defn maybe-static-field [[_ class sym]]
+  (if-let [{:keys [flags]} (static-field class sym)]
+    {:op          :static-field
+     :assignable? (not (:final flags))
+     :class       class
+     :field       sym}
     (throw (ex-info (str "unable to find static field: " sym " in " class)
                     {:field sym
                      :class class}))))

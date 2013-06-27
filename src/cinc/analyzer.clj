@@ -263,7 +263,7 @@
                                       {:class sym}))
                       (throw (ex-info (str "could not resolve var: " sym)
                                       {:var sym}))))))
-              (maybe-static mform))]
+              (maybe-static-field mform))]
     (into {:env  env
            :form sym}
           ret)))
@@ -669,5 +669,5 @@
                 analyze-host-expr)
               target-type m-or-f target-expr class? env)]
     (merge {:form form
-            :env env}
+            :env  env}
            expr)))
