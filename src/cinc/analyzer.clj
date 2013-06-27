@@ -209,14 +209,16 @@
           (let [[target & args] expr
                 target (if (maybe-class target)
                          (with-meta (list 'clojure.core/identity target) {:tag Class})
-                         target)]
-            (with-meta (list '. target (list* (symbol (subs opname 1)) args))
+                         target)
+                args (list* (symbol (subs opname 1)) args)]
+            (with-meta (list '. target (if (= 1 (count args)) ;; we don't know if (.foo bar) ia
+                                         (first args) args))  ;; a method call or a field access
               (meta form)))
 
           (and (namespace op)
                (maybe-class (namespace op))) ; (class/field ..)
           (let [target (maybe-class (namespace op))]
-            (with-meta (list '. target (list* (symbol opname) expr))
+            (with-meta (list '. target (list* (symbol opname) expr)) ;; static access in call position however are always method calls
               (meta form)))
 
           (= (last opname) \.) ;; (class. ..)
