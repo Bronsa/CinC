@@ -641,3 +641,33 @@
      :env  env
      :fn   fn-expr
      :args args-expr}))
+
+(defn analyze-host-call
+  [target-type [method & args] target-expr class? env]
+  (let [op (case target-type
+             :static   :static-call
+             :instance :instance-call)]
+    {:op     op
+     :target target-expr
+     :method method
+     :args   (mapv (analyze-in-env (ctx env :expr)) args)}))
+
+(defn analyze-host-expr
+  [target-type m-or-f target-expr class? env]
+  )
+
+(defmethod parse '.
+  [[_ target & [m-or-f] :as form] env]
+  {:pre [(>= (count form) 3)
+         (not (namespace (if (symbol? m-or-f) m-or-f (first m-or-f))))]}
+  (let [target-expr (analyze target (ctx env :expr))
+        class? (maybe-class target)
+        call? (seq? m-or-f)
+        target-type (if class? :static :instance)
+        expr ((if call?
+                analyze-host-call
+                analyze-host-expr)
+              target-type m-or-f target-expr class? env)]
+    (merge {:form form
+            :env env}
+           expr)))
