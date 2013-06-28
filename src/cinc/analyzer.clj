@@ -248,6 +248,7 @@
       form
       (macroexpand ex env))))
 
+(declare maybe-static-field)
 ;; ^:const vars will be detected in a second pass
 ;; will eventually move out constant colls detection to that pass too
 (defmethod -analyze :symbol
@@ -263,18 +264,24 @@
                    :name        (.sym var)
                    :ns          (-> var .ns .name)
                    :assignable? (thread-bound? var)
-                   :var         var}
+                   :var         var
+                   :meta        (meta var)}
                   (if-let [c (maybe-class sym)]
                     {:op    :class
-                     :class class}
+                     :class c}
                     (if (.contains (str sym) ".")
                       (throw (ex-info (str "class not found: " sym)
                                       {:class sym}))
                       (throw (ex-info (str "could not resolve var: " sym)
                                       {:var sym}))))))
-              (maybe-static-field mform))]
+              (or (maybe-static-field mform)
+                  (let [[_ class sym] mform]
+                    (throw (ex-info (str "unable to find static field: " sym " in " class)
+                                    {:field sym
+                                     :class class})))))]
     (into {:env  env
-           :form sym}
+           :form sym
+           :meta (meta mform)}
           ret)))
 
 (defmethod -analyze :seq
@@ -654,6 +661,7 @@
     {:op   :invoke
      :form form
      :env  env
+     :meta (meta form)
      :fn   fn-expr
      :args args-expr}))
 
@@ -677,9 +685,56 @@
        :static   {:class (:form target-expr)}
        :instance {:instance target-expr}))))
 
+(defn maybe-static-field [[_ class sym]]
+  (when-let [{:keys [flags]} (static-field class sym)]
+    {:op          :static-field
+     :assignable? (not (:final flags))
+     :class       class
+     :field       sym}))
+
+(defn maybe-static-method [[_ class sym]]
+  (when-let [_ (static-method class sym)]
+    {:op     :static-call
+     :class  class
+     :method sym}))
+
+(defn maybe-instance-method [target-expr class sym]
+  (when-let [_ (instance-method class sym)]
+    {:op       :instance-call
+     :instance target-expr
+     :method   sym}))
+
+(defn maybe-instance-field [target-expr class sym]
+  (when-let [{:keys [flags]} (instance-field class sym)]
+    {:op          :isntance-field
+     :assignable? (not (:final flags))
+     :instance    target-expr
+     :field       sym}))
+
 (defn analyze-host-expr
-  [target-type m-or-f target-expr class? env]
-  )
+  [target-type m-or-f target-expr class env]
+  (if class
+    (if-let [field (maybe-static-field (list '. class m-or-f))]
+      field
+      (if-let [method (maybe-static-method (list '. class m-or-f))]
+        method
+        (throw (ex-info (str "cannot find field or no-arg method call "
+                             m-or-f " for class " class)
+                        {:class  class
+                         :m-or-f m-or-f}))))
+    (if-let [class (maybe-class (-> target-expr :meta :tag))]
+      ;; it's tagged: we know the target class at compile time
+      (if-let [field (maybe-instance-field target-expr class m-or-f)]
+        field
+        (if-let [method (maybe-instance-method target-expr class m-or-f)]
+          method
+          (throw (ex-info (str "cannot find field or no-arg method call "
+                               m-or-f " for class " class)
+                          {:instance target-expr
+                           :m-or-f   m-or-f}))))
+      {:op     :unknown-host-form
+       :target target-expr
+       :m-or-f m-or-f})))
 
 (defmethod parse '.
   [[_ target & [m-or-f] :as form] env]

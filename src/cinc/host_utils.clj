@@ -129,12 +129,8 @@
                                 i-members)]
       member)))
 
-(defn maybe-static-field [[_ class sym]]
-  (if-let [{:keys [flags]} (static-field class sym)]
-    {:op          :static-field
-     :assignable? (not (:final flags))
-     :class       class
-     :field       sym}
-    (throw (ex-info (str "unable to find static field: " sym " in " class)
-                    {:field sym
-                     :class class}))))
+(defn static-method [class method]
+  (static-methods class method 0))
+
+(defn instance-method [class method]
+  (instance-methods class method 0))
