@@ -21,6 +21,13 @@
 (defmulti -analyze (fn [op form env & _] op))
 (defmulti parse (fn [[op & form] & rest] op))
 
+(defn get-line [x env]
+  (or (-> x meta :line)
+      (:line env)))
+(defn get-col [x env]
+  (or (-> x meta :column)
+      (:column env)))
+
 (defn ^:private ctx [env ctx]
   (assoc env :context ctx))
 
@@ -242,15 +249,14 @@
                                     {:field sym
                                      :class class})))))]
     (into {:env  env
-           :form sym
-           :meta (meta mform)}
+           :form sym}
           ret)))
 
 (defmethod -analyze :seq
   [_ form env]
-  (let [env (assoc env :line
-                   (or (-> form meta :line)
-                       (:line env)))]
+  (let [env (assoc env
+              :line (get-line form env)
+              :col  (get-col form env))]
     (let [op (first form)]
       (if (nil? op)
         (ex-info "Can't call nil" {:form form}))
