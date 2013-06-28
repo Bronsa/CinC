@@ -3,12 +3,20 @@
 (ns cinc.analyzer
   (:refer-clojure :exclude [macroexpand-1 macroexpand])
   (:require [cinc.host-utils :refer :all])
-  (:import (clojure.lang LazySeq IRecord IType ILookup Var RT)))
+  (:import (clojure.lang LazySeq IRecord IType IObj
+                         IReference ILookup Var RT)
+           java.util.regex.Pattern))
 
-(defn record? [x]
+(definline record? [x]
   (instance? IRecord x))
-(defn type? [x]
+(definline type? [x]
   (instance? IType x))
+(definline obj? [x]
+  (instance? IObj x))
+(definline reference? [x]
+  (instance? IReference x))
+(definline regex? [x]
+  (instance? Pattern x))
 
 (defmulti -analyze (fn [op form env & _] op))
 (defmulti parse (fn [[op & form] & rest] op))
@@ -29,103 +37,57 @@
                  form)]
       (case form
 
-        nil                 (-analyze :const form env :nil)
-        (true false)             (-analyze :const form env :bool)
+        nil              (-analyze :const form env :nil)
+        (true false)      (-analyze :const form env :bool)
 
         (cond
 
          (symbol? form)   (-analyze :symbol     form env)
-         (keyword? form)  (-analyze :keyword    form env) ;; need to register
-         (string? form)   (-analyze :string     form env)
-         (number? form)   (-analyze :number     form env)
 
-         ;; don't move those, we need to skip the empty check for records
-         (type? form)     (-analyze :type       form env)
-         (record? form)   (-analyze :record     form env)
-
-         (and (coll? form)
-              (empty? form))
-         (-analyze :empty-coll form env)
+         (type? form)     (-analyze :const      form env :type)
+         (record? form)   (-analyze :const      form env :record)
 
          (seq? form)      (-analyze :seq        form env)
          (vector? form)   (-analyze :vector     form env)
          (map? form)      (-analyze :map        form env)
          (set? form)      (-analyze :set        form env)
 
-         :else            (-analyze :const      form env :unknown))))))
-
-(defmethod -analyze :keyword
-  [_ form env]
-  {:op       :keyword
-   :env      env
-   :literal? true
-   :form     form})
-
-(defmethod -analyze :string
-  [_ form env]
-  {:op       :string
-   :env      env
-   :literal? true
-   :form     form})
-
-(defmethod -analyze :const ;; char, regexes, classes, quoted stuff
-  [_ form env type]
-  {:op       :const
-   :env      env
-   :type     type
-   :literal? true
-   :form     form})
-
-(defmethod -analyze :number
-  [_ form env]
-  {:op       :number
-   :env      env
-   :literal? true
-   :form     form})
-
-(defn coll-type [coll]
-  (cond
-   (seq? coll)    :list
-   (vector? coll) :vector
-   (map? coll)    :map
-   (set? coll)    :set))
+         :else            (-analyze :const      form env))))))
 
 (defn wrapping-meta [{:keys [form env] :as expr}]
-  (if (meta form)
-    {:op   :meta
+  (if (and (meta form)
+           (obj? form))
+    {:op   :with-meta
      :env  env
      :form form
      :meta (-analyze :map (meta form) (ctx env :expr))
      :expr (assoc-in expr [:env :context] :expr)}
     expr))
 
-(defmethod -analyze :type
-  [_ form env]
-  (if-not (meta form)
-    (-analyze :const form env :type)
-    (wrapping-meta
-     {:op       :type
-      :env      env
-      :literal? true
-      :form     form})))
+(defn classify [form]
+  (cond
+   (keyword? form) :keyword
+   (symbol? form)  :symbol
+   (number? form)  :number
+   (type? form)    :type
+   (record? form)  :record
+   (map? form)     :map
+   (vector? form)  :vector
+   (set? form)     :set
+   (seq? form)     :seq
+   (char? form)    :char
+   (class? form)   :class
+   (regex? form)   :regex))
 
-(defmethod -analyze :record
-  [_ form env]
-  (if-not (meta form)
-    (-analyze :const form env :record)
-    (wrapping-meta
-     {:op       :record
-      :env      env
-      :literal? true
-      :form     form})))
-
-(defmethod -analyze :empty-coll
-  [_ form env]
-  (wrapping-meta
-   {:op   :empty-coll
-    :env  env
-    :type (coll-type form)
-    :form form}))
+(defmethod -analyze :const
+  [_ form env & [type]]
+  (let [type (or type (classify form))]
+   (wrapping-meta
+    {:op       :const
+     :env      env
+     :type     type
+     :literal? true
+     :form     form})))
 
 (defn ^:private analyze-in-env [env]
   (fn [form] (analyze form env)))
@@ -350,12 +312,11 @@
      :var  var}
     (throw (ex-info (str "var not found: " var) {:var var}))))
 
-;; clojure parses for empty-colls/numbers/strings
 (defmethod parse 'quote
   [[_ expr :as form] env]
-  {:op   :constant
-   :env  env
-   :form form})
+  (let [quoted-meta (when-let [m (meta form)]
+                      (list 'quote m))]
+    (analyze :const (with-meta form quoted-meta) env)))
 
 (defmethod parse 'set!
   [[_ target val :as form] env]
@@ -439,7 +400,7 @@
       (throw (ex-info (str "bad binding form: " (first (remove symbol? fns)))
                       {:form form})))
     (let [binds (zipmap fns (map (fn [name]
-                                   {:name name
+                                   {:name  name
                                     :local true})
                                  fns))
           e (update-in env [:locals] merge binds)
