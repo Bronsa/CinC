@@ -34,32 +34,30 @@
 (defn analyze
   "Given an environment, a map containing
    -  :locals (mapping of names to lexical bindings),
-   -  :context (one of :statement, :expr, :return or :eval),
+   -  :context (one of :statement, :expr or :return
  and form, returns an expression object (a map containing at least :form, :op and :env keys)."
   [form {:keys [context] :as env}]
-  (if (= :eval context)
-    (recur `((^:once fn* [] ~form)) (ctx env :expr))
-    (let [form (if (instance? LazySeq form)
-                 (or (seq form) ())      ; we need to force evaluation in order to analyze
-                 form)]
-      (case form
+  (let [form (if (instance? LazySeq form)
+               (or (seq form) ())      ; we need to force evaluation in order to analyze
+               form)]
+    (case form
 
-        nil              (-analyze :const form env :nil)
-        (true false)      (-analyze :const form env :bool)
+      nil              (-analyze :const form env :nil)
+      (true false)     (-analyze :const form env :bool)
 
-        (cond
+      (cond
 
-         (symbol? form)   (-analyze :symbol     form env)
+       (symbol? form)   (-analyze :symbol form env)
 
-         (type? form)     (-analyze :const      form env :type)
-         (record? form)   (-analyze :const      form env :record)
+       (type? form)     (-analyze :const  form env :type)
+       (record? form)   (-analyze :const  form env :record)
 
-         (seq? form)      (-analyze :seq        form env)
-         (vector? form)   (-analyze :vector     form env)
-         (map? form)      (-analyze :map        form env)
-         (set? form)      (-analyze :set        form env)
+       (seq? form)      (-analyze :seq    form env)
+       (vector? form)   (-analyze :vector form env)
+       (map? form)      (-analyze :map    form env)
+       (set? form)      (-analyze :set    form env)
 
-         :else            (-analyze :const      form env))))))
+       :else            (-analyze :const  form env)))))
 
 (defn wrapping-meta [{:keys [form env] :as expr}]
   (if (and (meta form)
@@ -387,7 +385,7 @@
 
 (defmethod parse 'clojure.core/import*
   [[_ class :as form] env]
-  (when-let [class (maybe-class class)]
+  (if-let [class (maybe-class class)]
     {:op    :import
      :env   env
      :form  form
