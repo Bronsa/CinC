@@ -3,6 +3,22 @@
                          IReference Var)
            java.util.regex.Pattern))
 
+(defmulti walk (fn [{:keys [op]} f] op))
+
+(defn walk-coll [f]
+  (fn [coll]
+    (into (empty coll)
+          (mapv #(walk % f) coll))))
+
+(defn walk-in [ast keys f]
+  (update-in ast keys walk f))
+
+(defn walk-in-coll [ast keys f]
+  (update-in ast keys (walk-coll f)))
+
+(defmethod walk :default [ast f]
+  (f ast))
+
 (defn ctx
   "Returns a copy of the passe environment with :context set to ctx"
   [env ctx]

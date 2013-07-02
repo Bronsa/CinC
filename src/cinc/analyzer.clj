@@ -7,10 +7,6 @@
 
 (defmulti -analyze (fn [op form env & _] op))
 (defmulti parse (fn [[op & form] & rest] op))
-(defmulti walk (fn [{:keys [op]} f] op))
-
-(defmethod walk :default [ast f]
-  (f ast))
 
 (defn analyze
   "Given an environment, a map containing
@@ -45,17 +41,6 @@
    analyzes that argument in the specified env"
   [env]
   (fn [form] (analyze form env)))
-
-(defn walk-coll [f]
-  (fn [coll]
-    (into (empty coll)
-          (mapv #(walk % f) coll))))
-
-(defn walk-in [ast keys f]
-  (update-in ast keys walk f))
-
-(defn walk-in-coll [ast keys f]
-  (update-in ast keys (walk-coll f)))
 
 (defn wrapping-meta [{:keys [form env] :as expr}]
   (if (and (meta form)

@@ -1,5 +1,5 @@
 (ns cinc.analyzer.passes.jvm.validate
-  (:require [cinc.analyzer :refer [walk]]
+  (:require [cinc.analyzer.utils :refer [walk]]
             [cinc.analyzer.jvm.utils :as u]))
 
 (defmulti -validate :op)

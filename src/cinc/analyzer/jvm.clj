@@ -1,7 +1,7 @@
 (ns cinc.analyzer.jvm
   (:refer-clojure :exclude [macroexpand-1 macroexpand])
-  (:require [cinc.analyzer :as ana :refer [parse analyze-in-env walk walk-in walk-in-coll]]
-            [cinc.analyzer.utils :refer [ctx maybe-var]]
+  (:require [cinc.analyzer :as ana :refer [parse analyze-in-env]]
+            [cinc.analyzer.utils :refer [ctx maybe-var walk walk-in walk-in-coll]]
             [cinc.analyzer.jvm.utils :refer :all]
             [cinc.analyzer.passes.jvm.validate :refer [validate]]))
 
