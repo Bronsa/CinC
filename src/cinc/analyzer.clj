@@ -239,7 +239,7 @@
   [[_ expr :as form] env]
   (let [quoted-meta (when-let [m (meta form)]
                       (list 'quote m))]
-    (-analyze :const (with-meta form quoted-meta) env)))
+    (-analyze :const (with-meta expr quoted-meta) env)))
 
 (defmethod parse 'set!
   [[_ target val :as form] env]
