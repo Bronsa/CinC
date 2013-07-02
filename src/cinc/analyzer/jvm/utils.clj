@@ -1,45 +1,8 @@
 (set! *warn-on-reflection* true)
-(ns cinc.host-utils
+(ns cinc.analyzer.jvm.utils
   (:require [clojure.reflect :as reflect])
   (:import (clojure.lang RT Symbol Var)
            (org.objectweb.asm Type)))
-
-(defn private? [var]
-  (:private (meta var)))
-(defn macro? [var]
-  (:macro (meta var)))
-
-(defn resolve-ns [ns]
-  (when ns
-    (or (find-ns ns)
-        ((ns-aliases *ns*) ns))))
-
-(defn resolve-var
-  ([sym] (resolve-var sym false))
-  ([sym allow-macro?]
-     (let [name (-> sym name symbol)
-           ns (when-let [ns (namespace sym)]
-                (symbol ns))
-           full-ns (resolve-ns ns)]
-       (when (or (not ns)
-                 (and ns full-ns))
-         (if-let [var (if full-ns
-                        ((ns-interns full-ns) name)
-                        ((ns-map *ns*) name))]
-           (when (var? var)
-             (let [var-ns (.ns ^Var var)]
-               (when (and (not= *ns* var-ns)
-                          (private? var))
-                 (throw (ex-info (str "var: " sym " is not public") {:var sym})))
-               (if (and (macro? var) (not allow-macro?))
-                 (throw (ex-info (str "can't take value of a macro: " var) {:var var}))
-                 var)))
-           (when full-ns
-             (throw (ex-info (str "no such var: " sym) {:var sym}))))))))
-
-(defn maybe-var [sym]
-  (try (resolve-var sym true)
-       (catch Exception _)))
 
 (def ^:private prims
   {"byte" Byte/TYPE
