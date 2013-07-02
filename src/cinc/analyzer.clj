@@ -190,13 +190,14 @@
                  :ns          (-> var .ns .name)
                  :assignable? (thread-bound? var)
                  :var         var}
-                (if-let [maybe-class (symbol (namespace sym))] ;; e.g. js/foo.bar or Long/MAX_VALUE
-                  (if-not (find-ns maybe-class)
-                    {:op          :maybe-host-form
-                     :maybe-class maybe-class
-                     :maybe-field (symbol (name sym))}
-                    (throw (ex-info (str "could not resolve var: " sym)
-                                    {:var sym})))
+                (if-let [maybe-class (namespace sym)] ;; e.g. js/foo.bar or Long/MAX_VALUE
+                  (let [maybe-class (symbol maybe-class)]
+                    (if-not (find-ns maybe-class)
+                      {:op          :maybe-host-form
+                       :maybe-class maybe-class
+                       :maybe-field (symbol (name sym))}
+                      (throw (ex-info (str "could not resolve var: " sym)
+                                      {:var sym}))))
                   {:op          :maybe-class          ;; e.g. java.lang.Integer or Long
                    :maybe-class sym})))]
     (into {:env  env
