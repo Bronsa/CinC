@@ -24,15 +24,15 @@
   [env ctx]
   (assoc env :context ctx))
 
-(definline record? [x]
+(defn record? [x]
   (instance? IRecord x))
-(definline type? [x]
+(defn type? [x]
   (instance? IType x))
-(definline obj? [x]
+(defn obj? [x]
   (instance? IObj x))
-(definline reference? [x]
+(defn reference? [x]
   (instance? IReference x))
-(definline regex? [x]
+(defn regex? [x]
   (instance? Pattern x))
 
 (defn classify
@@ -52,11 +52,12 @@
    (char? form)    :char
    (regex? form)   :regex
    (class? form)   :class
+   (var? form)     :var
    :else           :unknown))
 
-(definline private? [var]
+(defn private? [var]
   (:private (meta var)))
-(definline macro? [var]
+(defn macro? [var]
   (:macro (meta var)))
 (defn constant? [var]
   (:const (meta var)))
