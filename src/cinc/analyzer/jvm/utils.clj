@@ -54,7 +54,7 @@
         (maybe-class-from-string (str sym))))))
 
 (defn members [class member]
-  (let [members (-> class
+  (let [members (-> (maybe-class class)
                   (reflect/type-reflect :ancestors true)
                   :members)]
     (when-let [members (filter #(= member (:name %)) members)]
@@ -71,11 +71,11 @@
       i-members)))
 
 (defn static-methods [class method argc]
-  (filter #(= argc (count (:paramter-types %)))
+  (filter #(= argc (count (:parameter-types %)))
           (filter :return-type (static-members class method))))
 
 (defn instance-methods [class method argc]
-  (filter #(= argc (count (:paramter-types %)))
+  (filter #(= argc (count (:parameter-types %)))
           (filter :return-type (instance-members class method))))
 
 (defn static-field [class f]

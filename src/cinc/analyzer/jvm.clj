@@ -119,17 +119,6 @@
        :static   {:class (:form target-expr)}
        :instance {:instance target-expr}))))
 
-(defmethod walk :static-call
-  [ast f]
-  (-> (f ast)
-    (walk-in-coll [:args] f)))
-
-(defmethod walk :instance-call
-  [ast f]
-  (-> (f ast)
-    (walk-in [:instance] f)
-    (walk-in-coll [:args] f)))
-
 (defn maybe-static-field [[_ class sym]]
   (when-let [{:keys [flags]} (static-field class sym)]
     {:op          :static-field
@@ -156,11 +145,6 @@
      :instance    target-expr
      :field       sym}))
 
-(defmethod walk :instance-field
-  [ast f]
-  (-> (f ast)
-    (walk-in [:instance] f)))
-
 (defn analyze-host-expr
   [target-type m-or-f target-expr class env]
   (if class
@@ -186,11 +170,6 @@
        :target target-expr
        :m-or-f m-or-f})))
 
-(defmethod walk :unknown-host-form
-  [ast f]
-  (-> (f ast)
-    (walk-in [:target] f)))
-
 (defmethod parse '.
   [[_ target & [m-or-f] :as form] env]
   {:pre [(>= (count form) 3)
@@ -206,6 +185,27 @@
     (merge {:form form
             :env env}
            expr)))
+
+(defmethod walk :static-call
+  [ast f]
+  (-> (f ast)
+    (walk-in-coll [:args] f)))
+
+(defmethod walk :instance-call
+  [ast f]
+  (-> (f ast)
+    (walk-in [:instance] f)
+    (walk-in-coll [:args] f)))
+
+(defmethod walk :instance-field
+  [ast f]
+  (-> (f ast)
+    (walk-in [:instance] f)))
+
+(defmethod walk :unknown-host-form
+  [ast f]
+  (-> (f ast)
+    (walk-in [:target] f)))
 
 (defn analyze
   "Given an environment, a map containing
