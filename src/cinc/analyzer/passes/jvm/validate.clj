@@ -36,6 +36,25 @@
     (throw (ex-info (str "class not found: " maybe-class)
                     {:class maybe-class}))))
 
+(defmethod -validate :static-call
+  [{:keys [class method args] :as ast}]
+  (let [argc (count args)]
+    (if-let [matching-methods (seq (u/static-methods class method argc))]
+      ast ;; find matching types or require reflection
+      (throw (ex-info (str "No matching method: " method " for class: " class " and arity: " argc)
+                      {:method method
+                       :class  class
+                       :argc   argc})))))
+
+(defmethod -validate :static-field
+  [{:keys [class field] :as ast}]
+  (if-let [matching-field (u/static-field class field)]
+    ast
+    (throw (ex-info (str "No matching field: " field " for class: " class)
+                    {:field  field
+                     :class  class}))))
+
+
 (defmethod -validate :default [ast] ast)
 
 (defn validate [ast]
