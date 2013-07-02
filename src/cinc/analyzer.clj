@@ -180,7 +180,11 @@
 ;; will eventually move out constant colls detection to that pass too
 (defmethod -analyze :symbol
   [_ sym env]
-  (let [ret (if-let [local-binding (-> env :locals sym)]
+  (let [mform (macroexpand-1 sym env)]
+    (if (symbol? mform)
+      (into {:env  env
+             :form sym}
+            (if-let [local-binding (-> env :locals sym)]
               (assoc local-binding
                 :op          :local
                 :assignable? (boolean (:mutable local-binding)))
@@ -198,11 +202,9 @@
                        :maybe-field (symbol (name sym))}
                       (throw (ex-info (str "could not resolve var: " sym)
                                       {:var sym}))))
-                  {:op          :maybe-class          ;; e.g. java.lang.Integer or Long
-                   :maybe-class sym})))]
-    (into {:env  env
-           :form sym}
-          ret)))
+                  {:op          :maybe-class ;; e.g. java.lang.Integer or Long
+                   :maybe-class sym}))))
+      (analyze mform env))))
 
 (defmethod -analyze :seq
   [_ form env]
