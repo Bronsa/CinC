@@ -11,10 +11,14 @@
           (mapv #(walk % f) coll))))
 
 (defn walk-in [ast keys f]
-  (update-in ast keys walk f))
+  (if (get-in ast keys)
+    (update-in ast keys walk f)
+    ast))
 
 (defn walk-in-coll [ast keys f]
-  (update-in ast keys (walk-coll f)))
+  (if (get-in ast keys)
+    (update-in ast keys (walk-coll f))
+    ast))
 
 (defmethod walk :default [ast f]
   (f ast))
