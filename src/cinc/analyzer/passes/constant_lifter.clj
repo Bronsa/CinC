@@ -10,7 +10,7 @@
   [{:keys [items form env] :as ast}]
   (if (and (every? :literal? items)
            (not (meta form)))
-    (-analyze :const form env :vector)
+    (-analyze :const (mapv :form items) env :vector)
     ast))
 
 (defmethod -constant-lift :map
@@ -18,14 +18,15 @@
   (if (and (every? :literal? keys)
            (every? :literal? vals)
            (not (meta form)))
-    (-analyze :const form env :map)
+    (-analyze :const (zipmap (map :form keys)
+                             (map :form vals)) env :map)
     ast))
 
 (defmethod -constant-lift :set
   [{:keys [items form env] :as ast}]
   (if (and (every? :literal? items)
            (not (meta form)))
-    (-analyze :const form env :set)
+    (-analyze :const (set (mapv :form items)) env :set)
     ast))
 
 (defmethod -constant-lift :var
