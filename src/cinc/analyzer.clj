@@ -387,7 +387,8 @@
       (throw (ex-info (str "bad binding form: " (first (remove symbol? fns)))
                       {:form form})))
     (let [binds (zipmap fns (map (fn [name]
-                                   {:name  name
+                                   {:op    :binding
+                                    :name  name
                                     :local true})
                                  fns))
           e (update-in env [:locals] merge binds)
@@ -426,7 +427,8 @@
               (throw (ex-info (str "invalid binding form: " name)
                               {:sym name})))
             (let [init-expr (analyze init env)
-                  bind-expr {:name  name
+                  bind-expr {:op    :binding
+                             :name  name
                              :init  init-expr
                              :local true}]
               (recur (next bindings)
@@ -462,6 +464,11 @@
   (-> (f ast)
     (walk-in-coll [:bindings] f)
     (walk-in [:body] f)))
+
+(defmethod walk :binding
+  [ast f]
+  (-> (f ast)
+    (walk-in [:init] f)))
 
 (defmethod walk :loop
   [ast f]
