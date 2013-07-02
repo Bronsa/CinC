@@ -3,7 +3,8 @@
   (:require [cinc.analyzer :as ana :refer [parse analyze-in-env]]
             [cinc.analyzer.utils :refer [ctx maybe-var walk walk-in walk-in-coll]]
             [cinc.analyzer.jvm.utils :refer :all]
-            [cinc.analyzer.passes.jvm.validate :refer [validate]]))
+            [cinc.analyzer.passes.jvm.validate :refer [validate]]
+            [cinc.analyzer.passes.constant-lifter :refer [constant-lift]]))
 
 (def jvm-specials
   (into ana/specials
@@ -215,4 +216,5 @@
   [form env]
   (binding [ana/macroexpand-1 macroexpand-1]
     (-> (ana/analyze form env)
+      constant-lift
       validate)))

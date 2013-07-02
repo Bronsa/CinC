@@ -71,16 +71,12 @@
 (defmethod -analyze :vector
   [_ form env]
   (let [items-env (ctx env :expr)
-        items (mapv (analyze-in-env items-env) form)
-        const? (and (every? :literal? items)
-                    (not (meta form)))]
-    (if const?
-      (-analyze :const form env :vector)
-      (wrapping-meta
-       {:op    :vector
-        :env   env
-        :items items
-        :form  form}))))
+        items (mapv (analyze-in-env items-env) form)]
+    (wrapping-meta
+     {:op    :vector
+      :env   env
+      :items items
+      :form  form})))
 
 (defmethod walk :vector
   [ast f]
@@ -92,18 +88,13 @@
   (let [kv-env (ctx env :expr)
         keys (keys form)
         vals (vals form)
-        [ks vs] (map (partial mapv (analyze-in-env kv-env)) [keys vals])
-        const? (and (every? :literal? ks)
-                    (every? :literal? vs)
-                    (not (meta form)))]
-    (if const?
-      (-analyze :const form env :map)
-      (wrapping-meta
-       {:op   :map
-        :env  env
-        :keys ks
-        :vals vs
-        :form form}))))
+        [ks vs] (map (partial mapv (analyze-in-env kv-env)) [keys vals])]
+    (wrapping-meta
+     {:op   :map
+      :env  env
+      :keys ks
+      :vals vs
+      :form form})))
 
 (defmethod walk :map
   [ast f]
@@ -114,16 +105,12 @@
 (defmethod -analyze :set
   [_ form env]
   (let [items-env (ctx env :expr)
-        items (mapv (analyze-in-env items-env) form)
-        const? (and (every? :literal? items)
-                    (not (meta form)))]
-    (if const?
-      (-analyze :const form env :set)
-      (wrapping-meta
-       {:op    :set
-        :env   env
-        :items items
-        :form  form}))))
+        items (mapv (analyze-in-env items-env) form)]
+    (wrapping-meta
+     {:op    :set
+      :env   env
+      :items items
+      :form  form})))
 
 (defmethod walk :set
   [ast f]
