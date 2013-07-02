@@ -1,7 +1,7 @@
 (ns cinc.analyzer.jvm
   (:refer-clojure :exclude [macroexpand-1 macroexpand])
   (:require [cinc.analyzer :as ana :refer [parse analyze-in-env]]
-            [cinc.analyzer.utils :refer [ctx maybe-var walk walk-in walk-in-coll]]
+            [cinc.analyzer.utils :refer [ctx maybe-var]]
             [cinc.analyzer.jvm.utils :refer :all]
             [cinc.analyzer.passes.jvm.validate :refer [validate]]
             [cinc.analyzer.passes.constant-lifter :refer [constant-lift]]))
@@ -75,22 +75,12 @@
    :form        form
    :target-expr (ana/analyze target (ctx env :expr))})
 
-(defmethod walk :monitor-enter
-  [ast f]
-  (-> (f ast)
-    (walk-in [:target-expr] f)))
-
 (defmethod parse 'monitor-exit
   [[_ target :as form] env]
   {:op          :monitor-exit
    :env         env
    :form        form
    :target-expr (ana/analyze target (ctx env :expr))})
-
-(defmethod walk :monitor-exit
-  [ast f]
-  (-> (f ast)
-    (walk-in [:target-expr] f)))
 
 (defmethod parse 'clojure.core/import*
   [[_ class :as form] env]
@@ -187,27 +177,6 @@
             :env env}
            expr)))
 
-(defmethod walk :static-call
-  [ast f]
-  (-> (f ast)
-    (walk-in-coll [:args] f)))
-
-(defmethod walk :instance-call
-  [ast f]
-  (-> (f ast)
-    (walk-in [:instance] f)
-    (walk-in-coll [:args] f)))
-
-(defmethod walk :instance-field
-  [ast f]
-  (-> (f ast)
-    (walk-in [:instance] f)))
-
-(defmethod walk :unknown-host-form
-  [ast f]
-  (-> (f ast)
-    (walk-in [:target] f)))
-
 (defn analyze
   "Given an environment, a map containing
    -  :locals (mapping of names to lexical bindings),
@@ -216,5 +185,5 @@
   [form env]
   (binding [ana/macroexpand-1 macroexpand-1]
     (-> (ana/analyze form env)
-      constant-lift
-      validate)))
+      validate
+      constant-lift)))

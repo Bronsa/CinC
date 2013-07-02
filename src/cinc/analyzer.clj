@@ -52,12 +52,6 @@
      :expr      (assoc-in expr [:env :context] :expr)}
     expr))
 
-(defmethod walk :with-meta
-  [ast f]
-  (-> (f ast)
-    (walk-in [:meta-expr] f)
-    (walk-in [:expr] f)))
-
 (defmethod -analyze :const
   [_ form env & [type]]
   (let [type (or type (classify form))]
@@ -78,11 +72,6 @@
       :items items
       :form  form})))
 
-(defmethod walk :vector
-  [ast f]
-  (-> (f ast)
-    (walk-in-coll [:items] f)))
-
 (defmethod -analyze :map
   [_ form env]
   (let [kv-env (ctx env :expr)
@@ -96,12 +85,6 @@
       :vals vs
       :form form})))
 
-(defmethod walk :map
-  [ast f]
-  (-> (f ast)
-    (walk-in-coll [:keys] f)
-    (walk-in-coll [:vals] f)))
-
 (defmethod -analyze :set
   [_ form env]
   (let [items-env (ctx env :expr)
@@ -111,11 +94,6 @@
       :env   env
       :items items
       :form  form})))
-
-(defmethod walk :set
-  [ast f]
-  (-> (f ast)
-    (walk-in-coll [:items] f)))
 
 (def specials
   '#{do if new var quote set! try
@@ -223,12 +201,6 @@
          :form form}
         (analyze-block exprs env)))
 
-(defmethod walk :do
-  [ast f]
-  (-> (f ast)
-    (walk-in-coll [:statements] f)
-    (walk-in [:ret] f)))
-
 (defmethod parse 'if
   [[_ test then & else :as form] env]
   {:pre [(or (= 3 (count form))
@@ -243,13 +215,6 @@
      :then then
      :else else}))
 
-(defmethod walk :if
-  [ast f]
-  (-> (f ast)
-    (walk-in [:test] f)
-    (walk-in [:then] f)
-    (walk-in [:else] f)))
-
 (defmethod parse 'new
   [[_ class & args :as form] env]
   {:pre [(>= (count form) 2)]}
@@ -260,11 +225,6 @@
      :form        form
      :maybe-class class
      :args        args}))
-
-(defmethod walk :new
-  [ast f]
-  (-> (f ast)
-    (walk-in [:args] f)))
 
 (defmethod parse 'var
   [[_ var :as form] env]
@@ -294,12 +254,6 @@
        :val    val}
       (throw (ex-info "cannot set! non-assignable target" {:target target})))))
 
-(defmethod walk :set!
-  [ast f]
-  (-> (f ast)
-    (walk-in [:target] f)
-    (walk-in [:val] f)))
-
 (defmethod parse 'try
   [[_ & body :as form] {:keys [context] :as env}]
   (if-not (= :return context)
@@ -327,13 +281,6 @@
          :catches cblocks
          :finally fblock}))))
 
-(defmethod walk :try
-  [ast f]
-  (-> (f ast)
-    (walk-in [:body] f)
-    (walk-in-coll [:catches] f)
-    (walk-in [:finally] f)))
-
 (defmethod parse 'catch
   [[_ etype ename & body :as form] env]
   (if (and (symbol? ename)
@@ -347,22 +294,12 @@
                                                                         :tag  etype}))}
     (throw (ex-info (str "invalid binding form: " ename) {:sym ename}))))
 
-(defmethod walk :catch
-  [ast f]
-  (-> (f ast)
-    (walk-in [:body] f)))
-
 (defmethod parse 'throw
   [[_ throw :as form] env]
   {:op        :throw
    :env       env
    :form      form
    :exception (analyze throw (ctx env :expr))})
-
-(defmethod walk :throw
-  [ast f]
-  (-> (f ast)
-    (walk-in [:exception] f)))
 
 (defmethod parse 'letfn*
   [[_ bindings & body :as form] {:keys [context] :as env}]
@@ -391,12 +328,6 @@
        :form     form
        :bindings binds
        :body     body})))
-
-(defmethod walk :letfn
-  [ast f]
-  (-> (f ast)
-    (walk-in-coll [:bindings] f)
-    (walk-in [:body] f)))
 
 (defn analyze-let
   [[op bindings & body :as form] {:keys [context] :as env}]
@@ -448,23 +379,6 @@
          :env  env}
         (analyze-let form env)))
 
-(defmethod walk :let
-  [ast f]
-  (-> (f ast)
-    (walk-in-coll [:bindings] f)
-    (walk-in [:body] f)))
-
-(defmethod walk :binding
-  [ast f]
-  (-> (f ast)
-    (walk-in [:init] f)))
-
-(defmethod walk :loop
-  [ast f]
-  (-> (f ast)
-    (walk-in-coll [:bindings] f)
-    (walk-in [:body] f)))
-
 (defmethod parse 'recur
   [[_ & exprs :as form] {:keys [context loop-locals in-try]
                          :as env}]
@@ -478,11 +392,6 @@
      :env   env
      :form  form
      :exprs exprs}))
-
-(defmethod walk :recur
-  [ast f]
-  (-> (f ast)
-    (walk-in-coll [:exprs] f)))
 
 ;; second pass with info to check arity?
 (defn analyze-fn-method [[params & body :as form] {:keys [locals] :as env}]
@@ -515,12 +424,6 @@
      :params      params-expr
      :fixed-arity fixed-arity
      :body        body}))
-
-(defmethod walk :fn-method
-  [ast f]
-  (-> (f ast)
-    (walk-in-coll [:params] f)
-    (walk-in [:body] f)))
 
 ;; TODO name generation
 (defmethod parse 'fn*
@@ -556,11 +459,6 @@
      :max-fixed-arity max-fixed-arity
      :methods         methods-exprs}))
 
-(defmethod walk :fn
-  [ast f]
-  (-> (f ast)
-    (walk-in-coll [:methods] f)))
-
 (defmethod parse 'case*
   [[_ expr shift mask default case-map switch-type test-type & [skip-check?] :as form] env]
   (let [[low high] ((juxt first last) (keys case-map))
@@ -585,14 +483,6 @@
      :switch-type switch-type
      :test-type   test-type
      :skip-check? skip-check?}))
-
-(defmethod walk :case
-  [ast f]
-  (-> (f ast)
-    (walk-in [:test] f)
-    (walk-in [:default] f)
-    (walk-in-coll [:tests] f)
-    (walk-in-coll [:thens] f)))
 
 (defmethod parse 'def
   [[_ sym & expr :as form] env]
@@ -621,11 +511,6 @@
            :meta meta}
           args)))
 
-(defmethod walk :def
-  [ast f]
-  (-> (f ast)
-    (walk-in [:init] f)))
-
 (defmethod parse '.
   [[_ target & [m-or-f] :as form] env]
   {:pre [(>= (count form) 3)
@@ -644,17 +529,6 @@
             :env  env}
            expr)))
 
-(defmethod walk :host-call
-  [ast f]
-  (-> (f ast)
-    (walk-in [:target-expr] f)
-    (walk-in-coll [:args] f)))
-
-(defmethod walk :host-interop
-  [ast f]
-  (-> (f ast)
-    (walk-in [:target-expr] f)))
-
 ;; primitives
 ;; keyword callsites
 ;; runtime instanceof for constant exprs
@@ -670,9 +544,3 @@
      :meta (meta form)
      :fn   fn-expr
      :args args-expr}))
-
-(defmethod walk :invoke
-  [ast f]
-  (-> (f ast)
-    (walk-in [:fn] f)
-    (walk-in-coll [:args] f)))

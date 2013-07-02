@@ -1,5 +1,5 @@
 (ns cinc.analyzer.passes.jvm.validate
-  (:require [cinc.analyzer.utils :refer [walk]]
+  (:require [cinc.analyzer.utils :refer [prewalk]]
             [cinc.analyzer.jvm.utils :as u]))
 
 (defmulti -validate :op)
@@ -58,4 +58,4 @@
 (defmethod -validate :default [ast] ast)
 
 (defn validate [ast]
-  (walk ast -validate))
+  (prewalk ast -validate))
