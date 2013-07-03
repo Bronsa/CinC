@@ -1,4 +1,3 @@
-(set! *warn-on-reflection* true)
 (ns cinc.analyzer
   "Utilities for host-agnostic analysis of clojure forms"
   (:refer-clojure :exclude [macroexpand-1 macroexpand])

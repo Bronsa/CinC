@@ -1,4 +1,3 @@
-(set! *warn-on-reflection* true)
 (ns cinc.analyzer.jvm.utils
   (:require [clojure.reflect :as reflect])
   (:import (clojure.lang RT Symbol Var)
