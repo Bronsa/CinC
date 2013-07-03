@@ -310,7 +310,7 @@
      :env         env
      :form        form
      :body        (parse (cons 'do body) (assoc-in env [:locals ename]
-                                                   (merge (source-info ename env)
+                                                   (merge {:env (source-info ename env)}
                                                           {:op   :binding
                                                            :name ename
                                                            :tag  etype})))}
@@ -335,7 +335,7 @@
       (throw (ex-info (str "bad binding form: " (first (remove symbol? fns)))
                       {:form form})))
     (let [binds (zipmap fns (map (fn [name]
-                                   (merge (source-info name env)
+                                   (merge {:env (source-info name env)}
                                     {:op    :binding
                                      :name  name
                                      :local true}))
@@ -370,7 +370,7 @@
               (throw (ex-info (str "invalid binding form: " name)
                               {:sym name})))
             (let [init-expr (analyze init env)
-                  bind-expr (merge (source-info name env)
+                  bind-expr (merge {:env (source-info name env)}
                                    {:op    :binding
                                     :name  name
                                     :init  init-expr
@@ -424,7 +424,7 @@
   (let [variadic? (boolean (some '#{&} params))
         params-names (vec (remove '#{&} params))
         params-expr (mapv (fn [name]
-                            (merge (source-info name env)
+                            (merge {:env (source-info name env)}
                                    {:name name
                                     :arg  true}))
                           params-names)
