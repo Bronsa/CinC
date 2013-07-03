@@ -187,3 +187,7 @@
     (-> (ana/analyze form env)
       validate
       constant-lift)))
+
+(defn analyze-file
+  [file]
+  (ana/analyze-file file analyze))

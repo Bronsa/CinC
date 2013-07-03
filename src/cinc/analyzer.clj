@@ -1,7 +1,10 @@
 (ns cinc.analyzer
   "Utilities for host-agnostic analysis of clojure forms"
   (:refer-clojure :exclude [macroexpand-1 macroexpand])
-  (:require [cinc.analyzer.utils :refer :all])
+  (:require [cinc.analyzer.utils :refer :all]
+            [clojure.java.io :as io]
+            [clojure.tools.reader :as r]
+            [clojure.tools.reader.reader-types :as rt])
   (:import (clojure.lang LazySeq Var)))
 
 (defmulti -analyze (fn [op form env & _] op))
@@ -34,6 +37,21 @@
        (set? form)      (-analyze :set    form env)
 
        :else            (-analyze :const  form env)))))
+
+(defn analyze-file
+  ([file] (analyze-file file analyze))
+  ([file analyze]
+     (let [res (or (io/resource file) (io/as-url (io/as-file file)))]
+       (assert res (str "Can't find " file " in classpath"))
+       (binding [*file* (.getPath res)]
+         (with-open [r (io/input-stream res)]
+           (let [env {:context :statement :locals {}}
+                 pbr (rt/indexing-push-back-reader
+                      (rt/input-stream-push-back-reader r))]
+             (loop [r (r/read pbr false ::eof false) ret []]
+               (if-not (identical? ::eof r)
+                 (recur (r/read pbr false ::eof false) (conj ret (analyze r env)))
+                 ret))))))))
 
 (defn analyze-in-env
   "Given an env returns a function that when called with an argument
