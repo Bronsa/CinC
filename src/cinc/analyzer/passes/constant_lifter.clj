@@ -1,8 +1,7 @@
 (set! *warn-on-reflection* true)
 (ns cinc.analyzer.passes.constant-lifter
   (:require [cinc.analyzer :refer [-analyze]]
-            [cinc.analyzer.utils :refer [postwalk constant?]])
-  (:import (clojure.lang Var)))
+            [cinc.analyzer.utils :refer [postwalk constant?]]))
 
 (defmulti -constant-lift :op)
 

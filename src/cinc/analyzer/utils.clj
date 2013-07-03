@@ -4,33 +4,31 @@
            java.util.regex.Pattern))
 
 (defn prewalk [ast f]
-  (let [ast (f ast)]
-    (reduce (fn [ast k]
-              (let [node (k ast)]
-                (cond
-                 (:op node)
-                 (update-in ast [k] prewalk f)
+  (let [ast (f ast)
+        prewalk-ast (fn [ast k node]
+                       (cond
+                        (:op node)
+                        (assoc-in ast [k] (prewalk node f))
 
-                 (and (vector? node)
-                      (every? :op node))
-                 (assoc-in ast [k] (mapv #(prewalk % f) node))
+                        (and (vector? node)
+                             (every? :op node))
+                        (assoc-in ast [k] (mapv #(prewalk % f) node))
 
-                 :else ast)))
-            ast (keys ast))))
+                        :else ast))]
+    (reduce-kv prewalk-ast ast ast)))
 
 (defn postwalk [ast f]
-  (f (reduce (fn [ast k]
-               (let [node (k ast)]
-                 (cond
-                  (:op node)
-                  (update-in ast [k] postwalk f)
+  (let [postwalk-ast (fn [ast k node]
+                       (cond
+                        (:op node)
+                        (assoc-in ast [k] (postwalk node f))
 
-                  (and (vector? node)
-                      (every? :op node))
-                  (assoc-in ast [k] (mapv #(postwalk % f) node))
+                        (and (vector? node)
+                             (every? :op node))
+                        (assoc-in ast [k] (mapv #(postwalk % f) node))
 
-                  :else ast)))
-             ast (keys ast))))
+                        :else ast))]
+    (f (reduce-kv postwalk-ast ast ast))))
 
 (defn ctx
   "Returns a copy of the passe environment with :context set to ctx"
