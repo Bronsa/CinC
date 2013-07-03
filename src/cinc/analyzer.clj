@@ -254,9 +254,13 @@
 
 (defmethod parse 'quote
   [[_ expr :as form] env]
-  (let [quoted-meta (when-let [m (meta form)]
-                      (list 'quote m))]
-    (-analyze :const (with-meta expr quoted-meta) env)))
+  (let [quoted-meta (when-let [m (meta expr)]
+                      (reduce-kv #(assoc %
+                                    (list 'quote %2)
+                                    (list 'quote %3))
+                                 {} m))
+        expr (if quoted-meta (with-meta expr quoted-meta) expr)]
+    (-analyze :const expr env)))
 
 (defmethod parse 'set!
   [[_ target val :as form] env]
