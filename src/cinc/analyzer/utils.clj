@@ -111,3 +111,8 @@
 (defn get-col [x env]
   (or (-> x meta :column)
       (:column env)))
+
+(defn source-info [x env]
+  {:file   *file*
+   :line   (get-line x env)
+   :column (get-col x env)})

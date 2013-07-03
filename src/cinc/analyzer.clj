@@ -65,7 +65,9 @@
     {:op        :with-meta
      :env       env
      :form      form
-     :meta-expr (-analyze :map (meta form) (ctx env :expr))
+     :meta-expr (-analyze :map (dissoc (meta form)
+                                       :line :column)
+                          (ctx env :expr))
      :expr      (assoc-in expr [:env :context] :expr)}
     expr))
 
@@ -190,9 +192,7 @@
 
 (defmethod -analyze :seq
   [_ form env]
-  (let [env (assoc env
-              :line (get-line form env)
-              :col  (get-col form env))]
+  (let [env (into env (source-info form env))]
     (let [op (first form)]
       (if (nil? op)
         (ex-info "Can't call nil" {:form form}))
