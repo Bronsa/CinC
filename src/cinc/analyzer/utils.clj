@@ -113,6 +113,9 @@
       (:column env)))
 
 (defn source-info [x env]
-  {:file   *file*
-   :line   (get-line x env)
-   :column (get-col x env)})
+  (merge
+   {:file *file*}
+   (when-let [line (get-line x env)]
+     {:line line})
+   (when-let [column (get-col x env)]
+     {:column column})))

@@ -60,16 +60,17 @@
   (fn [form] (analyze form env)))
 
 (defn wrapping-meta [{:keys [form env] :as expr}]
-  (if (and (meta form)
-           (obj? form))
-    {:op        :with-meta
-     :env       env
-     :form      form
-     :meta-expr (-analyze :map (dissoc (meta form)
-                                       :line :column)
-                          (ctx env :expr))
-     :expr      (assoc-in expr [:env :context] :expr)}
-    expr))
+  (let [meta (dissoc (meta form) :line :column)
+        quoted? (::quoted meta)
+        meta (if quoted? (list 'quote (dissoc meta ::quoted)) meta)]
+    (if (and (seq meta)
+             (obj? form))
+      {:op        :with-meta
+       :env       env
+       :form      form
+       :meta-expr (analyze meta (ctx env :expr))
+       :expr      (assoc-in expr [:env :context] :expr)}
+     expr)))
 
 (defmethod -analyze :const
   [_ form env & [type]]
@@ -254,12 +255,9 @@
 
 (defmethod parse 'quote
   [[_ expr :as form] env]
-  (let [quoted-meta (when-let [m (meta expr)]
-                      (reduce-kv #(assoc %
-                                    (list 'quote %2)
-                                    (list 'quote %3))
-                                 {} m))
-        expr (if quoted-meta (with-meta expr quoted-meta) expr)]
+  (let [expr (if-let [m (meta expr)]
+               (with-meta expr (assoc m ::quoted true))
+               expr)]
     (-analyze :const expr env)))
 
 (defmethod parse 'set!
