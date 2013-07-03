@@ -60,7 +60,7 @@
   (fn [form] (analyze form env)))
 
 (defn wrapping-meta [{:keys [form env] :as expr}]
-  (let [meta (dissoc (meta form) :line :column)
+  (let [meta (dissoc (meta form) :line :column :file)
         quoted? (::quoted meta)
         meta (if quoted? (list 'quote (dissoc meta ::quoted)) meta)]
     (if (and (seq meta)
@@ -309,8 +309,11 @@
      :local       ename
      :env         env
      :form        form
-     :body        (parse (cons 'do body) (assoc-in env [:locals ename] {:name ename
-                                                                        :tag  etype}))}
+     :body        (parse (cons 'do body) (assoc-in env [:locals ename]
+                                                   (merge (source-info ename env)
+                                                          {:op   :binding
+                                                           :name ename
+                                                           :tag  etype})))}
     (throw (ex-info (str "invalid binding form: " ename) {:sym ename}))))
 
 (defmethod parse 'throw
@@ -332,9 +335,10 @@
       (throw (ex-info (str "bad binding form: " (first (remove symbol? fns)))
                       {:form form})))
     (let [binds (zipmap fns (map (fn [name]
-                                   {:op    :binding
-                                    :name  name
-                                    :local true})
+                                   (merge (source-info name env)
+                                    {:op    :binding
+                                     :name  name
+                                     :local true}))
                                  fns))
           e (update-in env [:locals] merge binds)
           binds (mapv (fn [{:keys [name] :as b}]
@@ -366,10 +370,11 @@
               (throw (ex-info (str "invalid binding form: " name)
                               {:sym name})))
             (let [init-expr (analyze init env)
-                  bind-expr {:op    :binding
-                             :name  name
-                             :init  init-expr
-                             :local true}]
+                  bind-expr (merge (source-info name env)
+                                   {:op    :binding
+                                    :name  name
+                                    :init  init-expr
+                                    :local true})]
               (recur (next bindings)
                      (assoc-in env [:locals name] bind-expr)
                      (conj binds bind-expr))))
@@ -419,8 +424,9 @@
   (let [variadic? (boolean (some '#{&} params))
         params-names (vec (remove '#{&} params))
         params-expr (mapv (fn [name]
-                            {:name name
-                             :arg  true})
+                            (merge (source-info name env)
+                                   {:name name
+                                    :arg  true}))
                           params-names)
         arity (count params-names)
         fixed-arity (if variadic?
@@ -528,7 +534,8 @@
            :name sym
            :var  var
            :meta meta}
-          args)))
+          args
+          (source-info sym env))))
 
 (defmethod parse '.
   [[_ target & [m-or-f] :as form] env]
