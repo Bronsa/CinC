@@ -104,6 +104,12 @@
       (assoc ast :tag then-tag)
       ast)))
 
+(defmethod -infer-tag :do
+  [{:keys [ret] :as ast}]
+  (if-let [tag (:tag ret)]
+    (assoc ast :tag tag)
+    ast))
+
 (defmethod -infer-tag :default [ast] ast)
 
 (defn infer-shortest-path
