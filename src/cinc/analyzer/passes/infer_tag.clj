@@ -66,11 +66,9 @@
 
 (defmethod -infer-tag :binding
   [{:keys [init name] :as ast}]
-  (if-let [tag (:tag (meta name))]
-    (assoc ast :tag tag)
-    (if init
-      (assoc ast :tag (:tag init))
-      ast)))
+  (if init
+    (assoc ast :tag (:tag init))
+    ast))
 
 (defmethod -infer-tag :local
   [{:keys [init name] :as ast}]

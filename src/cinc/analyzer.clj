@@ -167,28 +167,28 @@
   [_ sym env]
   (let [mform (macroexpand-1 sym env)]
     (if (symbol? mform)
-      (into {:env  env
-             :form sym}
-            (if-let [local-binding (-> env :locals sym)]
-              (assoc local-binding
-                :op          :local
-                :assignable? (boolean (:mutable local-binding)))
-              (if-let [^Var var (resolve-var sym)]
-                {:op          :var
-                 :name        (.sym var)
-                 :ns          (-> var .ns .name)
-                 :assignable? (thread-bound? var)
-                 :var         var}
-                (if-let [maybe-class (namespace sym)] ;; e.g. js/foo.bar or Long/MAX_VALUE
-                  (let [maybe-class (symbol maybe-class)]
-                    (if-not (find-ns maybe-class)
-                      {:op          :maybe-host-form
-                       :maybe-class maybe-class
-                       :maybe-field (symbol (name sym))}
-                      (throw (ex-info (str "could not resolve var: " sym)
-                                      {:var sym}))))
-                  {:op          :maybe-class ;; e.g. java.lang.Integer or Long
-                   :maybe-class sym}))))
+      (merge (if-let [local-binding (-> env :locals sym)]
+               (assoc local-binding
+                 :op          :local
+                 :assignable? (boolean (:mutable local-binding)))
+               (if-let [^Var var (resolve-var sym)]
+                 {:op          :var
+                  :name        (.sym var)
+                  :ns          (-> var .ns .name)
+                  :assignable? (thread-bound? var)
+                  :var         var}
+                 (if-let [maybe-class (namespace sym)] ;; e.g. js/foo.bar or Long/MAX_VALUE
+                   (let [maybe-class (symbol maybe-class)]
+                     (if-not (find-ns maybe-class)
+                       {:op          :maybe-host-form
+                        :maybe-class maybe-class
+                        :maybe-field (symbol (name sym))}
+                       (throw (ex-info (str "could not resolve var: " sym)
+                                       {:var sym}))))
+                   {:op          :maybe-class ;; e.g. java.lang.Integer or Long
+                    :maybe-class sym})))
+             {:env  env
+              :form sym})
       (analyze mform env))))
 
 (defmethod -analyze :seq
@@ -338,6 +338,7 @@
                                    (merge {:env (source-info name env)}
                                     {:op    :binding
                                      :name  name
+                                     :form  name
                                      :local true}))
                                  fns))
           e (update-in env [:locals] merge binds)
@@ -374,6 +375,7 @@
                                    {:op    :binding
                                     :name  name
                                     :init  init-expr
+                                    :form  name
                                     :local true})]
               (recur (next bindings)
                      (assoc-in env [:locals name] bind-expr)
