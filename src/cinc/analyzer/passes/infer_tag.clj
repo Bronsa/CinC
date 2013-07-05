@@ -89,9 +89,11 @@
     ast))
 
 (defmethod -infer-tag :default [ast] ast)
-(defmethod -infer-tag :const [{:keys [op type] :as ast}]
-  (assoc (-infer-tag (assoc ast :op type))
-    :op op))
+(defmethod -infer-tag :const [{:keys [op type form] :as ast}]
+  (if (not= :unknown type)
+    (assoc (-infer-tag (assoc ast :op type))
+      :op op)
+    (assoc ast :tag (class form))))
 
 (defn infer-shortest-path
   [{:keys [tag form name] :as ast}]
