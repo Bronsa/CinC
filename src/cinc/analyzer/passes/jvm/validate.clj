@@ -57,5 +57,15 @@
 
 (defmethod -validate :default [ast] ast)
 
+(defn validate-around
+  [{:keys [tag] :as ast}]
+  (let [ast (if tag
+              (if-let [the-class (u/maybe-class tag)]
+                (assoc ast :tag the-class)
+                (throw (ex-info (str "class not found: " tag)
+                                {:class tag})))
+              ast)]
+    (-validate ast)))
+
 (defn validate [ast]
-  (prewalk ast -validate))
+  (prewalk ast validate-around))
