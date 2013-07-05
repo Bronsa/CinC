@@ -60,20 +60,32 @@
   [ast]
   (assoc ast :tag Pattern))
 
-(defmethod -infer-tag :var
+(defmethod -infer-tag :the-var
   [ast]
   (assoc ast :tag Var))
 
 (defmethod -infer-tag :binding
-  [{:keys [init name] :as ast}]
+  [{:keys [init] :as ast}]
   (if init
     (assoc ast :tag (:tag init))
     ast))
 
 (defmethod -infer-tag :local
-  [{:keys [init name] :as ast}]
+  [{:keys [init] :as ast}]
   (if init
     (assoc ast :tag (:tag init))
+    ast))
+
+(defmethod -infer-tag :var
+  [{:keys [var] :as ast}]
+  (if-let [tag (:tag (meta var))]
+    (assoc ast :tag tag)
+    ast))
+
+(defmethod -infer-tag :def
+  [{:keys [init] :as ast}]
+  (if-let [tag (:tag init)]
+    (assoc ast :tag tag)
     ast))
 
 (defmethod -infer-tag :default [ast] ast)

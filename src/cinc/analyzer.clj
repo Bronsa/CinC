@@ -247,7 +247,7 @@
 (defmethod parse 'var
   [[_ var :as form] env]
   (if-let [var (maybe-var var)]
-    {:op   :var
+    {:op   :the-var
      :env  env
      :form form
      :var  var}

@@ -54,6 +54,11 @@
                     {:field  field
                      :class  class}))))
 
+(defmethod -validate :def
+  [{:keys [tag var] :as ast}]
+  (when tag
+    (alter-meta! var assoc :tag tag))
+  ast)
 
 (defmethod -validate :default [ast] ast)
 
