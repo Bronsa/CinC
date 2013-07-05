@@ -1,5 +1,5 @@
 (ns cinc.analyzer.passes.infer-tag
-  (:require [cinc.analyzer.utils :refer [prewalk]])
+  (:require [cinc.analyzer.utils :refer [postwalk]])
   (:import (clojure.lang IPersistentVector IPersistentMap
                          IPersistentSet ISeq Keyword Var
                          Symbol)
@@ -64,20 +64,34 @@
   [ast]
   (assoc ast :tag Var))
 
+(defmethod -infer-tag :binding
+  [{:keys [init name] :as ast}]
+  (if-let [tag (:tag (meta name))]
+    (assoc ast :tag tag)
+    (if init
+      (assoc ast :tag (:tag init))
+      ast)))
+
+(defmethod -infer-tag :local
+  [{:keys [init name] :as ast}]
+  (if-let [tag (:tag (meta name))]
+    (assoc ast :tag tag)
+    (if init
+      (assoc ast :tag (:tag init))
+      ast)))
+
 (defmethod -infer-tag :default [ast] ast)
 (defmethod -infer-tag :const [{:keys [op type] :as ast}]
   (assoc (-infer-tag (assoc ast :op type))
     :op op))
 
+(defn infer-shortest-path
+  [{:keys [tag form] :as ast}]
+  (if tag
+    ast
+    (if-let [form-tag (:tag (meta form))]
+      (assoc ast :tag form-tag)
+      (-infer-tag ast))))
+
 (defn infer-tag [ast]
-  (prewalk ast (fn [{:keys [tag form] :as ast}]
-                 (let [form-tag (:tag (meta form))]
-                   (cond
-                    tag
-                    ast
-
-                    form-tag
-                    (assoc ast :tag form-tag)
-
-                    :else
-                    (-infer-tag ast))))))
+  (postwalk ast infer-shortest-path))
