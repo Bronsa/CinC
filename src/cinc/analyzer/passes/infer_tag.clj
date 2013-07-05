@@ -72,11 +72,9 @@
 
 (defmethod -infer-tag :local
   [{:keys [init name] :as ast}]
-  (if-let [tag (:tag (meta name))]
-    (assoc ast :tag tag)
-    (if init
-      (assoc ast :tag (:tag init))
-      ast)))
+  (if init
+    (assoc ast :tag (:tag init))
+    ast))
 
 (defmethod -infer-tag :default [ast] ast)
 (defmethod -infer-tag :const [{:keys [op type] :as ast}]
@@ -84,12 +82,14 @@
     :op op))
 
 (defn infer-shortest-path
-  [{:keys [tag form] :as ast}]
+  [{:keys [tag form name] :as ast}]
   (if tag
     ast
-    (if-let [form-tag (:tag (meta form))]
-      (assoc ast :tag form-tag)
-      (-infer-tag ast))))
+    (if-let [tag (:tag (meta name))]
+      (assoc ast :tag tag)
+      (if-let [form-tag (:tag (meta form))]
+        (assoc ast :tag form-tag)
+        (-infer-tag ast)))))
 
 (defn infer-tag [ast]
   (postwalk ast infer-shortest-path))
