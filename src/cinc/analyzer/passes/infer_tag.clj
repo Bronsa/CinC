@@ -78,9 +78,11 @@
 
 (defmethod -infer-tag :var
   [{:keys [var] :as ast}]
-  (if-let [tag (:tag (meta var))]
-    (assoc ast :tag tag)
-    ast))
+  (let [m (meta var)]
+    (if-let [tag (and (not (:dynamic m))
+                      (:tag m))]
+      (assoc ast :tag tag)
+      ast)))
 
 (defmethod -infer-tag :def
   [ast]
