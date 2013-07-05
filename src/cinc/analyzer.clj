@@ -223,15 +223,16 @@
   [[_ test then & else :as form] env]
   {:pre [(or (= 3 (count form))
              (= 4 (count form)))]}
-  (let [test (analyze test (ctx env :expr))
-        then (analyze then env)
-        else (analyze else env)]
-    {:op   :if
-     :form form
-     :env  env
-     :test test
-     :then then
-     :else else}))
+  (let [test-expr (analyze test (ctx env :expr))
+        then-expr (analyze then env)
+        else-expr (analyze else env)]
+    (merge {:op   :if
+            :form form
+            :env  env
+            :test test-expr
+            :then then-expr}
+           (when else
+             {:else else-expr}))))
 
 (defmethod parse 'new
   [[_ class & args :as form] env]

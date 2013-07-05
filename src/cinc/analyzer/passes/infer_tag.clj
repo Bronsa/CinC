@@ -88,12 +88,22 @@
     (assoc ast :tag tag)
     ast))
 
-(defmethod -infer-tag :default [ast] ast)
-(defmethod -infer-tag :const [{:keys [op type form] :as ast}]
+(defmethod -infer-tag :const
+  [{:keys [op type form] :as ast}]
   (if (not= :unknown type)
     (assoc (-infer-tag (assoc ast :op type))
       :op op)
     (assoc ast :tag (class form))))
+
+(defmethod -infer-tag :if
+  [{:keys [test then else] :as ast}]
+  (let [[then-tag else-tag] (mapv :tag [then else])]
+    (if (or (not else)
+            (= then-tag else-tag))
+      (assoc ast :tag then-tag)
+      ast)))
+
+(defmethod -infer-tag :default [ast] ast)
 
 (defn infer-shortest-path
   [{:keys [tag form name] :as ast}]
