@@ -55,8 +55,8 @@
                      :class  class}))))
 
 (defmethod -validate :def
-  [{:keys [tag var] :as ast}]
-  (when tag
+  [{:keys [var init] :as ast}]
+  (when-let [tag (:tag init)]
     (alter-meta! var assoc :tag tag))
   ast)
 

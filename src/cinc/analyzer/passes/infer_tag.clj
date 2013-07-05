@@ -83,10 +83,8 @@
     ast))
 
 (defmethod -infer-tag :def
-  [{:keys [init] :as ast}]
-  (if-let [tag (:tag init)]
-    (assoc ast :tag tag)
-    ast))
+  [ast]
+  (assoc ast :tag Var))
 
 (defmethod -infer-tag :const
   [{:keys [op type form] :as ast}]
