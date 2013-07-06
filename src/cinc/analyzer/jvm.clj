@@ -50,7 +50,8 @@
               (meta form)))
 
           (= (last opname) \.) ;; (class. ..)
-          (list* 'new (symbol (subs opname 0 (dec (count opname)))) expr)
+          (with-meta (list* 'new (symbol (subs opname 0 (dec (count opname)))) expr)
+            (meta form))
 
           :else form))
        form))
