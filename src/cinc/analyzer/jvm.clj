@@ -149,7 +149,7 @@
                              m-or-f " for class " class)
                         {:class  class
                          :m-or-f m-or-f}))))
-    (if-let [class (maybe-class (-> target-expr :meta :tag))]
+    (if-let [class (maybe-class (-> target-expr :meta :form :tag))] ;; else try again after tag inference
       ;; it's tagged: we know the target class at compile time
       (if-let [field (maybe-instance-field target-expr class m-or-f)]
         field

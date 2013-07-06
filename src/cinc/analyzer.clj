@@ -62,14 +62,14 @@
 (defn wrapping-meta [{:keys [form env] :as expr}]
   (let [meta (dissoc (meta form) :line :column :file)
         quoted? (::quoted meta)
-        meta (if quoted? (list 'quote (dissoc meta ::quoted)) meta)]
+        quoted-meta (if quoted? (list 'quote (dissoc meta ::quoted)) meta)]
     (if (and (seq meta)
              (obj? form))
-      {:op        :with-meta
-       :env       env
-       :form      form
-       :meta-expr (analyze meta (ctx env :expr))
-       :expr      (assoc-in expr [:env :context] :expr)}
+      {:op   :with-meta
+       :env  env
+       :form form
+       :meta (analyze quoted-meta (ctx env :expr))
+       :expr (assoc-in expr [:env :context] :expr)}
      expr)))
 
 (defmethod -analyze :const
@@ -528,6 +528,7 @@
         args (apply pfn expr)
         doc (or (:doc args) (-> sym meta :doc))
         meta ((fnil merge {}) (meta sym) (when doc {:doc doc}))
+        meta-expr (analyze meta (ctx env :expr))
         var (doto (intern *ns* sym)
               (reset-meta! meta))
         args (when-let [[_ init] (find args :init)]
@@ -537,7 +538,7 @@
             :form form
             :name sym
             :var  var
-            :meta meta}
+            :meta meta-expr}
            args)))
 
 (defmethod parse '.
@@ -570,6 +571,6 @@
     {:op   :invoke
      :form form
      :env  env
-     :meta (meta form)
+     :meta (analyze (meta form) (ctx env :expr))
      :fn   fn-expr
      :args args-expr}))
