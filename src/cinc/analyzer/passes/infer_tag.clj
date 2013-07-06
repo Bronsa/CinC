@@ -120,6 +120,17 @@
     (assoc ast :tag tag)
     ast))
 
+(defmethod -infer-tag :letfn
+  [{:keys [body] :as ast}]
+  (if-let [tag (:tag body)]
+    (assoc ast :tag tag)
+    ast))
+
+(defmethod -infer-tag :loop
+  [{:keys [body] :as ast}]
+  (if-let [tag (:tag body)]
+    (assoc ast :tag tag)
+    ast))
 (defmethod -infer-tag :default [ast] ast)
 
 (defn infer-shortest-path
