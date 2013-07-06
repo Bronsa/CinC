@@ -131,6 +131,16 @@
   (if-let [tag (:tag body)]
     (assoc ast :tag tag)
     ast))
+(defmethod -infer-tag :try
+  [{:keys [body catches] :as ast}]
+  (if-let [body-tag (:tag body)]
+    (if-let [catches-tags (seq (filter identity (map (comp :tag :body) catches)))]
+      (if (every? = (conj catches-tags body-tag))
+        (assoc ast :tag body-tag)
+        ast)
+      (assoc ast :tag body-tag)) ;; or should it infer nothing? we need to differenciate between nil and not there
+    ast))
+
 (defmethod -infer-tag :default [ast] ast)
 
 (defn infer-shortest-path
