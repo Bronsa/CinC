@@ -131,6 +131,14 @@
   (if-let [tag (:tag body)]
     (assoc ast :tag tag)
     ast))
+
+(defmethod -infer-tag :fn-method
+  [{:keys [form body] :as ast}]
+  (if-let [tag (or (:tag (meta (first form)))
+                   (:tag body))]
+    (assoc ast :tag tag)
+    ast))
+
 (defmethod -infer-tag :try
   [{:keys [body catches] :as ast}]
   (if-let [body-tag (:tag body)]
@@ -142,9 +150,15 @@
     ast))
 
 (defmethod -infer-tag :invoke
-  [{:keys [fn] :as ast}]
-  (if-let [tag (:tag fn)]
-    (assoc ast :tag tag)
+  [{:keys [fn args] :as ast}]
+  (if (= :var (:op fn)) ;; should support fn expressions/local fns too
+    (let [argc (count args)
+          arglist (->> fn :var meta :arglists
+                      (filter #(= argc (count %))) first)]
+      (if-let [tag (or (:tag (meta arglist)) ;; ideally we would select the fn-method
+                       (:tag fn))]
+        (assoc ast :tag tag)
+        ast))
     ast))
 
 (defmethod -infer-tag :default [ast] ast)
