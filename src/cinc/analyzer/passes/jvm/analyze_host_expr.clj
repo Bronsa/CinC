@@ -64,9 +64,9 @@
                                m-or-f " for class " class)
                           {:instance target-expr
                            :m-or-f   m-or-f}))))
-      {:op     :host-interop
-       :target target-expr
-       :m-or-f m-or-f})))
+      {:op          :host-interop
+       :target-expr target-expr
+       :m-or-f      m-or-f})))
 
 (defn analyze-host-expr [ast]
   (postwalk ast (fn [{:keys [op form env] :as ast}]
