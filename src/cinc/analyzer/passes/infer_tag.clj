@@ -141,6 +141,12 @@
       (assoc ast :tag body-tag)) ;; or should it infer nothing? we need to differenciate between nil and not there
     ast))
 
+(defmethod -infer-tag :invoke
+  [{:keys [fn] :as ast}]
+  (if-let [tag (:tag fn)]
+    (assoc ast :tag tag)
+    ast))
+
 (defmethod -infer-tag :default [ast] ast)
 
 (defn infer-shortest-path
