@@ -552,7 +552,7 @@
                 :target-expr target-expr
                 :method      (first m-or-f)
                 :args        (mapv (analyze-in-env (ctx env :expr)) (next m-or-f))}
-               {:op          :host-interop
+               {:op          :host-interop ;; either field access or single method call
                 :target-expr target-expr
                 :m-or-f      m-or-f})]
     (merge {:form form

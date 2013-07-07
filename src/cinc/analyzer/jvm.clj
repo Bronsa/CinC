@@ -5,7 +5,8 @@
             [cinc.analyzer.jvm.utils :refer :all]
             [cinc.analyzer.passes.infer-tag :refer [infer-tag]]
             [cinc.analyzer.passes.constant-lifter :refer [constant-lift]]
-            [cinc.analyzer.passes.jvm.validate :refer [validate]]))
+            [cinc.analyzer.passes.jvm.validate :refer [validate]]
+            [cinc.analyzer.passes.jvm.analyze-host-expr :refer [analyze-host-expr]]))
 
 (def jvm-specials
   (into ana/specials
@@ -93,92 +94,6 @@
      :class class}
     (ex-info (str "class not found: " class) {:class class})))
 
-;; TODO: passes for:
-;; locals clearing
-;; closing overs
-
-;; make assignable
-;; TODO: reflect to validate calls/require runtime-reflection
-(defn analyze-host-call
-  [target-type [method & args] target-expr class? env]
-  (let [op (case target-type
-             :static   :static-call
-             :instance :instance-call)]
-    (merge
-     {:op     op
-      :method method
-      :args   (mapv (ana/analyze-in-env (ctx env :expr)) args)}
-     (case target-type
-       :static   {:class (:form target-expr)}
-       :instance {:instance target-expr}))))
-
-(defn maybe-static-field [[_ class sym]]
-  (when-let [{:keys [flags]} (static-field class sym)]
-    {:op          :static-field
-     :assignable? (not (:final flags))
-     :class       class
-     :field       sym}))
-
-(defn maybe-static-method [[_ class sym]]
-  (when-let [_ (static-method class sym)]
-    {:op     :static-call
-     :class  class
-     :method sym}))
-
-(defn maybe-instance-method [target-expr class sym]
-  (when-let [_ (instance-method class sym)]
-    {:op       :instance-call
-     :instance target-expr
-     :method   sym}))
-
-(defn maybe-instance-field [target-expr class sym]
-  (when-let [{:keys [flags]} (instance-field class sym)]
-    {:op          :instance-field
-     :assignable? (not (:final flags))
-     :instance    target-expr
-     :field       sym}))
-
-(defn analyze-host-expr
-  [target-type m-or-f target-expr class env]
-  (if class
-    (if-let [field (maybe-static-field (list '. class m-or-f))]
-      field
-      (if-let [method (maybe-static-method (list '. class m-or-f))]
-        method
-        (throw (ex-info (str "cannot find field or no-arg method call "
-                             m-or-f " for class " class)
-                        {:class  class
-                         :m-or-f m-or-f}))))
-    (if-let [class (maybe-class (-> target-expr :meta :form :tag))] ;; else try again after tag inference
-      ;; it's tagged: we know the target class at compile time
-      (if-let [field (maybe-instance-field target-expr class m-or-f)]
-        field
-        (if-let [method (maybe-instance-method target-expr class m-or-f)]
-          method
-          (throw (ex-info (str "cannot find field or no-arg method call "
-                               m-or-f " for class " class)
-                          {:instance target-expr
-                           :m-or-f   m-or-f}))))
-      {:op     :unknown-host-form
-       :target target-expr
-       :m-or-f m-or-f})))
-
-(defmethod parse '.
-  [[_ target & [m-or-f] :as form] env]
-  {:pre [(>= (count form) 3)
-         (not (namespace (if (symbol? m-or-f) m-or-f (first m-or-f))))]}
-  (let [target-expr (ana/analyze target (ctx env :expr))
-        class? (maybe-class target)
-        call? (seq? m-or-f)
-        target-type (if class? :static :instance)
-        expr ((if call?
-                analyze-host-call
-                analyze-host-expr)
-              target-type m-or-f target-expr class? env)]
-    (merge {:form form
-            :env env}
-           expr)))
-
 (defn analyze
   "Given an environment, a map containing
    -  :locals (mapping of names to lexical bindings),
@@ -188,8 +103,14 @@
   (binding [ana/macroexpand-1 macroexpand-1]
     (-> (ana/analyze form env)
       constant-lift
-      infer-tag
-      validate)))
+      ((fn [ast]
+         (let [new-ast (-> ast
+                         infer-tag
+                         analyze-host-expr
+                         validate)]
+           (if (= new-ast ast)
+             new-ast
+             (recur new-ast))))))))
 
 (defn analyze-file
   [file]
