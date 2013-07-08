@@ -428,9 +428,11 @@
   (let [variadic? (boolean (some '#{&} params))
         params-names (vec (remove '#{&} params))
         params-expr (mapv (fn [name]
-                            (merge {:env (source-info name env)}
-                                   {:name name
-                                    :arg  true}))
+                            {:env  (source-info name env)
+                             :form name
+                             :name name
+                             :op   :binding
+                             :arg  true})
                           params-names)
         arity (count params-names)
         fixed-arity (if variadic?
