@@ -121,3 +121,13 @@
      {:line line})
    (when-let [column (get-col x env)]
      {:column column})))
+
+;; should also use :variadic? and :max-fixed-arity
+(defn arglist-for-arity [fn argc]
+  (let [arglists (->> fn :arglists (sort-by count)) ;; :init :arglists when vars won't map to Vars
+        arglist (->> arglists (filter #(= argc (count %))) first)
+        last-arglist (last arglists)]
+    (or arglist
+     (when (and (> argc (count last-arglist))
+                (seq (filter '#{&} last-arglist)))
+       (last arglists)))))

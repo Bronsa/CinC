@@ -1,5 +1,5 @@
 (ns cinc.analyzer.passes.infer-tag
-  (:require [cinc.analyzer.utils :refer [postwalk]])
+  (:require [cinc.analyzer.utils :refer [postwalk arglist-for-arity]])
   (:import (clojure.lang IPersistentVector IPersistentMap
                          IPersistentSet ISeq Keyword Var
                          Symbol)
@@ -168,13 +168,6 @@
         ast)
       (assoc ast :tag body-tag)) ;; or should it infer nothing? we need to differenciate between nil and not there
     ast))
-
-(defn arglist-for-arity [fn argc]
-  (let [arglists (->> fn :arglists (sort-by count))
-        arglist (->> arglists (filter #(= argc (count %))) first)]
-    (or arglist
-        (when (> argc (count (last arglists)))
-          (last arglists)))))
 
 (defmethod -infer-tag :invoke
   [{:keys [fn args] :as ast}]

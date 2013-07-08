@@ -1,6 +1,6 @@
 (ns cinc.analyzer.passes.jvm.validate
   (:require [cinc.analyzer :refer [-analyze]]
-            [cinc.analyzer.utils :refer [prewalk]]
+            [cinc.analyzer.utils :refer [prewalk arglist-for-arity]]
             [cinc.analyzer.jvm.utils :as u]))
 
 (defmulti -validate :op)
@@ -67,6 +67,15 @@
   (when-let [arglists (:arglists init)]
     (mapv (comp validate-tag :tag meta) arglists)
     (alter-meta! var assoc :arglists arglists))
+  ast)
+
+(defmethod -validate :invoke
+  [{:keys [args fn] :as ast}]
+  (when (:arglists fn)
+    (when-not (doto (arglist-for-arity fn (count args)))
+      (throw (ex-info (str "No matching arity found for function: " (:name fn))
+                      {:arity (count args)
+                       :fn    fn }))))
   ast)
 
 (defmethod -validate :default [ast] ast)
