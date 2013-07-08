@@ -11,6 +11,7 @@
                         (assoc-in ast [k] (prewalk node f))
 
                         (and (vector? node)
+                             (seq node)
                              (every? :op node))
                         (assoc-in ast [k] (mapv #(prewalk % f) node))
 
@@ -24,6 +25,7 @@
                         (assoc-in ast [k] (postwalk node f))
 
                         (and (vector? node)
+                             (seq node)
                              (every? :op node))
                         (assoc-in ast [k] (mapv #(postwalk % f) node))
 
