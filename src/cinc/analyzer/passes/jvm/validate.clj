@@ -64,16 +64,16 @@
   [{:keys [var init] :as ast}]
   (when-let [tag (:tag init)]
     (alter-meta! var assoc :tag tag))
-  (when-let [arglists (:arglists init)]
+  (when-let [arglists (:arg-lists init)]
     (doseq [arglist arglists]
       (when-let [tag (:tag (meta arglist))]
         (validate-tag tag)))
-    (alter-meta! var assoc :arglists arglists))
+    (alter-meta! var assoc :arg-lists arglists))
   ast)
 
 (defmethod -validate :invoke
   [{:keys [args fn] :as ast}]
-  (when (:arglists fn)
+  (when (:arg-lists fn)
     (when-not (doto (arglist-for-arity fn (count args)))
       (throw (ex-info (str "No matching arity found for function: " (:name fn))
                       {:arity (count args)

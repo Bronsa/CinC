@@ -124,7 +124,7 @@
 
 ;; should also use :variadic? and :max-fixed-arity
 (defn arglist-for-arity [fn argc]
-  (let [arglists (->> fn :arglists (sort-by count)) ;; :init :arglists when vars won't map to Vars
+  (let [arglists (->> fn :arg-lists (sort-by count)) ;; :init :arglists when vars won't map to Vars
         arglist (->> arglists (filter #(= argc (count %))) first)
         last-arglist (last arglists)]
     (or arglist

@@ -70,8 +70,8 @@
     (merge ast
            (when-let [tag (:tag init)]
              {:tag tag})
-           (when-let [arglists (:arglists init)]
-             {:arglists arglists}))
+           (when-let [arglists (:arg-lists init)]
+             {:arg-lists arglists}))
     ast))
 
 (defmethod -infer-tag :local
@@ -80,24 +80,24 @@
         (merge ast
            (when-let [tag (:tag init)]
              {:tag tag})
-           (when-let [arglists (:arglists init)]
-             {:arglists arglists}))
+           (when-let [arglists (:arg-lists init)]
+             {:arg-lists arglists}))
         ast))
 
 (defmethod -infer-tag :var
   [{:keys [var] :as ast}]
-  (let [{:keys [dynamic tag arglists]} (meta var)]
+  (let [{:keys [dynamic tag arg-lists]} (meta var)]
     (if (not dynamic)
       (merge ast
              (when tag {:tag tag})
-             (when arglists {:arglists arglists}))
+             (when arg-lists {:arg-lists arg-lists}))
       ast)))
 
 (defmethod -infer-tag :def
   [{:keys [init var] :as ast}]
   (let [ast (assoc ast :tag Var)]
-    (if-let [arglists (:arglists init)]
-      (assoc ast :arglists arglists)
+    (if-let [arglists (:arg-lists init)]
+      (assoc ast :arg-lists arglists)
       ast)))
 
 (defmethod -infer-tag :const
@@ -157,7 +157,7 @@
 
 (defmethod -infer-tag :fn
   [{:keys [methods] :as ast}]
-  (assoc ast :arglists (mapv :arglist methods)))
+  (assoc ast :arg-lists (mapv :arglist methods)))
 
 (defmethod -infer-tag :try
   [{:keys [body catches] :as ast}]
