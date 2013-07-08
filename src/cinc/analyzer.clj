@@ -161,9 +161,6 @@
       form
       (macroexpand ex env))))
 
-;; preserve meta
-;; ^:const vars will be detected in a second pass
-;; will eventually move out constant colls detection to that pass too
 (defmethod -analyze :symbol
   [_ sym env]
   (let [mform (macroexpand-1 sym env)]
@@ -421,7 +418,6 @@
      :form  form
      :exprs exprs}))
 
-;; second pass with info to check arity?
 (defn analyze-fn-method [[params & body :as form] {:keys [locals] :as env}]
   {:pre [(every? symbol? params)
          (not-any? namespace params)]}

@@ -171,7 +171,7 @@
 
 (defmethod -infer-tag :invoke
   [{:keys [fn args] :as ast}]
-  (if (#{:var :local :fn} (:op fn)) ;; should support fn expressions/local fns too
+  (if (#{:var :local :fn} (:op fn))
     (let [argc (count args)
           arglist (arglist-for-arity fn argc)]
       (if-let [tag (or (:tag (meta arglist)) ;; ideally we would select the fn-method
