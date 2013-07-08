@@ -65,7 +65,9 @@
   (when-let [tag (:tag init)]
     (alter-meta! var assoc :tag tag))
   (when-let [arglists (:arglists init)]
-    (mapv (comp validate-tag :tag meta) arglists)
+    (doseq [arglist arglists]
+      (when-let [tag (:tag (meta arglist))]
+        (validate-tag tag)))
     (alter-meta! var assoc :arglists arglists))
   ast)
 
