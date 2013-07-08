@@ -54,10 +54,19 @@
                     {:field  field
                      :class  class}))))
 
+(defn validate-tag [tag]
+  (if-let [the-class (u/maybe-class tag)]
+    the-class
+    (throw (ex-info (str "class not found: " tag)
+                    {:class tag}))))
+
 (defmethod -validate :def
   [{:keys [var init] :as ast}]
   (when-let [tag (:tag init)]
     (alter-meta! var assoc :tag tag))
+  (when-let [arglists (:arglists init)]
+    (mapv (comp validate-tag :tag meta) arglists)
+    (alter-meta! var assoc :arglists arglists))
   ast)
 
 (defmethod -validate :default [ast] ast)
@@ -65,10 +74,7 @@
 (defn validate-around
   [{:keys [tag] :as ast}]
   (let [ast (if tag
-              (if-let [the-class (u/maybe-class tag)]
-                (assoc ast :tag the-class)
-                (throw (ex-info (str "class not found: " tag)
-                                {:class tag})))
+              (assoc ast :tag (validate-tag tag))
               ast)]
     (-validate ast)))
 

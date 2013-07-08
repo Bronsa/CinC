@@ -67,26 +67,38 @@
 (defmethod -infer-tag :binding
   [{:keys [init] :as ast}]
   (if init
-    (assoc ast :tag (:tag init))
+    (merge ast
+           (when-let [tag (:tag init)]
+             {:tag tag})
+           (when-let [arglists (:arglists init)]
+             {:arglists arglists}))
     ast))
 
 (defmethod -infer-tag :local
   [{:keys [init] :as ast}]
   (if init
-    (assoc ast :tag (:tag init))
-    ast))
+        (merge ast
+           (when-let [tag (:tag init)]
+             {:tag tag})
+           (when-let [arglists (:arglists init)]
+             {:arglists arglists}))
+        ast))
 
 (defmethod -infer-tag :var
   [{:keys [var] :as ast}]
-  (let [m (meta var)]
-    (if-let [tag (and (not (:dynamic m))
-                      (:tag m))]
-      (assoc ast :tag tag)
+  (let [{:keys [dynamic tag arglists]} (meta var)]
+    (if (not dynamic)
+      (merge ast
+             (when tag {:tag tag})
+             (when arglists {:arglists arglists}))
       ast)))
 
 (defmethod -infer-tag :def
-  [ast]
-  (assoc ast :tag Var))
+  [{:keys [init var] :as ast}]
+  (let [ast (assoc ast :tag Var)]
+    (if-let [arglists (:arglists init)]
+      (assoc ast :arglists arglists)
+      ast)))
 
 (defmethod -infer-tag :const
   [{:keys [op type form] :as ast}]
@@ -133,11 +145,19 @@
     ast))
 
 (defmethod -infer-tag :fn-method
-  [{:keys [form body] :as ast}]
-  (if-let [tag (or (:tag (meta (first form)))
-                   (:tag body))]
-    (assoc ast :tag tag)
-    ast))
+  [{:keys [form body params] :as ast}]
+  (let [tag (or (:tag (meta (first form)))
+                (:tag body))
+        ast (if tag
+              (assoc ast :tag tag)
+              ast)]
+    (assoc ast
+      :arglist (with-meta (mapv :name params)
+                 {:tag tag}))))
+
+(defmethod -infer-tag :fn
+  [{:keys [methods] :as ast}]
+  (assoc ast :arglists (mapv :arglist methods)))
 
 (defmethod -infer-tag :try
   [{:keys [body catches] :as ast}]
@@ -149,12 +169,18 @@
       (assoc ast :tag body-tag)) ;; or should it infer nothing? we need to differenciate between nil and not there
     ast))
 
+(defn arglist-for-arity [fn argc]
+  (let [arglists (->> fn :arglists (sort-by count))
+        arglist (->> arglists (filter #(= argc (count %))) first)]
+    (or arglist
+        (when (> argc (count (last arglists)))
+          (last arglists)))))
+
 (defmethod -infer-tag :invoke
   [{:keys [fn args] :as ast}]
-  (if (= :var (:op fn)) ;; should support fn expressions/local fns too
+  (if (#{:var :local :fn} (:op fn)) ;; should support fn expressions/local fns too
     (let [argc (count args)
-          arglist (->> fn :var meta :arglists
-                      (filter #(= argc (count %))) first)]
+          arglist (arglist-for-arity fn argc)]
       (if-let [tag (or (:tag (meta arglist)) ;; ideally we would select the fn-method
                        (:tag fn))]
         (assoc ast :tag tag)
