@@ -28,13 +28,8 @@
    (seq? form)
    (let [[op & expr] form]
      (if (symbol? op)
-       (let [opname (name op)
-             c (maybe-class op)]
+       (let [opname (name op)]
          (cond
-
-          c
-          (throw (ex-info (str "expecting var but" form "is mapped to " c) {:form form}))
-
 
           (= (first opname) \.) ; (.foo bar ..)
           (let [[target & args] expr
