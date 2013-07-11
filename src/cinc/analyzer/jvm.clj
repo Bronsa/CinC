@@ -4,6 +4,7 @@
             [cinc.analyzer.utils :refer [ctx maybe-var]]
             [cinc.analyzer.jvm.utils :refer :all]
             [cinc.analyzer.passes.infer-tag :refer [infer-tag]]
+            [cinc.analyzer.passes.source-info :refer [source-info]]
             [cinc.analyzer.passes.constant-lifter :refer [constant-lift]]
             [cinc.analyzer.passes.jvm.validate :refer [validate]]
             [cinc.analyzer.passes.jvm.analyze-host-expr :refer [analyze-host-expr]]))
@@ -94,6 +95,18 @@
      :class class}
     (ex-info (str "class not found: " class) {:class class})))
 
+(def passes
+  [constant-lift
+   (fn [ast]
+     (let [new-ast (-> ast
+                     infer-tag
+                     analyze-host-expr
+                     validate)]
+       (if (= new-ast ast)
+         new-ast
+         (recur new-ast))))
+   source-info])
+
 (defn analyze
   "Given an environment, a map containing
    -  :locals (mapping of names to lexical bindings),
@@ -101,16 +114,8 @@
  and form, returns an expression object (a map containing at least :form, :op and :env keys)."
   [form env]
   (binding [ana/macroexpand-1 macroexpand-1]
-    (-> (ana/analyze form env)
-      constant-lift
-      ((fn [ast]
-         (let [new-ast (-> ast
-                         infer-tag
-                         analyze-host-expr
-                         validate)]
-           (if (= new-ast ast)
-             new-ast
-             (recur new-ast))))))))
+    ((apply comp (rseq passes))
+     (ana/analyze form env))))
 
 (defn analyze-file
   [file]

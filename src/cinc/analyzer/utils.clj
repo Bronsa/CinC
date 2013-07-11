@@ -107,21 +107,6 @@
   (try (resolve-var sym true)
        (catch Exception _)))
 
-(defn get-line [x env]
-  (or (-> x meta :line)
-      (:line env)))
-(defn get-col [x env]
-  (or (-> x meta :column)
-      (:column env)))
-
-(defn source-info [x env]
-  (merge
-   {:file *file*}
-   (when-let [line (get-line x env)]
-     {:line line})
-   (when-let [column (get-col x env)]
-     {:column column})))
-
 ;; should also use :variadic? and :max-fixed-arity
 (defn arglist-for-arity [fn argc]
   (let [arglists (->> fn :arg-lists (sort-by count)) ;; :init :arglists when vars won't map to Vars

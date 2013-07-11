@@ -159,12 +159,12 @@
   (let [ex (macroexpand-1 form env)]
     (if (identical? ex form)
       form
-      (macroexpand ex env))))
+      (recur (with-meta ex (meta form)) env))))
 
 (defmethod -analyze :symbol
   [_ sym env]
   (let [mform (macroexpand-1 sym env)]
-    (if (symbol? mform)
+    (if (= mform sym)
       (merge (if-let [local-binding (-> env :locals sym)]
                (assoc local-binding
                  :op          :local
@@ -187,18 +187,17 @@
                     :maybe-class sym})))
              {:env  env
               :form sym})
-      (analyze mform env))))
+      (analyze (with-meta mform (meta sym)) env))))
 
 (defmethod -analyze :seq
   [_ form env]
-  (let [env (into env (source-info form env))]
-    (let [op (first form)]
-      (if (nil? op)
-        (ex-info "Can't call nil" {:form form}))
-      (let [mform (macroexpand-1 form env)]
-        (if (identical? form mform)
-          (parse form env) ;; invoke == :default
-          (analyze mform env))))))
+  (let [op (first form)]
+    (if (nil? op)
+      (ex-info "Can't call nil" {:form form}))
+    (let [mform (macroexpand-1 form env)]
+      (if (identical? form mform)
+        (parse form env) ;; invoke == :default
+        (analyze (with-meta mform (meta form)) env)))))
 
 (defn analyze-block
   "returns {:statements .. :ret ..}"
@@ -309,10 +308,11 @@
      :env         env
      :form        form
      :body        (parse (cons 'do body) (assoc-in env [:locals ename]
-                                                   (merge {:env (source-info ename env)}
-                                                          {:op   :binding
-                                                           :name ename
-                                                           :tag  etype})))}
+                                                   {:op   :binding
+                                                    :env  env
+                                                    :form ename
+                                                    :name ename
+                                                    :tag  etype}))}
     (throw (ex-info (str "invalid binding form: " ename) {:sym ename}))))
 
 (defmethod parse 'throw
@@ -334,11 +334,11 @@
       (throw (ex-info (str "bad binding form: " (first (remove symbol? fns)))
                       {:form form})))
     (let [binds (zipmap fns (map (fn [name]
-                                   (merge {:env (source-info name env)}
-                                    {:op    :binding
-                                     :name  name
-                                     :form  name
-                                     :local true}))
+                                   {:op    :binding
+                                    :env   env
+                                    :name  name
+                                    :form  name
+                                    :local true})
                                  fns))
           e (update-in env [:locals] merge binds)
           binds (mapv (fn [{:keys [name] :as b}]
@@ -370,12 +370,12 @@
               (throw (ex-info (str "invalid binding form: " name)
                               {:sym name})))
             (let [init-expr (analyze init env)
-                  bind-expr (merge {:env (source-info name env)}
-                                   {:op    :binding
-                                    :name  name
-                                    :init  init-expr
-                                    :form  name
-                                    :local true})]
+                  bind-expr {:op    :binding
+                             :env   env
+                             :name  name
+                             :init  init-expr
+                             :form  name
+                             :local true}]
               (recur (next bindings)
                      (assoc-in env [:locals name] bind-expr)
                      (conj binds bind-expr))))
@@ -424,7 +424,7 @@
   (let [variadic? (boolean (some '#{&} params))
         params-names (vec (remove '#{&} params))
         params-expr (mapv (fn [name]
-                            {:env  (source-info name env)
+                            {:env  env
                              :form name
                              :name name
                              :op   :binding
