@@ -5,6 +5,7 @@
             [cinc.analyzer.jvm.utils :refer :all]
             [cinc.analyzer.passes.infer-tag :refer [infer-tag]]
             [cinc.analyzer.passes.source-info :refer [source-info]]
+            [cinc.analyzer.passes.elide-meta :refer [elide-meta]]
             [cinc.analyzer.passes.constant-lifter :refer [constant-lift]]
             [cinc.analyzer.passes.jvm.validate :refer [validate]]
             [cinc.analyzer.passes.jvm.analyze-host-expr :refer [analyze-host-expr]]))
@@ -105,7 +106,8 @@
        (if (= new-ast ast)
          new-ast
          (recur new-ast))))
-   source-info])
+   source-info
+   elide-meta])
 
 (defn analyze
   "Given an environment, a map containing
