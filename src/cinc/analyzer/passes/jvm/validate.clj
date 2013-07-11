@@ -1,7 +1,8 @@
 (ns cinc.analyzer.passes.jvm.validate
   (:require [cinc.analyzer :refer [-analyze]]
             [cinc.analyzer.utils :refer [prewalk arglist-for-arity]]
-            [cinc.analyzer.jvm.utils :as u]))
+            [cinc.analyzer.jvm.utils :as u])
+  (:import (clojure.lang IFn)))
 
 (defmulti -validate :op)
 
@@ -72,12 +73,16 @@
   ast)
 
 (defmethod -validate :invoke
-  [{:keys [args fn] :as ast}]
+  [{:keys [args fn form] :as ast}]
   (when (:arg-lists fn)
     (when-not (doto (arglist-for-arity fn (count args)))
       (throw (ex-info (str "No matching arity found for function: " (:name fn))
                       {:arity (count args)
                        :fn    fn }))))
+  (when (= :const (:op fn))
+    (when (not (instance? IFn (:form fn)))
+      (throw (ex-info (str (class (:form fn)) " is not a function, but it's used as such")
+                      {:form form}))))
   ast)
 
 (defmethod -validate :default [ast] ast)
