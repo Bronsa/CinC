@@ -80,5 +80,5 @@
                                (analyze-host-call target-type (:method ast)
                                                   (:args ast) target class? env)
                                (-analyze-host-expr target-type (:m-or-f ast)
-                                                  target class? env))))
+                                                   target class? env))))
                     ast))))
