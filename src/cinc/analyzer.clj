@@ -588,6 +588,26 @@
       :methods    methods
       :interfaces interfaces})))
 
+(defmethod parse 'deftype*
+  [[_ name _ fields _ interfaces & methods :as form] env]
+  (let [interfaces (set interfaces)
+        fields-expr (mapv (fn [name]
+                            {:env  env
+                             :form name
+                             :name name
+                             :op   :binding})
+                          fields)
+        env (update-in env [:locals] merge
+                       (zipmap fields fields-expr))
+        methods (mapv #(analyze-method-impls % env) methods)]
+    (wrapping-meta
+     {:op         :deftype
+      :env        env
+      :form       form
+      :fields     fields-expr
+      :methods    methods
+      :interfaces interfaces})))
+
 ;; primitives
 ;; keyword callsites
 ;; runtime instanceof for constant exprs
