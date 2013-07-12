@@ -571,7 +571,7 @@
                                           :arg  true
                                           :this true})
         method (analyze-fn-method meth env)]
-    (assoc (dissoc method :variadic)
+    (assoc (dissoc method :variadic?)
       :op   :method
       :form form
       :name name)))
