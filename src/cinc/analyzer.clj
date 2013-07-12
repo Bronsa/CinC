@@ -557,6 +557,37 @@
             :env  env}
            expr)))
 
+
+(defn analyze-method-impls
+  [[name [this & params :as args] & body :as form] env]
+  {:pre [(symbol? name)
+         (vector? args)
+         this]}
+  (let [meth (cons params body)
+        env (assoc-in env [:locals this] {:name this
+                                          :env  env
+                                          :form this
+                                          :op   :binding
+                                          :arg  true
+                                          :this true})
+        method (analyze-fn-method meth env)]
+    (assoc (dissoc method :variadic)
+      :op   :method
+      :form form
+      :name name)))
+
+(defmethod parse 'reify*
+  [[_ interfaces & methods :as form] env]
+  (let [interfaces (conj (set interfaces)
+                         clojure.lang.IObj) ;; mmh
+        methods (mapv #(analyze-method-impls % env) methods)]
+    (wrapping-meta
+     {:op         :reify
+      :env        env
+      :form       form
+      :methods    methods
+      :interfaces interfaces})))
+
 ;; primitives
 ;; keyword callsites
 ;; runtime instanceof for constant exprs
