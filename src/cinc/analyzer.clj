@@ -603,6 +603,7 @@
     {:op         :deftype
      :env        env
      :form       form
+     :name       name
      :fields     fields-expr
      :methods    methods
      :interfaces interfaces}))
