@@ -95,9 +95,9 @@
   [constant-lift
    (fn [ast]
      (let [new-ast (-> ast
+                     validate
                      infer-tag
-                     analyze-host-expr
-                     validate)]
+                     analyze-host-expr)]
        (if (= new-ast ast)
          new-ast
          (recur new-ast))))
