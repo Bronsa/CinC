@@ -87,6 +87,20 @@
                       {:form form}))))
   ast)
 
+
+(defmethod -validate :method
+  [{:keys [name interfaces tag params fixed-arity] :as ast}]
+  (if interfaces
+    (if-let [methods (seq (filter identity
+                                  (mapcat #(u/instance-methods % name fixed-arity) interfaces)))]
+      ast
+      (throw (ex-info (str "no such method found: " name " with given signature in any of the"
+                           " provided interfaces: " interfaces)
+                      {:method     name
+                       :interfaces interfaces
+                       :params     params})))
+    ast))
+
 (defmethod -validate :default [ast] ast)
 
 (defn validate-around
