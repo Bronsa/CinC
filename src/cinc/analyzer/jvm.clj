@@ -89,7 +89,7 @@
      :env   env
      :form  form
      :class class}
-    (ex-info (str "class not found: " class) {:class class})))
+    (throw (ex-info (str "class not found: " class) {:class class}))))
 
 (def passes
   [constant-lift
