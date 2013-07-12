@@ -600,13 +600,12 @@
         env (update-in env [:locals] merge
                        (zipmap fields fields-expr))
         methods (mapv #(analyze-method-impls % env) methods)]
-    (wrapping-meta
-     {:op         :deftype
-      :env        env
-      :form       form
-      :fields     fields-expr
-      :methods    methods
-      :interfaces interfaces})))
+    {:op         :deftype
+     :env        env
+     :form       form
+     :fields     fields-expr
+     :methods    methods
+     :interfaces interfaces}))
 
 ;; primitives
 ;; keyword callsites
