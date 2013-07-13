@@ -84,12 +84,10 @@
 
 (defmethod parse 'clojure.core/import*
   [[_ class :as form] env]
-  (if-let [class (maybe-class class)]
-    {:op    :import
-     :env   env
-     :form  form
-     :class class}
-    (throw (ex-info (str "class not found: " class) {:class class}))))
+  {:op          :import
+   :env         env
+   :form        form
+   :maybe-class class})
 
 (def passes
   [constant-lift
