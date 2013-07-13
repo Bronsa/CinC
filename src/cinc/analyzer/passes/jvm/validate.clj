@@ -87,6 +87,16 @@
                       {:form form}))))
   ast)
 
+(defn -deftype [name class-name args]
+  (eval (list 'deftype* name class-name args))) ;; JIT ->ctor seems not to work, AOT does
+
+(defmethod -validate :deftype
+  [{:keys [name class-name params interfaces] :as ast}]
+  (if class-name
+    (do
+      (-deftype name class-name params)
+      (dissoc ast :class-name))
+    ast))
 
 (defmethod -validate :method
   [{:keys [name interfaces tag params fixed-arity] :as ast}]

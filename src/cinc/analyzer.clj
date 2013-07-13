@@ -589,7 +589,7 @@
       :interfaces interfaces})))
 
 (defmethod parse 'deftype*
-  [[_ name _ fields _ interfaces & methods :as form] env]
+  [[_ name class-name fields _ interfaces & methods :as form] env]
   (let [interfaces (set interfaces)
         fields-expr (mapv (fn [name]
                             {:env  env
@@ -604,6 +604,7 @@
      :env        env
      :form       form
      :name       name
+     :class-name class-name
      :fields     fields-expr
      :methods    methods
      :interfaces interfaces}))
