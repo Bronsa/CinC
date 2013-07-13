@@ -23,19 +23,23 @@
 
 (defmethod -validate :new
   [{:keys [maybe-class] :as ast}]
-  (if-let [the-class (u/maybe-class maybe-class)]
-    (assoc (dissoc ast :maybe-class)
-      :class the-class)
-    (throw (ex-info (str "class not found: " maybe-class)
-                    {:class maybe-class}))))
+  (if maybe-class
+    (if-let [the-class (u/maybe-class maybe-class)]
+      (assoc (dissoc ast :maybe-class)
+        :class the-class)
+      (throw (ex-info (str "class not found: " maybe-class)
+                      {:class maybe-class})))
+    ast))
 
 (defmethod -validate :catch
   [{:keys [maybe-class] :as ast}]
-  (if-let [the-class (u/maybe-class maybe-class)]
-    (assoc (dissoc ast :maybe-class)
-      :class the-class)
-    (throw (ex-info (str "class not found: " maybe-class)
-                    {:class maybe-class}))))
+  (if maybe-class
+    (if-let [the-class (u/maybe-class maybe-class)]
+      (assoc (dissoc ast :maybe-class)
+        :class the-class)
+      (throw (ex-info (str "class not found: " maybe-class)
+                      {:class maybe-class})))
+    ast))
 
 (defmethod -validate :static-call
   [{:keys [class method args] :as ast}]
@@ -54,6 +58,17 @@
     (throw (ex-info (str "No matching field: " field " for class: " class)
                     {:field  field
                      :class  class}))))
+
+(defmethod -validate :import
+  [{:keys [maybe-class] :as ast}]
+  (if maybe-class
+    (if-let [the-class (u/maybe-class maybe-class)]
+      (assoc (dissoc ast :maybe-class)
+        :class the-class)
+      (throw (ex-info (str "class not found: " maybe-class)
+                      {:class maybe-class})))
+    ast))
+
 
 (defn validate-tag [tag]
   (if (set? tag)
@@ -103,7 +118,7 @@
   (if interfaces
     (if-let [methods (seq (filter identity
                                   (mapcat #(u/instance-methods % name fixed-arity) interfaces)))]
-      ast
+      ast ;; validate types
       (throw (ex-info (str "no such method found: " name " with given signature in any of the"
                            " provided interfaces: " interfaces)
                       {:method     name
