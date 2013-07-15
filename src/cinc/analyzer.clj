@@ -273,30 +273,28 @@
 
 (defmethod parse 'try
   [[_ & body :as form] {:keys [context] :as env}]
-  (if-not (= :return context)
-    (analyze `((^:once fn* [] ~form)) env) ;; non-return try blocks need to be wrapped in a fn
-    (let [catch? (every-pred seq? #(= (first %) 'catch))
-          finally? (every-pred seq? #(= (first %) 'finally))
-          [body tail] (split-with (complement (some-fn catch? finally?)) body)
-          [cblocks tail] (split-with catch? tail)
-          [[fblock & fbs :as fblocks] tail] (split-with finally? tail)]
-      (when-not (empty? tail)
-        (throw (ex-info "only catch or finally clause can follow catch in try expression"
-                        {:expr tail})))
-      (when-not (empty? fbs)
-        (throw (ex-info "only one finally clause allowed in try expression"
-                        {:expr fblocks})))
-      (let [body (when-not (empty? body)
-                   (parse (cons 'do body) (assoc env :in-try true))) ;; avoid recur
-            cenv (ctx env :expr)
-            cblocks (mapv #(parse % cenv) cblocks)
-            fblock (parse (cons 'do (rest fblock)) (ctx env :statement))]
-        {:op      :try
-         :env     env
-         :form    form
-         :body    body
-         :catches cblocks
-         :finally fblock}))))
+  (let [catch? (every-pred seq? #(= (first %) 'catch))
+        finally? (every-pred seq? #(= (first %) 'finally))
+        [body tail] (split-with (complement (some-fn catch? finally?)) body)
+        [cblocks tail] (split-with catch? tail)
+        [[fblock & fbs :as fblocks] tail] (split-with finally? tail)]
+    (when-not (empty? tail)
+      (throw (ex-info "only catch or finally clause can follow catch in try expression"
+                      {:expr tail})))
+    (when-not (empty? fbs)
+      (throw (ex-info "only one finally clause allowed in try expression"
+                      {:expr fblocks})))
+    (let [body (when-not (empty? body)
+                 (parse (cons 'do body) (assoc env :in-try true))) ;; avoid recur
+          cenv (ctx env :expr)
+          cblocks (mapv #(parse % cenv) cblocks)
+          fblock (parse (cons 'do (rest fblock)) (ctx env :statement))]
+      {:op      :try
+       :env     env
+       :form    form
+       :body    body
+       :catches cblocks
+       :finally fblock})))
 
 (defmethod parse 'catch
   [[_ etype ename & body :as form] env]
