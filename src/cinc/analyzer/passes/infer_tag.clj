@@ -117,8 +117,8 @@
       ast)))
 
 (defmethod -infer-tag :new
-  [{:keys [maybe-class] :as ast}]
-  (assoc ast :tag maybe-class))
+  [{:keys [maybe-class class tag] :as ast}]
+  (assoc ast :tag (or class maybe-class)))
 
 (defmethod -infer-tag :do
   [{:keys [ret] :as ast}]
