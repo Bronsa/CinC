@@ -34,7 +34,7 @@
     (RT/classForName s)
     (catch Exception _
       (if-let [maybe-class ((ns-map *ns*) (symbol s))]
-        (if (class? maybe-class)
+        (when (class? maybe-class)
           maybe-class)))))
 
 (defmethod maybe-class :default [_] nil)
@@ -51,6 +51,23 @@
       (if-let [ret (prims (name sym))]
         ret
         (maybe-class-from-string (str sym))))))
+
+(defmulti convertible? (fn [from to] [(maybe-class from) (maybe-class to)]))
+
+(defmethod convertible? [java.lang.Object java.lang.Number] [t1 ts] true)
+(defmethod convertible? [java.lang.Object Integer/TYPE] [t1 ts] true)
+(defmethod convertible? [java.lang.Object Long/TYPE] [t1 ts] true)
+(defmethod convertible? [Long/TYPE java.lang.Object] [t1 ts] true)
+(defmethod convertible? [Long/TYPE Integer/TYPE] [t1 ts] true)
+
+(defmethod convertible? :default [t1 t2]
+  (if (= t1 t2) true (.isAssignableFrom t2 t1)))
+
+(defn primitive? [o]
+  (let [c (maybe-class o)]
+    (and
+     (not (or (nil? c) (= c Void/TYPE)))
+     (.isPrimitive c))))
 
 (defn members [class member]
   (let [members (-> (maybe-class class)
