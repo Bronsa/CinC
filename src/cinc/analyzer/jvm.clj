@@ -1,6 +1,9 @@
 (ns cinc.analyzer.jvm
   (:refer-clojure :exclude [macroexpand-1 macroexpand])
-  (:require [cinc.analyzer :as ana :refer [parse analyze-in-env]]
+  (:require [cinc.analyzer
+             :as ana
+             :refer [analyze parse analyze-in-env analyze-method-impls wrapping-meta]
+             :rename {analyze -analyze}]
             [cinc.analyzer.utils :refer [ctx maybe-var]]
             [cinc.analyzer.jvm.utils :refer :all]
             [cinc.analyzer.passes.infer-tag :refer [infer-tag]]
@@ -12,7 +15,7 @@
 
 (def jvm-specials
   (into ana/specials
-        '#{monitor-enter monitor-exit clojure.core/import*}))
+        '#{monitor-enter monitor-exit clojure.core/import* reify* deftype* case*}))
 
 (defn desugar-host-expr [form]
   (cond
@@ -73,14 +76,14 @@
   {:op          :monitor-enter
    :env         env
    :form        form
-   :target-expr (ana/analyze target (ctx env :expr))})
+   :target-expr (-analyze target (ctx env :expr))})
 
 (defmethod parse 'monitor-exit
   [[_ target :as form] env]
   {:op          :monitor-exit
    :env         env
    :form        form
-   :target-expr (ana/analyze target (ctx env :expr))})
+   :target-expr (-analyze target (ctx env :expr))})
 
 (defmethod parse 'clojure.core/import*
   [[_ class :as form] env]
@@ -88,6 +91,64 @@
    :env         env
    :form        form
    :maybe-class class})
+
+(defmethod parse 'reify*
+  [[_ interfaces & methods :as form] env]
+  (let [interfaces (conj (set interfaces)
+                         clojure.lang.IObj) ;; mmh
+        methods (mapv #(analyze-method-impls % env) methods)]
+    (wrapping-meta
+     {:op         :reify
+      :env        env
+      :form       form
+      :methods    methods
+      :interfaces interfaces})))
+
+(defmethod parse 'deftype*
+  [[_ name class-name fields _ interfaces & methods :as form] env]
+  (let [interfaces (set interfaces)
+        fields-expr (mapv (fn [name]
+                            {:env  env
+                             :form name
+                             :name name
+                             :op   :binding})
+                          fields)
+        env (update-in env [:locals] merge
+                       (zipmap fields fields-expr))
+        methods (mapv #(analyze-method-impls % env) methods)]
+    {:op         :deftype
+     :env        env
+     :form       form
+     :name       name
+     :class-name class-name
+     :fields     fields-expr
+     :methods    methods
+     :interfaces interfaces}))
+
+(defmethod parse 'case*
+  [[_ expr shift mask default case-map switch-type test-type & [skip-check?] :as form] env]
+  (let [[low high] ((juxt first last) (keys case-map))
+        test-expr (-analyze expr (ctx env :expr))
+        [tests thens] (reduce (fn [[te th] [min-hash [test then]]]
+                                (let [test-expr (-analyze (list 'quote test) env)
+                                      then-expr (-analyze then env)]
+                                  [(conj te test-expr) (conj th then-expr)]))
+                              [(sorted-map) {}] case-map)
+        default-expr (-analyze default env)]
+    {:op          :case
+     :form        form
+     :env         env
+     :test        test-expr
+     :default     default-expr
+     :tests       tests
+     :thens       thens
+     :shift       shift
+     :mask        mask
+     :low         low
+     :high        high
+     :switch-type switch-type
+     :test-type   test-type
+     :skip-check? skip-check?}))
 
 (def passes
   [constant-lift
@@ -110,7 +171,7 @@
   [form env]
   (binding [ana/macroexpand-1 macroexpand-1]
     ((apply comp (rseq passes))
-     (ana/analyze form env))))
+     (-analyze form env))))
 
 (defn analyze-file
   [file]

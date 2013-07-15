@@ -486,31 +486,6 @@
      :max-fixed-arity max-fixed-arity
      :methods         methods-exprs}))
 
-(defmethod parse 'case*
-  [[_ expr shift mask default case-map switch-type test-type & [skip-check?] :as form] env]
-  (let [[low high] ((juxt first last) (keys case-map))
-        test-expr (analyze expr (ctx env :expr))
-        [tests thens] (reduce (fn [[te th] [min-hash [test then]]]
-                                (let [test-expr (analyze (list 'quote test) env)
-                                      then-expr (analyze then env)]
-                                  [(conj te test-expr) (conj th then-expr)]))
-                              [(sorted-map) {}] case-map)
-        default-expr (analyze default env)]
-    {:op          :case
-     :form        form
-     :env         env
-     :test        test-expr
-     :default     default-expr
-     :tests       tests
-     :thens       thens
-     :shift       shift
-     :mask        mask
-     :low         low
-     :high        high
-     :switch-type switch-type
-     :test-type   test-type
-     :skip-check? skip-check?}))
-
 (defmethod parse 'def
   [[_ sym & expr :as form] env]
   {:pre [(symbol? sym)
@@ -575,39 +550,6 @@
       :op   :method
       :form form
       :name name)))
-
-(defmethod parse 'reify*
-  [[_ interfaces & methods :as form] env]
-  (let [interfaces (conj (set interfaces)
-                         clojure.lang.IObj) ;; mmh
-        methods (mapv #(analyze-method-impls % env) methods)]
-    (wrapping-meta
-     {:op         :reify
-      :env        env
-      :form       form
-      :methods    methods
-      :interfaces interfaces})))
-
-(defmethod parse 'deftype*
-  [[_ name class-name fields _ interfaces & methods :as form] env]
-  (let [interfaces (set interfaces)
-        fields-expr (mapv (fn [name]
-                            {:env  env
-                             :form name
-                             :name name
-                             :op   :binding})
-                          fields)
-        env (update-in env [:locals] merge
-                       (zipmap fields fields-expr))
-        methods (mapv #(analyze-method-impls % env) methods)]
-    {:op         :deftype
-     :env        env
-     :form       form
-     :name       name
-     :class-name class-name
-     :fields     fields-expr
-     :methods    methods
-     :interfaces interfaces}))
 
 ;; primitives
 ;; keyword callsites
