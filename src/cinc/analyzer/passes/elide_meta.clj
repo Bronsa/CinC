@@ -1,7 +1,6 @@
 (ns cinc.analyzer.passes.elide-meta
   (:require [cinc.analyzer :refer [analyze]]
-            [cinc.analyzer.utils :refer [prewalk]])
-  (:alias c.c clojure.core))
+            [cinc.analyzer.utils :refer [prewalk]]))
 
 (def elides (set (:elide-meta *compiler-options*)))
 
@@ -9,14 +8,14 @@
   (let [form (apply dissoc form elides)]
     (if (= :const op)
       (analyze (list 'quote form) env)
-      (let [new-meta (apply hash-map
-                            (mapcat (fn [{:keys [form] :as k} v]
-                                      (when-not (elides form)
-                                        [k v])) keys vals))]
+      (let [new-meta (mapcat (fn [{:keys [form] :as k} v]
+                               (when-not (elides form)
+                                 [k v]))
+                             keys vals)]
         (assoc meta
           :form form
-          :keys (vec (c.c/keys new-meta))
-          :vals (vec (c.c/vals new-meta)))))))
+          :keys (mapv first new-meta)
+          :vals (mapv second new-meta))))))
 
 (defmulti -elide-meta :op)
 
