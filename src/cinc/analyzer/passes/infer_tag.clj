@@ -24,8 +24,8 @@
   (assoc ast :tag ISeq))
 
 (defmethod -infer-tag :class
-  [ast]
-  (assoc ast :tag Class))
+  [{:keys [form] :as ast}]
+  (assoc ast :tag form))
 
 (defmethod -infer-tag :keyword
   [ast]
