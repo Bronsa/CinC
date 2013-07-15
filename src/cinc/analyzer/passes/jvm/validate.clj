@@ -106,7 +106,7 @@
   (eval (list 'deftype* name class-name args))) ;; JIT ->ctor seems not to work, AOT does
 
 (defmethod -validate :deftype
-  [{:keys [name class-name params interfaces] :as ast}]
+  [{:keys [name class-name params] :as ast}]
   (if class-name
     (do
       (-deftype name class-name params)

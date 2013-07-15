@@ -1,8 +1,22 @@
 (ns cinc.analyzer.passes.elide-meta
   (:require [cinc.analyzer :refer [analyze]]
-            [cinc.analyzer.utils :refer [ctx prewalk]]))
+            [cinc.analyzer.utils :refer [prewalk]])
+  (:alias c.c clojure.core))
 
-(def elides [:foo])
+(def elides (set (:elide-meta *compiler-options*)))
+
+(defn dissoc-meta [{:keys [op form keys vals env] :as meta}]
+  (let [form (apply dissoc form elides)]
+    (if (= :const op)
+      (analyze (list 'quote form) env)
+      (let [new-meta (apply hash-map
+                            (mapcat (fn [{:keys [form] :as k} v]
+                                      (when-not (elides form)
+                                        [k v])) keys vals))]
+        (assoc meta
+          :form form
+          :keys (vec (c.c/keys new-meta))
+          :vals (vec (c.c/vals new-meta)))))))
 
 (defmulti -elide-meta :op)
 
@@ -10,18 +24,21 @@
   [{:keys [meta expr env] :as ast}]
   (let [new-meta (apply dissoc (:form meta) elides)]
     (if (not (empty? new-meta))
-     (if (= new-meta meta)
-       ast
-       (assoc ast :meta (analyze new-meta (ctx env :expr))))
-     (assoc-in expr [:env :context] (:context env)))))
+      (if (= new-meta (:form meta))
+        ast
+        (let [new-meta (dissoc-meta meta)]
+          (assoc ast :meta new-meta)))
+      (assoc-in expr [:env :context] (:context env)))))
 
 (defmethod -elide-meta :def
   [{:keys [meta env] :as ast}]
-  (if-let [new-meta (apply dissoc (:form meta) elides)]
-    (if (= new-meta meta)
-      ast
-      (assoc ast :meta (analyze new-meta (ctx env :expr))))
-    (assoc ast :meta nil)))
+  (let [new-meta (apply dissoc (:form meta) elides)]
+    (if (not (empty? new-meta))
+      (if (= new-meta (:form meta))
+        ast
+        (let [new-meta (dissoc-meta meta)]
+          (assoc ast :meta new-meta)))
+      (dissoc ast :meta))))
 
 (defmethod -elide-meta :default [ast] ast)
 
