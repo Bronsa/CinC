@@ -110,10 +110,9 @@
 (defmethod -infer-tag :if
   [{:keys [then else] :as ast}]
   (let [[then-tag else-tag] (mapv :tag [then else])]
-    (if (and then-tag
-             (or (not else)
-             (= then-tag else-tag)))
-      (assoc ast :tag then-tag)
+    (if (or (not else) (not then)
+            (= then-tag else-tag))
+      (assoc ast :tag (or then-tag else-tag))
       ast)))
 
 (defmethod -infer-tag :new
