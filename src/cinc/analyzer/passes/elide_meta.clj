@@ -42,6 +42,6 @@
 (defmethod -elide-meta :default [ast] ast)
 
 (defn elide-meta [ast]
-  (if elides
+  (if (seq elides)
     (prewalk ast -elide-meta)
     ast))
