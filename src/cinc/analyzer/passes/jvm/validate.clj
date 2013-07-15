@@ -102,14 +102,14 @@
                       {:form form}))))
   ast)
 
-(defn -deftype [name class-name args]
-  (eval (list 'deftype* name class-name args))) ;; JIT ->ctor seems not to work, AOT does
+(defn -deftype [name class-name args interfaces]
+  (eval (list 'deftype* name class-name :implements (vec interfaces) args)))
 
 (defmethod -validate :deftype
-  [{:keys [name class-name params] :as ast}]
+  [{:keys [name class-name params interfaces] :as ast}]
   (if class-name
     (do
-      (-deftype name class-name params)
+      (-deftype name class-name interfaces params)
       (dissoc ast :class-name))
     ast))
 
