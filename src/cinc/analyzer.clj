@@ -501,7 +501,8 @@
         args (apply pfn expr)
         doc (or (:doc args) (-> sym meta :doc))
         meta ((fnil merge {}) (meta sym) (when doc {:doc doc}))
-        meta-expr (analyze meta (ctx env :expr))
+        meta-expr (when meta (analyze meta
+                                      (ctx env :expr)))
         var (doto (intern *ns* sym)
               (reset-meta! meta))
         args (when-let [[_ init] (find args :init)]
@@ -510,8 +511,9 @@
             :env  env
             :form form
             :name sym
-            :var  var
-            :meta meta-expr}
+            :var  var}
+           (when meta
+             {:meta meta-expr})
            args)))
 
 (defmethod parse '.
