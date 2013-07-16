@@ -1,68 +1,78 @@
 (ns cinc.analyzer.passes.infer-tag
-  (:require [cinc.analyzer.utils :refer [postwalk arglist-for-arity]])
+  (:require [cinc.analyzer.utils :refer [arglist-for-arity]])
   (:import (clojure.lang IPersistentVector IPersistentMap
                          IPersistentSet ISeq Keyword Var
                          Symbol)
            java.util.regex.Pattern))
 
+(defmulti infer-constant-tag :op)
 (defmulti -infer-tag :op)
 
-(defmethod -infer-tag :vector
+(defmethod infer-constant-tag :vector
   [ast]
   (assoc ast :tag IPersistentVector))
 
-(defmethod -infer-tag :map
+(defmethod infer-constant-tag :map
   [ast]
   (assoc ast :tag IPersistentMap))
 
-(defmethod -infer-tag :set
+(defmethod infer-constant-tag :set
   [ast]
   (assoc ast :tag IPersistentMap))
 
-(defmethod -infer-tag :seq
+(defmethod infer-constant-tag :seq
   [ast]
   (assoc ast :tag ISeq))
 
-(defmethod -infer-tag :class
+(defmethod infer-constant-tag :class
   [{:keys [form] :as ast}]
   (assoc ast :tag form))
 
-(defmethod -infer-tag :keyword
+(defmethod infer-constant-tag :keyword
   [ast]
   (assoc ast :tag Keyword))
 
-(defmethod -infer-tag :symbol
+(defmethod infer-constant-tag :symbol
   [ast]
   (assoc ast :tag Symbol))
 
-(defmethod -infer-tag :string
+(defmethod infer-constant-tag :string
   [ast]
   (assoc ast :tag String))
 
 ;; need to specialize
-(defmethod -infer-tag :number
+(defmethod infer-constant-tag :number
   [ast]
   (assoc ast :tag Number))
 
-(defmethod -infer-tag :type
+(defmethod infer-constant-tag :type
   [{:keys [form] :as ast}]
   (assoc ast :tag (class form)))
 
-(defmethod -infer-tag :record
+(defmethod infer-constant-tag :record
   [{:keys [form] :as ast}]
   (assoc ast :tag (class form)))
 
-(defmethod -infer-tag :char
+(defmethod infer-constant-tag :char
   [ast]
   (assoc ast :tag Character))
 
-(defmethod -infer-tag :regex
+(defmethod infer-constant-tag :regex
   [ast]
   (assoc ast :tag Pattern))
 
-(defmethod -infer-tag :the-var
+(defmethod infer-constant-tag :the-var
   [ast]
   (assoc ast :tag Var))
+
+(defmethod infer-constant-tag :const
+  [{:keys [op type form] :as ast}]
+  (if (not= :unknown type)
+    (assoc (infer-constant-tag (assoc ast :op type))
+      :op op)
+    (assoc ast :tag (class form))))
+
+
 
 (defmethod -infer-tag :binding
   [{:keys [init] :as ast}]
@@ -100,13 +110,6 @@
       (assoc ast :arg-lists arglists)
       ast)))
 
-(defmethod -infer-tag :const
-  [{:keys [op type form] :as ast}]
-  (if (not= :unknown type)
-    (assoc (-infer-tag (assoc ast :op type))
-      :op op)
-    (assoc ast :tag (class form))))
-
 (defmethod -infer-tag :if
   [{:keys [then else] :as ast}]
   (let [[then-tag else-tag] (mapv :tag [then else])]
@@ -116,7 +119,7 @@
       ast)))
 
 (defmethod -infer-tag :new
-  [{:keys [maybe-class class tag] :as ast}]
+  [{:keys [maybe-class class] :as ast}]
   (assoc ast :tag (or class maybe-class)))
 
 (defmethod -infer-tag :do
@@ -201,6 +204,7 @@
       (assoc ast :tag tag)
       ast)))
 
+(defmethod infer-constant-tag :default [ast] ast)
 (defmethod -infer-tag :default [ast] ast)
 
 (defn infer-shortest-path
