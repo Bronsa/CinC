@@ -1,5 +1,4 @@
-(ns cinc.analyzer.passes.source-info
-  (:require [cinc.analyzer.utils :refer [prewalk]]))
+(ns cinc.analyzer.passes.source-info)
 
 (defn get-line [x env]
   (-> x meta :line))
@@ -17,6 +16,5 @@
      {:column column})))
 
 (defn source-info
-  [ast]
-  (prewalk ast (fn [{:keys [form env] :as ast}]
-                 (update-in ast [:env] merge (-source-info form env)))))
+  [{:keys [form env] :as ast}]
+  (update-in ast [:env] merge (-source-info form env)))

@@ -4,9 +4,9 @@
              :as ana
              :refer [analyze parse analyze-in-env analyze-method-impls wrapping-meta]
              :rename {analyze -analyze}]
-            [cinc.analyzer.utils :refer [ctx maybe-var]]
+            [cinc.analyzer.utils :refer [ctx maybe-var walk]]
             [cinc.analyzer.jvm.utils :refer :all]
-            [cinc.analyzer.passes.infer-tag :refer [infer-tag]]
+            [cinc.analyzer.passes.infer-tag :refer [infer-tag infer-constant-tag]]
             [cinc.analyzer.passes.source-info :refer [source-info]]
             [cinc.analyzer.passes.elide-meta :refer [elide-meta]]
             [cinc.analyzer.passes.constant-lifter :refer [constant-lift]]
@@ -150,18 +150,12 @@
      :test-type   test-type
      :skip-check? skip-check?}))
 
-(def passes
-  [constant-lift
-   (fn [ast]
-     (let [new-ast (-> ast
-                     validate
-                     infer-tag
-                     analyze-host-expr)]
-       (if (= new-ast ast)
-         new-ast
-         (recur new-ast))))
-   source-info
-   elide-meta])
+(defn cycling [& fns]
+  (fn [ast]
+    (let [new-ast (reduce #(%2 %) ast fns)]
+      (if (= new-ast ast)
+        ast
+        (recur new-ast)))))
 
 (defn analyze
   "Given an environment, a map containing
@@ -170,8 +164,15 @@
  and form, returns an expression object (a map containing at least :form, :op and :env keys)."
   [form env]
   (binding [ana/macroexpand-1 macroexpand-1]
-    ((apply comp (rseq passes))
-     (-analyze form env))))
+    (walk (-analyze form env)
+          (fn [ast]
+            (-> ast
+              constant-lift
+              infer-constant-tag
+              analyze-host-expr
+              elide-meta
+              source-info))
+          (cycling infer-tag analyze-host-expr validate))))
 
 (defn analyze-file
   [file]

@@ -207,7 +207,7 @@
 (defmethod infer-constant-tag :default [ast] ast)
 (defmethod -infer-tag :default [ast] ast)
 
-(defn infer-shortest-path
+(defn infer-tag
   [{:keys [tag form name] :as ast}]
   (if tag
     ast
@@ -216,6 +216,3 @@
       (if-let [form-tag (:tag (meta form))]
         (assoc ast :tag form-tag)
         (-infer-tag ast)))))
-
-(defn infer-tag [ast]
-  (postwalk ast infer-shortest-path))

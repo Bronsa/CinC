@@ -1,6 +1,6 @@
 (ns cinc.analyzer.passes.jvm.analyze-host-expr
   (:require [cinc.analyzer :as ana]
-            [cinc.analyzer.utils :refer [postwalk ctx]]
+            [cinc.analyzer.utils :refer [ctx]]
             [cinc.analyzer.jvm.utils :refer :all]))
 
 (defn analyze-host-call
@@ -54,8 +54,7 @@
                              m-or-f " for class " class)
                         {:class  class
                          :m-or-f m-or-f}))))
-    (if-let [class (maybe-class (-> target-expr :tag))] ;; else try again after tag inference
-      ;; it's tagged: we know the target class at compile time
+    (if-let [class (maybe-class (-> target-expr :tag))]
       (if-let [field (maybe-instance-field target-expr class m-or-f)]
         field
         (if-let [method (maybe-instance-method target-expr class m-or-f)]
@@ -68,17 +67,17 @@
        :target-expr target-expr
        :m-or-f      m-or-f})))
 
-(defn analyze-host-expr [ast]
-  (postwalk ast (fn [{:keys [op form env] :as ast}]
-                  (if (#{:host-interop :host-call} op)
-                    (let [target (:target-expr ast)
-                          class? (maybe-class (:form target))
-                          target-type (if class? :static :instance)]
-                      (merge {:form form
-                              :env  env}
-                             (if (= :host-call op)
-                               (analyze-host-call target-type (:method ast)
-                                                  (:args ast) target class? env)
-                               (-analyze-host-expr target-type (:m-or-f ast)
-                                                   target class? env))))
-                    ast))))
+(defn analyze-host-expr
+  [{:keys [op form env] :as ast}]
+  (if (#{:host-interop :host-call} op)
+    (let [target (:target-expr ast)
+          class? (maybe-class (:form target))
+          target-type (if class? :static :instance)]
+      (merge {:form form
+              :env  env}
+             (if (= :host-call op)
+               (analyze-host-call target-type (:method ast)
+                                  (:args ast) target class? env)
+               (-analyze-host-expr target-type (:m-or-f ast)
+                                   target class? env))))
+    ast))

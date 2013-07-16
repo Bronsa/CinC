@@ -1,6 +1,6 @@
 (ns cinc.analyzer.passes.jvm.validate
   (:require [cinc.analyzer :refer [-analyze]]
-            [cinc.analyzer.utils :refer [prewalk arglist-for-arity]]
+            [cinc.analyzer.utils :refer [arglist-for-arity]]
             [cinc.analyzer.jvm.utils :as u])
   (:import (clojure.lang IFn)))
 
@@ -128,12 +128,9 @@
 
 (defmethod -validate :default [ast] ast)
 
-(defn validate-around
+(defn validate
   [{:keys [tag] :as ast}]
   (let [ast (if tag
               (assoc ast :tag (validate-tag tag))
               ast)]
     (-validate ast)))
-
-(defn validate [ast]
-  (prewalk ast validate-around))

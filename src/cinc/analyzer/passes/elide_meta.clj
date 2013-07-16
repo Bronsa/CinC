@@ -1,6 +1,5 @@
 (ns cinc.analyzer.passes.elide-meta
-  (:require [cinc.analyzer :refer [analyze]]
-            [cinc.analyzer.utils :refer [prewalk]]))
+  (:require [cinc.analyzer :refer [analyze]]))
 
 (def elides (set (:elide-meta *compiler-options*)))
 
@@ -43,5 +42,5 @@
 
 (defn elide-meta [ast]
   (if (seq elides)
-    (prewalk ast -elide-meta)
+    (-elide-meta ast)
     ast))
