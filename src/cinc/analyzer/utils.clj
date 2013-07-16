@@ -3,34 +3,26 @@
                          IReference Var)
            java.util.regex.Pattern))
 
+(defn walk [ast pre post]
+  (let [ast (pre ast)
+        f (fn [ast k node]
+            (cond
+             (:op node)
+             (assoc-in ast [k] (walk node pre post))
+
+             (and (vector? node)
+                  (seq node)
+                  (every? :op node))
+             (assoc-in ast [k] (mapv #(walk % pre post) node))
+
+             :else ast))]
+    (post (reduce-kv f ast ast))))
+
 (defn prewalk [ast f]
-  (let [ast (f ast)
-        prewalk-ast (fn [ast k node]
-                       (cond
-                        (:op node)
-                        (assoc-in ast [k] (prewalk node f))
-
-                        (and (vector? node)
-                             (seq node)
-                             (every? :op node))
-                        (assoc-in ast [k] (mapv #(prewalk % f) node))
-
-                        :else ast))]
-    (reduce-kv prewalk-ast ast ast)))
+  (walk ast f identity))
 
 (defn postwalk [ast f]
-  (let [postwalk-ast (fn [ast k node]
-                       (cond
-                        (:op node)
-                        (assoc-in ast [k] (postwalk node f))
-
-                        (and (vector? node)
-                             (seq node)
-                             (every? :op node))
-                        (assoc-in ast [k] (mapv #(postwalk % f) node))
-
-                        :else ast))]
-    (f (reduce-kv postwalk-ast ast ast))))
+  (walk ast identity f))
 
 (defn ctx
   "Returns a copy of the passe environment with :context set to ctx"
