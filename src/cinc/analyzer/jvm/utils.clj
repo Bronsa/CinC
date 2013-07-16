@@ -60,11 +60,11 @@
 (defmethod convertible? [Long/TYPE java.lang.Object] [t1 ts] true)
 (defmethod convertible? [Long/TYPE Integer/TYPE] [t1 ts] true)
 
-(defmethod convertible? :default [t1 t2]
+(defmethod convertible? :default [^Class t1 ^Class t2]
   (if (= t1 t2) true (.isAssignableFrom t2 t1)))
 
 (defn primitive? [o]
-  (let [c (maybe-class o)]
+  (let [^Class c (maybe-class o)]
     (and
      (not (or (nil? c) (= c Void/TYPE)))
      (.isPrimitive c))))
