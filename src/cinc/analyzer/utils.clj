@@ -68,6 +68,9 @@
   (:const (meta var)))
 (defn dynamic? [var]
   (:dynamic (meta var)))
+(defn protocol-node? [var]
+  (boolean (:protocol (meta var))))
+
 
 (defn resolve-ns [ns]
   (when ns

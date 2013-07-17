@@ -174,7 +174,8 @@
                 source-info))
             (comp constant-lift
                (cycling infer-tag analyze-host-expr validate)))
-      (prewalk (collect :constants)))))
+      (prewalk (collect :constants
+                        :callsites)))))
 
 (defn analyze-file
   [file]
