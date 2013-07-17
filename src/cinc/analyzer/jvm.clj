@@ -4,11 +4,12 @@
              :as ana
              :refer [analyze parse analyze-in-env analyze-method-impls wrapping-meta]
              :rename {analyze -analyze}]
-            [cinc.analyzer.utils :refer [ctx maybe-var walk]]
+            [cinc.analyzer.utils :refer [ctx maybe-var walk prewalk]]
             [cinc.analyzer.jvm.utils :refer :all]
             [cinc.analyzer.passes.source-info :refer [source-info]]
             [cinc.analyzer.passes.elide-meta :refer [elide-meta]]
             [cinc.analyzer.passes.constant-lifter :refer [constant-lift]]
+            [cinc.analyzer.passes.jvm.collect-constants :refer [collect-constants]]
             [cinc.analyzer.passes.jvm.validate :refer [validate]]
             [cinc.analyzer.passes.jvm.infer-tag :refer [infer-tag infer-constant-tag]]
             [cinc.analyzer.passes.jvm.analyze-host-expr :refer [analyze-host-expr]]))
@@ -164,15 +165,16 @@
  and form, returns an expression object (a map containing at least :form, :op and :env keys)."
   [form env]
   (binding [ana/macroexpand-1 macroexpand-1]
-    (walk (-analyze form env)
-          (fn [ast]
-            (-> ast
-              infer-constant-tag
-              analyze-host-expr
-              elide-meta
-              source-info))
-          (comp constant-lift
-             (cycling infer-tag analyze-host-expr validate)))))
+    (-> (-analyze form env)
+      (walk (fn [ast]
+              (-> ast
+                infer-constant-tag
+                analyze-host-expr
+                elide-meta
+                source-info))
+            (comp constant-lift
+               (cycling infer-tag analyze-host-expr validate)))
+      (prewalk collect-constants))))
 
 (defn analyze-file
   [file]
