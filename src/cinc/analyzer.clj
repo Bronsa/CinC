@@ -173,7 +173,7 @@
                  {:op          :var
                   :name        (.sym var)
                   :ns          (-> var .ns .name)
-                  :assignable? (:dynamic (meta var)) ;; we cannot detect without evaluating
+                  :assignable? (dynamic? var) ;; we cannot detect using thread-bound? without evaluating
                   :var         var}
                  (if-let [maybe-class (namespace sym)] ;; e.g. js/foo.bar or Long/MAX_VALUE
                    (let [maybe-class (symbol maybe-class)]

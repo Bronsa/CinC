@@ -66,6 +66,8 @@
   (:macro (meta var)))
 (defn constant? [var]
   (:const (meta var)))
+(defn dynamic? [var]
+  (:dynamic (meta var)))
 
 (defn resolve-ns [ns]
   (when ns
