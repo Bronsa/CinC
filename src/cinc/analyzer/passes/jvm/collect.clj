@@ -3,6 +3,7 @@
 
 (def ^:private ^:dynamic *collects*
   {:constants           {}
+   :vars                {}
    :protocol-callsites #{}
    :keyword-callsites  #{}})
 
@@ -17,6 +18,16 @@
   [{:keys [op form] :as ast}]
   (if (= op :const)
     (let [id (-register-constant form)]
+      (assoc ast :id id))
+    ast))
+
+(defn -collect-vars
+  [{:keys [op var] :as ast}]
+  (if (#{:def :var :the-var} op)
+    (let [id (or ((:vars *collects*) var)
+                 (let [id (-register-constant var)]
+                   (set! *collects* (assoc-in *collects* [:vars var] id))
+                   id))]
       (assoc ast :id id))
     ast))
 
@@ -37,6 +48,7 @@
 (defn collect-fns [what]
   (case what
     :constants -collect-constants
+    :vars      -collect-vars
     :callsites -collect-callsites
     nil))
 

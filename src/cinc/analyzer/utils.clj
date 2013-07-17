@@ -71,7 +71,6 @@
 (defn protocol-node? [var]
   (boolean (:protocol (meta var))))
 
-
 (defn resolve-ns [ns]
   (when ns
     (or (find-ns ns)
