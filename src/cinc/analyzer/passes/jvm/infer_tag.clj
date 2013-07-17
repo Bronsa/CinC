@@ -1,5 +1,6 @@
-(ns cinc.analyzer.passes.infer-tag
-  (:require [cinc.analyzer.utils :refer [arglist-for-arity]])
+(ns cinc.analyzer.passes.jvm.infer-tag
+  (:require [cinc.analyzer.utils :refer [arglist-for-arity]]
+            [cinc.analyzer.jvm.utils :refer [convertible?]])
   (:import (clojure.lang IPersistentVector IPersistentMap
                          IPersistentSet ISeq Keyword Var
                          Symbol)
@@ -111,10 +112,19 @@
 (defmethod -infer-tag :if
   [{:keys [then else] :as ast}]
   (let [[then-tag else-tag] (mapv :tag [then else])]
-    (if (or (nil? (:form else)) (nil? (:form then))
-            (= then-tag else-tag))
-      (assoc ast :tag (or then-tag else-tag))
-      ast)))
+    (cond
+
+     (or (nil? (:form else)) (nil? (:form then))
+         (= then-tag else-tag))
+     (assoc ast :tag (or then-tag else-tag))
+
+     (convertible? else-tag then-tag)
+     (assoc ast :tag then-tag)
+
+     (convertible? then-tag else-tag)
+     (assoc ast :tag else-tag)
+
+     :else ast)))
 
 (defmethod -infer-tag :new
   [{:keys [maybe-class class] :as ast}]
