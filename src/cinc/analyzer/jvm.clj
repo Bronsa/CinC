@@ -9,7 +9,7 @@
             [cinc.analyzer.passes.source-info :refer [source-info]]
             [cinc.analyzer.passes.elide-meta :refer [elide-meta]]
             [cinc.analyzer.passes.constant-lifter :refer [constant-lift]]
-            [cinc.analyzer.passes.jvm.collect-constants :refer [collect-constants]]
+            [cinc.analyzer.passes.jvm.collect :refer [collect]]
             [cinc.analyzer.passes.jvm.validate :refer [validate]]
             [cinc.analyzer.passes.jvm.infer-tag :refer [infer-tag infer-constant-tag]]
             [cinc.analyzer.passes.jvm.analyze-host-expr :refer [analyze-host-expr]]))
@@ -174,7 +174,7 @@
                 source-info))
             (comp constant-lift
                (cycling infer-tag analyze-host-expr validate)))
-      (prewalk collect-constants))))
+      (prewalk (collect :constants)))))
 
 (defn analyze-file
   [file]
