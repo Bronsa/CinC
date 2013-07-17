@@ -72,8 +72,6 @@
       :op op)
     (assoc ast :tag (class form))))
 
-
-
 (defmethod -infer-tag :binding
   [{:keys [init] :as ast}]
   (if init

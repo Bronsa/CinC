@@ -95,7 +95,7 @@
 (defmethod parse 'reify*
   [[_ interfaces & methods :as form] env]
   (let [interfaces (conj (set interfaces)
-                         clojure.lang.IObj) ;; mmh
+                         clojure.lang.IObj)
         methods (mapv #(analyze-method-impls % env) methods)]
     (wrapping-meta
      {:op         :reify
