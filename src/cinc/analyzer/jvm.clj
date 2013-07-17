@@ -167,12 +167,12 @@
     (walk (-analyze form env)
           (fn [ast]
             (-> ast
-              constant-lift
               infer-constant-tag
               analyze-host-expr
               elide-meta
               source-info))
-          (cycling infer-tag analyze-host-expr validate))))
+          (comp constant-lift
+             (cycling infer-tag analyze-host-expr validate)))))
 
 (defn analyze-file
   [file]
