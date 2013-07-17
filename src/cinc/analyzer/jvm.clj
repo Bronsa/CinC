@@ -9,6 +9,7 @@
             [cinc.analyzer.passes.source-info :refer [source-info]]
             [cinc.analyzer.passes.elide-meta :refer [elide-meta]]
             [cinc.analyzer.passes.constant-lifter :refer [constant-lift]]
+            [cinc.analyzer.passes.warn-earmuff :refer [warn-earmuff]]
             [cinc.analyzer.passes.jvm.collect :refer [collect]]
             [cinc.analyzer.passes.jvm.validate :refer [validate]]
             [cinc.analyzer.passes.jvm.infer-tag :refer [infer-tag infer-constant-tag]]
@@ -168,6 +169,7 @@
     (-> (-analyze form env)
       (walk (fn [ast]
               (-> ast
+                warn-earmuff
                 infer-constant-tag
                 analyze-host-expr
                 elide-meta
