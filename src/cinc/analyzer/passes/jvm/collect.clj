@@ -33,15 +33,14 @@
 
 (defn -collect-callsites
   [{:keys [op] :as ast}]
-  (when (= :invoke op)
-    (let [{:keys [op] :as f} (:fn ast)]
+  (when (#{:keyword-invoke :invoke} op)
+    (let [f (:fn ast)]
       (cond
-       (and (= :var op)
+       (and (= :var (:op f))
             (protocol-node? (:var f)))
        (set! *collects* (update-in *collects* [:protocol-callsites] conj (:name f)))
 
-       (and (= :const op)
-            (= :keyword (:type f)))
+       (= :keyword-invoke op)
        (set! *collects* (update-in *collects* [:keyword-callsites] conj (:form f))))))
   ast)
 

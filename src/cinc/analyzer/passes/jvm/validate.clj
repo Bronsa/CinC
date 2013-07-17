@@ -91,16 +91,24 @@
 
 (defmethod -validate :invoke
   [{:keys [args fn form] :as ast}]
-  (when (:arg-lists fn)
-    (when-not (doto (arglist-for-arity fn (count args)))
-      (throw (ex-info (str "No matching arity found for function: " (:name fn))
-                      {:arity (count args)
-                       :fn    fn }))))
-  (when (= :const (:op fn))
-    (when (not (instance? IFn (:form fn)))
-      (throw (ex-info (str (class (:form fn)) " is not a function, but it's used as such")
-                      {:form form}))))
-  ast)
+  (let [argc (count args)]
+    (if (and (= :const (:op fn))
+             (= :keyword (:type fn)))
+      (if (<= 1 argc 2)
+        (assoc ast :op :keyword-invoke)
+        (throw (ex-info (str "Cannot invoke keyword with " argc " arguments")
+                        {:form form})))
+      (do
+        (when (:arg-lists fn)
+          (when-not (doto (arglist-for-arity fn argc))
+            (throw (ex-info (str "No matching arity found for function: " (:name fn))
+                            {:arity (count args)
+                             :fn    fn }))))
+        (when (= :const (:op fn))
+          (when (not (instance? IFn (:form fn)))
+            (throw (ex-info (str (class (:form fn)) " is not a function, but it's used as such")
+                            {:form form}))))
+        ast))))
 
 (defn -deftype [name class-name args interfaces]
   (eval (list 'deftype* name class-name :implements (vec interfaces) args)))
