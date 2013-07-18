@@ -16,8 +16,10 @@
         id)))
 
 (defn -collect-constants
-  [{:keys [op form] :as ast}]
-  (if (= op :const)
+  [{:keys [op form type] :as ast}]
+  (if (and (= op :const)
+           (not= type :nil)
+           (not= type :boolean))
     (let [id (-register-constant form)]
       (assoc ast :id id))
     ast))
