@@ -1,6 +1,10 @@
 (ns cinc.analyzer.passes.jvm.collect
   (:require [cinc.analyzer.utils :refer [postwalk protocol-node?]]))
 
+(defmacro update! [target f & args]
+  `(let [t# ~target]
+     (set! ~target (~f t# ~@args))))
+
 (def ^:private ^:dynamic *collects*
   {:constants           {}
    :vars                {}
@@ -12,7 +16,7 @@
   [form]
   (or ((:constants *collects*) form)
       (let [id (count (:constants *collects*))]
-        (set! *collects* (assoc-in *collects* [:constants form] id))
+        (update! *collects* assoc-in [:constants form] id)
         id)))
 
 (defn -collect-constants
@@ -29,7 +33,7 @@
   (if (#{:def :var :the-var} op)
     (let [id (or ((:vars *collects*) var)
                  (let [id (-register-constant var)]
-                   (set! *collects* (assoc-in *collects* [:vars var] id))
+                   (update! *collects* assoc-in [:vars var] id)
                    id))]
       (assoc ast :id id))
     ast))
@@ -41,10 +45,10 @@
       (cond
        (and (= :var (:op f))
             (protocol-node? (:var f)))
-       (set! *collects* (update-in *collects* [:protocol-callsites] conj (:name f)))
+       (update! *collects* update-in [:protocol-callsites] conj (:name f))
 
        (= :keyword-invoke op)
-       (set! *collects* (update-in *collects* [:keyword-callsites] conj (:form f))))))
+       (update! *collects* update-in [:keyword-callsites] conj (:form f)))))
   ast)
 
 (defmulti -collect-closed-overs :op)
@@ -52,25 +56,25 @@
 
 (defmethod -collect-closed-overs :local
   [{:keys [op name] :as ast}]
-  (set! *collects* (update-in *collects* [:closed-overs] conj name))
+  (update! *collects* update-in [:closed-overs] conj name)
   ast)
 
 (defmethod -collect-closed-overs :binding
   [{:keys [init name] :as ast}]
-  (set! *collects* (update-in *collects* [:closed-overs] disj name))
+  (update! *collects* update-in [:closed-overs] disj name)
   (when init
     (-collect-closed-overs init)) ;; since we're in a postwalk, a bit of trickery is necessary
   ast)
 
 (defmethod -collect-closed-overs :deftype
   [{:keys [fields] :as ast}]
-  (set! *collects* (assoc *collects* :closed-overs (set fields)))
+  (update! *collects* assoc :closed-overs (set fields))
   ast)
 
 (defmethod -collect-closed-overs :fn-method
   [{:keys [params] :as ast}]
-  (set! *collects* (update-in *collects* [:closed-overs]
-                              #(apply disj % (mapv :name params))))
+  (update! *collects* update-in [:closed-overs]
+           #(apply disj % (mapv :name params)))
   ast)
 
 (defn collect-fns [what]
