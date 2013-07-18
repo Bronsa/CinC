@@ -58,12 +58,19 @@
 (defmethod -collect-closed-overs :binding
   [{:keys [init name] :as ast}]
   (set! *collects* (update-in *collects* [:closed-overs] disj name))
-  (-collect-closed-overs init) ;; since we're in a postwalk, a bit of trickery is necessary
+  (when init
+    (-collect-closed-overs init)) ;; since we're in a postwalk, a bit of trickery is necessary
   ast)
 
 (defmethod -collect-closed-overs :deftype
   [{:keys [fields] :as ast}]
   (set! *collects* (assoc *collects* :closed-overs (set fields)))
+  ast)
+
+(defmethod -collect-closed-overs :fn-method
+  [{:keys [params] :as ast}]
+  (set! *collects* (update-in *collects* [:closed-overs]
+                              #(apply disj % (mapv :name params))))
   ast)
 
 (defn collect-fns [what]
