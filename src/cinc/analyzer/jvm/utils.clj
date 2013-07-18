@@ -13,11 +13,11 @@
    "double" Double/TYPE
    "void" Void/TYPE})
 
-(defmulti maybe-class class)
+(defmulti ^Class maybe-class class)
 
 (defn- ^Type asm-type [^String s]
   (when s
-    (if-let [^Class class (maybe-class s)]
+    (if-let [class (maybe-class s)]
       (Type/getType class)
       (Type/getType s))))
 
@@ -52,22 +52,30 @@
         ret
         (maybe-class-from-string (str sym))))))
 
-(defmulti convertible? (fn [from to] [(maybe-class from) (maybe-class to)]))
-
-(defmethod convertible? [java.lang.Object java.lang.Number] [t1 ts] true)
-(defmethod convertible? [java.lang.Object Integer/TYPE] [t1 ts] true)
-(defmethod convertible? [java.lang.Object Long/TYPE] [t1 ts] true)
-(defmethod convertible? [Long/TYPE java.lang.Object] [t1 ts] true)
-(defmethod convertible? [Long/TYPE Integer/TYPE] [t1 ts] true)
-
-(defmethod convertible? :default [^Class t1 ^Class t2]
-  (if (= t1 t2) true (.isAssignableFrom t2 t1)))
-
 (defn primitive? [o]
-  (let [^Class c (maybe-class o)]
+  (let [c (maybe-class o)]
     (and
      (not (or (nil? c) (= c Void/TYPE)))
      (.isPrimitive c))))
+
+(def convertible-primitives?
+  {Integer/TYPE   #{Integer Long/TYPE Long Short/TYPE Byte/TYPE}
+   Float/TYPE     #{Float Double/TYPE}
+   Double/TYPE    #{Double Float/TYPE}
+   Long/TYPE      #{Long Integer/TYPE Short/TYPE Byte/TYPE}
+   Character/TYPE #{Character}
+   Short/TYPE     #{Short}
+   Byte/TYPE      #{Byte}
+   Boolean/TYPE   #{Boolean}})
+
+(defn convertible? [from to]
+  (or (nil? from)
+      (let [c1 (maybe-class from)
+            c2 (maybe-class to)]
+        (or (= c1 c2)
+            (.isAssignableFrom c2 c1)
+            (and (primitive? to)
+                 (boolean ((convertible-primitives? to) from)))))))
 
 (defn members [class member]
   (let [members (-> (maybe-class class)
@@ -109,7 +117,7 @@
       member)))
 
 (defn static-method [class method]
-  (static-methods class method 0))
+  (first (static-methods class method 0)))
 
 (defn instance-method [class method]
-  (instance-methods class method 0))
+  (first (instance-methods class method 0)))
