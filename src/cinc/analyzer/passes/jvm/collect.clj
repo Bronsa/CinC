@@ -4,6 +4,7 @@
 (def ^:private ^:dynamic *collects*
   {:constants           {}
    :vars                {}
+   :referenced-locals  #{}
    :protocol-callsites #{}
    :keyword-callsites  #{}})
 
@@ -44,11 +45,19 @@
        (set! *collects* (update-in *collects* [:keyword-callsites] conj (:form f))))))
   ast)
 
+(defn -collect-referenced-locals
+  [{:keys [op name] :as ast}]
+  (when (and (= :local op)
+             (not ((:referenced-locals *collects*) name)))
+    (set! *collects* (update-in *collects* [:referenced-locals] conj name)))
+  ast)
+
 (defn collect-fns [what]
   (case what
-    :constants -collect-constants
-    :vars      -collect-vars
-    :callsites -collect-callsites
+    :constants         -collect-constants
+    :vars              -collect-vars
+    :referenced-locals -collect-referenced-locals
+    :callsites         -collect-callsites
     nil))
 
 (defn collect [& what]
