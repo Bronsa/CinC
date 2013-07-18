@@ -61,6 +61,11 @@
   (-collect-closed-overs init) ;; since we're in a postwalk, a bit of trickery is necessary
   ast)
 
+(defmethod -collect-closed-overs :deftype
+  [{:keys [fields] :as ast}]
+  (set! *collects* (assoc *collects* :closed-overs (set fields)))
+  ast)
+
 (defn collect-fns [what]
   (case what
     :constants    -collect-constants
