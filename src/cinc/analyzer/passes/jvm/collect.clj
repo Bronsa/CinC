@@ -77,6 +77,11 @@
            #(apply disj % (mapv :name params)))
   ast)
 
+(defmethod -collect-closed-overs :fn
+  [{:keys [name] :as ast}]
+  (update! *collects* update-in [:closed-overs] disj name)
+  ast)
+
 (defn collect-fns [what]
   (case what
     :constants    -collect-constants
