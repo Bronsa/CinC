@@ -197,7 +197,10 @@
     (let [mform (macroexpand-1 form env)]
       (if (identical? form mform)
         (parse form env) ;; invoke == :default
-        (analyze (with-meta mform (meta form)) env)))))
+        (analyze (if (obj? mform)
+                   (with-meta mform (meta form))
+                   mform)
+                 env)))))
 
 (defn analyze-block
   "returns {:statements .. :ret ..}"
