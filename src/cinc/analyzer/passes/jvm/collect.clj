@@ -71,7 +71,7 @@
 
 (defn collect [& what]
   (fn [{:keys [op env] :as ast}]
-    (if (#{:fn :deftype* :reify*} op)
+    (if (#{:fn :deftype :reify} op)
       (binding [*collects* *collects*]
         (let [f (apply comp (filter identity (mapv collect-fns what)))]
           (into (postwalk ast f)

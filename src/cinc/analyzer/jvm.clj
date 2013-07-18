@@ -178,6 +178,7 @@
                (cycling infer-tag analyze-host-expr validate)))
       (prewalk (collect :constants
                         :callsites
+                        :closed-overs
                         :vars)))))
 
 (defn analyze-file

@@ -111,14 +111,13 @@
         ast))))
 
 (defn -deftype [name class-name args interfaces]
-  (eval (list 'deftype* name class-name :implements (vec interfaces) args)))
+  (eval (list 'deftype* name class-name args :implements (vec interfaces))))
 
 (defmethod -validate :deftype
-  [{:keys [name class-name params interfaces] :as ast}]
+  [{:keys [name class-name fields interfaces] :as ast}]
   (if class-name
-    (do
-      (-deftype name class-name interfaces params)
-      (dissoc ast :class-name))
+    (do(-deftype name class-name (mapv :name fields) interfaces)
+       (dissoc (assoc ast :tag (u/maybe-class class-name)) :class-name))
     ast))
 
 (defmethod -validate :method

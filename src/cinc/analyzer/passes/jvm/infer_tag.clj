@@ -197,12 +197,12 @@
                  (reduce #(conj % (assoc %2 :interfaces tags)) [] methods))
      :tag tags)))
 
-(defmethod -infer-tag :deftype
-  [{:keys [interfaces methods] :as ast}]
-  (let [tags (conj interfaces Object)]
-   (assoc (assoc ast :methods
-                 (reduce #(conj % (assoc %2 :interfaces tags)) [] methods))
-     :tag tags)))
+;; (defmethod -infer-tag :deftype
+;;   [{:keys [interfaces methods] :as ast}]
+;;   (let [tags (conj interfaces Object)]
+;;    (assoc (assoc ast :methods
+;;                  (reduce #(conj % (assoc %2 :interfaces tags)) [] methods))
+;;      :tag tags)))
 
 (defmethod -infer-tag :method
   [{:keys [form body params] :as ast}]
