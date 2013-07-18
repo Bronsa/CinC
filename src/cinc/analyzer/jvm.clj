@@ -170,7 +170,6 @@
               (-> ast
                 warn-earmuff
                 infer-constant-tag
-                analyze-host-expr
                 elide-meta
                 source-info))
             (comp constant-lift

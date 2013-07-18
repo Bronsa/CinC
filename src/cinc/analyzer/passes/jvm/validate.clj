@@ -41,23 +41,40 @@
                       {:class maybe-class})))
     ast))
 
+(defn tag-match? [arg-tags meth]
+  (every? identity (map u/convertible? arg-tags (:parameter-types meth))))
+
 (defmethod -validate :static-call
   [{:keys [class method args] :as ast}]
   (let [argc (count args)]
     (if-let [matching-methods (seq (u/static-methods class method argc))]
-      ast ;; find matching types or require reflection
+      (if-let [matching-methods (seq (filter (partial tag-match? (mapv :tag args)) matching-methods))]
+        ast
+        (throw (ex-info (str "No matching method: " method " for class: " class " and given signature")
+                      {:method method
+                       :class  class
+                       :args   args})))
       (throw (ex-info (str "No matching method: " method " for class: " class " and arity: " argc)
                       {:method method
                        :class  class
                        :argc   argc})))))
 
-(defmethod -validate :static-field
-  [{:keys [class field] :as ast}]
-  (if-let [matching-field (u/static-field class field)]
-    ast
-    (throw (ex-info (str "No matching field: " field " for class: " class)
-                    {:field  field
-                     :class  class}))))
+(defmethod -validate :instance-call
+  [{:keys [class method args] :as ast}]
+  (if class
+    (let [argc (count args)]
+      (if-let [matching-methods (seq (u/instance-methods class method argc))]
+        (if-let [matching-methods (seq (filter (partial tag-match? (mapv :tag args)) matching-methods))]
+          ast
+          (throw (ex-info (str "No matching method: " method " for class: " class " and given signature")
+                          {:method method
+                           :class  class
+                           :args   args})))
+        (throw (ex-info (str "No matching method: " method " for class: " class " and arity: " argc)
+                        {:method method
+                         :class  class
+                         :argc   argc}))))
+    ast))
 
 (defmethod -validate :import
   [{:keys [maybe-class] :as ast}]
@@ -68,7 +85,6 @@
       (throw (ex-info (str "class not found: " maybe-class)
                       {:class maybe-class})))
     ast))
-
 
 (defn validate-tag [tag]
   (if (set? tag)

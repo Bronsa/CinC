@@ -4,7 +4,7 @@
             [cinc.analyzer.jvm.utils :refer :all]))
 
 (defn analyze-host-call
-  [target-type method args target-expr class? env]
+  [target-type method args target-expr class env]
   (let [op (case target-type
              :static   :static-call
              :instance :instance-call)]
@@ -13,8 +13,9 @@
       :method method
       :args   args}
      (case target-type
-       :static   {:class (:form target-expr)}
-       :instance {:instance target-expr}))))
+       :static   {:class    class}
+       :instance {:instance target-expr
+                  :class    (:tag target-expr)}))))
 
 (defn maybe-static-field [[_ class sym]]
   (when-let [{:keys [flags]} (static-field class sym)]
@@ -33,6 +34,7 @@
   (when-let [_ (instance-method class sym)]
     {:op       :instance-call
      :instance target-expr
+     :class    class
      :method   sym}))
 
 (defn maybe-instance-field [target-expr class sym]
