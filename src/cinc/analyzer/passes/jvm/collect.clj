@@ -4,7 +4,7 @@
 (def ^:private ^:dynamic *collects*
   {:constants           {}
    :vars                {}
-   :referenced-locals  #{}
+   :closed-overs       #{}
    :protocol-callsites #{}
    :keyword-callsites  #{}})
 
@@ -47,23 +47,30 @@
        (set! *collects* (update-in *collects* [:keyword-callsites] conj (:form f))))))
   ast)
 
-(defn -collect-referenced-locals
+(defmulti -collect-closed-overs :op)
+(defmethod -collect-closed-overs :default [ast] ast)
+
+(defmethod -collect-closed-overs :local
   [{:keys [op name] :as ast}]
-  (when (and (= :local op)
-             (not ((:referenced-locals *collects*) name)))
-    (set! *collects* (update-in *collects* [:referenced-locals] conj name)))
+  (set! *collects* (update-in *collects* [:closed-overs] conj name))
+  ast)
+
+(defmethod -collect-closed-overs :binding
+  [{:keys [init name] :as ast}]
+  (set! *collects* (update-in *collects* [:closed-overs] disj name))
+  (-collect-closed-overs init) ;; since we're in a postwalk, a bit of trickery is necessary
   ast)
 
 (defn collect-fns [what]
   (case what
-    :constants         -collect-constants
-    :vars              -collect-vars
-    :referenced-locals -collect-referenced-locals
-    :callsites         -collect-callsites
+    :constants    -collect-constants
+    :vars         -collect-vars
+    :closed-overs -collect-closed-overs
+    :callsites    -collect-callsites
     nil))
 
 (defn collect [& what]
-  (fn [{:keys [op] :as ast}]
+  (fn [{:keys [op env] :as ast}]
     (if (#{:fn :deftype* :reify*} op)
       (binding [*collects* *collects*]
         (let [f (apply comp (filter identity (mapv collect-fns what)))]
