@@ -115,9 +115,8 @@
                              :name name
                              :op   :binding})
                           fields)
-        env (update-in env [:locals] merge
-                       (zipmap fields fields-expr))
-        methods (mapv #(analyze-method-impls % env) methods)]
+        menv (assoc env :locals (zipmap fields fields-expr))
+        methods (mapv #(analyze-method-impls % menv) methods)]
     {:op         :deftype
      :env        env
      :form       form
