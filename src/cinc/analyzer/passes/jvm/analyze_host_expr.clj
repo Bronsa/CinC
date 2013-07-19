@@ -33,11 +33,11 @@
 
 (defn maybe-instance-method [target-expr class sym]
   (when-let [{:keys [return-type]} (instance-method class sym)]
-    {:op       :instance-call
-     :tag      return-type
-     :instance target-expr
-     :class    class
-     :method   sym}))
+      {:op       :instance-call
+       :tag      return-type
+       :instance target-expr
+       :class    class
+       :method   sym}))
 
 (defn maybe-instance-field [target-expr class sym]
   (when-let [{:keys [flags]} (instance-field class sym)]
@@ -58,7 +58,7 @@
                              m-or-f " for class " class)
                         {:class  class
                          :m-or-f m-or-f}))))
-    (if-let [class (as-class (maybe-class (-> target-expr :tag)))]
+    (if-let [class (maybe-class (-> target-expr :tag))]
       (if-let [field (maybe-instance-field target-expr class m-or-f)]
         field
         (if-let [method (maybe-instance-method target-expr class m-or-f)]
@@ -75,7 +75,7 @@
   [{:keys [op form env] :as ast}]
   (if (#{:host-interop :host-call} op)
     (let [target (:target-expr ast)
-          class? (as-class (maybe-class (:form target)))
+          class? (maybe-class (:form target))
           target-type (if class? :static :instance)]
       (merge {:form form
               :env  env}

@@ -5,11 +5,12 @@
              :refer [analyze parse analyze-in-env analyze-method-impls wrapping-meta]
              :rename {analyze -analyze}]
             [cinc.analyzer.utils :refer [ctx maybe-var walk prewalk]]
-            [cinc.analyzer.jvm.utils :refer :all]
+            [cinc.analyzer.jvm.utils :refer :all :exclude [box]]
             [cinc.analyzer.passes.source-info :refer [source-info]]
             [cinc.analyzer.passes.elide-meta :refer [elide-meta]]
             [cinc.analyzer.passes.constant-lifter :refer [constant-lift]]
             [cinc.analyzer.passes.warn-earmuff :refer [warn-earmuff]]
+            [cinc.analyzer.passes.jvm.box :refer [box]]
             [cinc.analyzer.passes.jvm.collect :refer [collect]]
             [cinc.analyzer.passes.jvm.validate :refer [validate]]
             [cinc.analyzer.passes.jvm.infer-tag :refer [infer-tag infer-constant-tag]]
@@ -173,7 +174,7 @@
                 elide-meta
                 source-info))
             (comp constant-lift
-               (cycling infer-tag analyze-host-expr validate)))
+               (cycling infer-tag analyze-host-expr validate box)))
       (prewalk (collect :constants
                         :callsites
                         :closed-overs

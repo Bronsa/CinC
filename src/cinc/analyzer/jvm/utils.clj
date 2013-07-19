@@ -68,7 +68,7 @@
    Byte/TYPE      #{Byte}
    Boolean/TYPE   #{Boolean}})
 
-(defn as-class [c]
+(defn box [c]
   ({Integer/TYPE   Integer
     Float/TYPE     Float
     Double/TYPE    Double
@@ -90,7 +90,7 @@
 
 (defn members [class member]
   (let [members (-> (maybe-class class)
-                  as-class
+                  box
                   (reflect/type-reflect :ancestors true)
                   :members)]
     (when-let [members (filter #(= member (:name %)) members)]
