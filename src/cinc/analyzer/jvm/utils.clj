@@ -68,6 +68,17 @@
    Byte/TYPE      #{Byte}
    Boolean/TYPE   #{Boolean}})
 
+(defn as-class [c]
+  ({Integer/TYPE   Integer
+    Float/TYPE     Float
+    Double/TYPE    Double
+    Long/TYPE      Long
+    Character/TYPE Character
+    Short/TYPE     Short
+    Byte/TYPE      Byte
+    Boolean/TYPE   Boolean}
+   c c))
+
 (defn convertible? [from to]
   (or (nil? from)
       (let [c1 (maybe-class from)
@@ -79,6 +90,7 @@
 
 (defn members [class member]
   (let [members (-> (maybe-class class)
+                  as-class
                   (reflect/type-reflect :ancestors true)
                   :members)]
     (when-let [members (filter #(= member (:name %)) members)]

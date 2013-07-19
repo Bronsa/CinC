@@ -58,7 +58,7 @@
                              m-or-f " for class " class)
                         {:class  class
                          :m-or-f m-or-f}))))
-    (if-let [class (maybe-class (-> target-expr :tag))]
+    (if-let [class (as-class (maybe-class (-> target-expr :tag)))]
       (if-let [field (maybe-instance-field target-expr class m-or-f)]
         field
         (if-let [method (maybe-instance-method target-expr class m-or-f)]
@@ -75,7 +75,7 @@
   [{:keys [op form env] :as ast}]
   (if (#{:host-interop :host-call} op)
     (let [target (:target-expr ast)
-          class? (maybe-class (:form target))
+          class? (as-class (maybe-class (:form target)))
           target-type (if class? :static :instance)]
       (merge {:form form
               :env  env}
