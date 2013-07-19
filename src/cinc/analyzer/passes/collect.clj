@@ -1,4 +1,4 @@
-(ns cinc.analyzer.passes.jvm.collect
+(ns cinc.analyzer.passes.collect
   (:require [cinc.analyzer.utils :refer [postwalk protocol-node?]]))
 
 (defmacro update! [target f & args]
