@@ -25,14 +25,16 @@
      :field       sym}))
 
 (defn maybe-static-method [[_ class sym]]
-  (when-let [_ (static-method class sym)]
+  (when-let [{:keys [return-type]} (static-method class sym)]
     {:op     :static-call
+     :tag    return-type
      :class  class
      :method sym}))
 
 (defn maybe-instance-method [target-expr class sym]
-  (when-let [_ (instance-method class sym)]
+  (when-let [{:keys [return-type]} (instance-method class sym)]
     {:op       :instance-call
+     :tag      return-type
      :instance target-expr
      :class    class
      :method   sym}))
