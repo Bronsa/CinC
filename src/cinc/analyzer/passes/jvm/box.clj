@@ -25,6 +25,9 @@
       :class class)
     ast))
 
+(defn -box [x]
+  (assoc x :box true))
+
 (defmethod box :if
   [{:keys [test then else box] :as ast}]
   (if (:box then)
@@ -32,7 +35,7 @@
     (let [test (if (and (not (:box test))
                         (= Boolean/TYPE (:tag test)))
                  test (assoc test :box true))
-          [then else] (if box (mapv #(assoc % :box true) [then else]) [then else])]
+          [then else] (if box (mapv -box [then else]) [then else])]
       (assoc ast
         :test test
         :then then
@@ -41,6 +44,22 @@
 (defmethod box :def
   [ast]
   (assoc-in ast [:init :box] true))
+
+(defmethod box :vector
+  [{:keys [items] :as ast}]
+  (assoc ast :items (mapv -box items)))
+
+(defmethod box :set
+  [{:keys [items] :as ast}]
+  (assoc ast :items (mapv -box items)))
+
+(defmethod box :map
+  [{:keys [keys vals] :as ast}]
+  (let [keys (mapv -box keys)
+        vals (mapv -box vals)]
+    (assoc ast
+      :keys keys
+      :vals vals)))
 
 (defmethod box :do
   [{:keys [box] :as ast}]
