@@ -66,6 +66,10 @@
   [ast]
   (assoc ast :tag Var))
 
+(defmethod infer-constant-tag :bool
+  [ast]
+  (assoc ast :tag Boolean))
+
 (defmethod infer-constant-tag :const
   [{:keys [op type form] :as ast}]
   (if (not= :unknown type)
