@@ -38,4 +38,14 @@
         :then then
         :else else))))
 
+(defmethod box :def
+  [ast]
+  (assoc-in ast [:init :box] true))
+
+(defmethod box :do
+  [{:keys [box] :as ast}]
+  (if box
+    (assoc-in ast [:ret :box] true)
+    ast))
+
 (defmethod box :default [ast] ast)
