@@ -27,7 +27,7 @@
 
 (defmethod box :if
   [{:keys [test then else box] :as ast}]
-  (if (:box ast)
+  (if (:box then)
     ast
     (let [test (if (and (not (:box test))
                         (= Boolean/TYPE (:tag test)))
