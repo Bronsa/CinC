@@ -19,24 +19,19 @@
   (let [form (if (instance? LazySeq form)
                (or (seq form) ())      ; we need to force evaluation in order to analyze
                form)]
-    (case form
+    (cond
 
-      nil              (-analyze :const form env :nil)
-      (true false)     (-analyze :const form env :bool)
+     (symbol? form)   (-analyze :symbol form env)
 
-      (cond
+     (type? form)     (-analyze :const  form env :type)
+     (record? form)   (-analyze :const  form env :record)
 
-       (symbol? form)   (-analyze :symbol form env)
+     (seq? form)      (-analyze :seq    form env)
+     (vector? form)   (-analyze :vector form env)
+     (map? form)      (-analyze :map    form env)
+     (set? form)      (-analyze :set    form env)
 
-       (type? form)     (-analyze :const  form env :type)
-       (record? form)   (-analyze :const  form env :record)
-
-       (seq? form)      (-analyze :seq    form env)
-       (vector? form)   (-analyze :vector form env)
-       (map? form)      (-analyze :map    form env)
-       (set? form)      (-analyze :set    form env)
-
-       :else            (-analyze :const  form env)))))
+     :else            (-analyze :const  form env))))
 
 (defn analyze-file
   ([file] (analyze-file file analyze))
