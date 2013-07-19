@@ -39,11 +39,15 @@
   (instance? IReference x))
 (defn regex? [x]
   (instance? Pattern x))
+(defn boolean? [x]
+  (or (true? x) (false? x)))
 
 (defn classify
   "Returns a keyword describing the form type"
   [form]
   (cond
+   (nil? form)     :nil
+   (boolean? form) :bool
    (keyword? form) :keyword
    (symbol? form)  :symbol
    (string? form)  :string
