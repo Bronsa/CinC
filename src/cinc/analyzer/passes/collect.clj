@@ -2,8 +2,7 @@
   (:require [cinc.analyzer.utils :refer [postwalk protocol-node?]]))
 
 (defmacro update! [target f & args]
-  `(let [t# ~target]
-     (set! ~target (~f t# ~@args))))
+  (list 'set! target (list* f args)))
 
 (def ^:private ^:dynamic *collects*
   {:constants           {}
