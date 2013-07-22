@@ -516,16 +516,28 @@
   [[_ target & [m-or-f] :as form] env]
   {:pre [(>= (count form) 3)
          (not (namespace (if (symbol? m-or-f) m-or-f (first m-or-f))))]}
-  (let [target-expr (analyze target (ctx env :expr))
-        call? (seq? m-or-f)
-        expr (if call?
-               {:op          :host-call
-                :target-expr target-expr
-                :method      (first m-or-f)
-                :args        (mapv (analyze-in-env (ctx env :expr)) (next m-or-f))}
-               {:op          :host-interop ;; either field access or single method call
-                :target-expr target-expr
-                :m-or-f      m-or-f})]
+  (let [[m-or-f field?] (if (and (symbol? m-or-f)
+                                 (= \- (first (name m-or-f))))
+                          [(-> m-or-f name (subs 1) symbol) true]
+                          [m-or-f false])
+        target-expr (analyze target (ctx env :expr))
+        call? (and (not field?) (seq? m-or-f))
+        expr (cond
+              call?
+              {:op          :host-call
+               :target-expr target-expr
+               :method      (first m-or-f)
+               :args        (mapv (analyze-in-env (ctx env :expr)) (next m-or-f))}
+
+              field?
+              {:op          :host-field
+               :target-expr target-expr
+               :field       m-or-f}
+
+              :else
+              {:op          :host-interop ;; either field access or single method call
+               :target-expr target-expr
+               :m-or-f      m-or-f})]
     (merge {:form form
             :env  env}
            expr)))

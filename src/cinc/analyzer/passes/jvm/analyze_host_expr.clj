@@ -3,20 +3,6 @@
             [cinc.analyzer.utils :refer [ctx]]
             [cinc.analyzer.jvm.utils :refer :all]))
 
-(defn analyze-host-call
-  [target-type method args target-expr class env]
-  (let [op (case target-type
-             :static   :static-call
-             :instance :instance-call)]
-    (merge
-     {:op     op
-      :method method
-      :args   args}
-     (case target-type
-       :static   {:class    class}
-       :instance {:instance target-expr
-                  :class    (:tag target-expr)}))))
-
 (defn maybe-static-field [[_ class sym]]
   (when-let [{:keys [flags]} (static-field class sym)]
     {:op          :static-field
@@ -47,41 +33,72 @@
      :instance    target-expr
      :field       sym}))
 
+(defn analyze-host-call
+  [target-type method args target-expr class env]
+  (let [op (case target-type
+             :static   :static-call
+             :instance :instance-call)]
+    (merge
+     {:op     op
+      :method method
+      :args   args}
+     (case target-type
+       :static   {:class    class}
+       :instance {:instance target-expr
+                  :class    (:tag target-expr)}))))
+
+(defn analyze-host-field
+  [target-type field target-expr class env]
+  (case target-type
+    :static (or (maybe-static-field (list '. class field))
+                (throw (ex-info (str "cannot find field "
+                                     field " for class " class)
+                                {:class class
+                                 :field field})))
+    :instance (or (maybe-instance-field target-expr class field)
+                  (throw (ex-info (str "cannot find field "
+                                       field " for class " class)
+                                  {:instance target-expr
+                                   :field    field})))))
+
 (defn -analyze-host-expr
   [target-type m-or-f target-expr class env]
   (if class
-    (if-let [field (maybe-static-field (list '. class m-or-f))]
-      field
-      (if-let [method (maybe-static-method (list '. class m-or-f))]
-        method
+    (or (maybe-static-field (list '. class m-or-f))
+        (maybe-static-method (list '. class m-or-f))
         (throw (ex-info (str "cannot find field or no-arg method call "
                              m-or-f " for class " class)
                         {:class  class
-                         :m-or-f m-or-f}))))
+                         :m-or-f m-or-f})))
     (if-let [class (maybe-class (-> target-expr :tag))]
-      (if-let [field (maybe-instance-field target-expr class m-or-f)]
-        field
-        (if-let [method (maybe-instance-method target-expr class m-or-f)]
-          method
+      (or (maybe-instance-field target-expr class m-or-f)
+          (maybe-instance-method target-expr class m-or-f)
           (throw (ex-info (str "cannot find field or no-arg method call "
                                m-or-f " for class " class)
                           {:instance target-expr
-                           :m-or-f   m-or-f}))))
+                           :m-or-f   m-or-f})))
       {:op          :host-interop
        :target-expr target-expr
        :m-or-f      m-or-f})))
 
 (defn analyze-host-expr
   [{:keys [op form env] :as ast}]
-  (if (#{:host-interop :host-call} op)
+  (if (#{:host-interop :host-call :host-field} op)
     (let [target (:target-expr ast)
           class? (maybe-class (:form target))
           target-type (if class? :static :instance)]
       (merge {:form form
               :env  env}
-             (if (= :host-call op)
+             (case op
+
+               :host-call
                (analyze-host-call target-type (:method ast)
                                   (:args ast) target class? env)
+
+               :host-field
+               (analyze-host-field target-type (:field ast)
+                                   target class? env)
+
                (-analyze-host-expr target-type (:m-or-f ast)
                                    target class? env))))
     ast))
