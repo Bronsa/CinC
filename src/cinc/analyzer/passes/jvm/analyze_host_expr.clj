@@ -49,17 +49,21 @@
 
 (defn analyze-host-field
   [target-type field target-expr class env]
-  (case target-type
-    :static (or (maybe-static-field (list '. class field))
-                (throw (ex-info (str "cannot find field "
-                                     field " for class " class)
-                                {:class class
-                                 :field field})))
-    :instance (or (maybe-instance-field target-expr class field)
+  (if class
+    (case target-type
+      :static (or (maybe-static-field (list '. class field))
                   (throw (ex-info (str "cannot find field "
                                        field " for class " class)
-                                  {:instance target-expr
-                                   :field    field})))))
+                                  {:class class
+                                   :field field})))
+      :instance (or (maybe-instance-field target-expr class field)
+                    (throw (ex-info (str "cannot find field "
+                                         field " for class " class)
+                                    {:instance target-expr
+                                     :field    field}))))
+    {:op          :host-interop
+     :target-expr target-expr
+     :m-or-f      field}))
 
 (defn -analyze-host-expr
   [target-type m-or-f target-expr class env]
@@ -97,7 +101,8 @@
 
                :host-field
                (analyze-host-field target-type (:field ast)
-                                   target class? env)
+                                   target (or class?
+                                              (:tag target)) env)
 
                (-analyze-host-expr target-type (:m-or-f ast)
                                    target class? env))))
