@@ -353,38 +353,33 @@
   {:pre [(vector? bindings)
          (even? (count bindings))]}
   (let [loop? (= 'loop* op)]
-    (if (and loop?
-             (= :expr context))
-      (analyze `((^:once fn* [] ~form)) env)
-      (loop [bindings (seq (partition 2 bindings))
-             env (ctx env :expr)
-             binds []]
-        (if-let [[name init] (first bindings)]
-          (do
-            (when (or (namespace name)
-                      (.contains (str name) "."))
-              (throw (ex-info (str "invalid binding form: " name)
-                              {:sym name})))
-            (let [init-expr (analyze init env)
-                  bind-expr {:op    :binding
-                             :env   env
-                             :name  name
-                             :init  init-expr
-                             :form  name
-                             :local true}]
-              (recur (next bindings)
-                     (assoc-in env [:locals name] bind-expr)
-                     (conj binds bind-expr))))
-          (let [body-env (assoc env
-                           :context (if (= :expr context)
-                                      :return context))
-                body (parse (cons 'do body)
-                            (if loop?
-                              (assoc body-env
-                                :loop-locals binds)
-                              body-env))]
-            {:body     body
-             :bindings binds}))))))
+    (loop [bindings (seq (partition 2 bindings))
+           env (ctx env :expr)
+           binds []]
+      (if-let [[name init] (first bindings)]
+        (if (or (namespace name)
+                (.contains (str name) "."))
+          (throw (ex-info (str "invalid binding form: " name)
+                          {:sym name}))
+          (let [init-expr (analyze init env)
+                bind-expr {:op    :binding
+                           :env   env
+                           :name  name
+                           :init  init-expr
+                           :form  name
+                           :local true}]
+            (recur (next bindings)
+                   (assoc-in env [:locals name] bind-expr)
+                   (conj binds bind-expr))))
+        (let [body-env (assoc env
+                         :context (if loop? :return context))
+              body (parse (cons 'do body)
+                          (if loop?
+                            (assoc body-env
+                              :loop-locals binds)
+                            body-env))]
+          {:body     body
+           :bindings binds})))))
 
 (defmethod parse 'let*
   [form env]
