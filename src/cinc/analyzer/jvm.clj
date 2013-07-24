@@ -171,6 +171,7 @@
       (walk (fn [ast]
               (-> ast
                 warn-earmuff
+                annotate-branch
                 infer-constant-tag
                 elide-meta
                 source-info))
@@ -180,7 +181,6 @@
                         :callsites
                         :closed-overs
                         :vars))
-      annotate-branch
       clear-locals)))
 
 (defn analyze-file
