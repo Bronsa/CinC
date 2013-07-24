@@ -329,18 +329,19 @@
                  fns)
       (throw (ex-info (str "bad binding form: " (first (remove symbol? fns)))
                       {:form form})))
-    (let [binds (zipmap fns (map (fn [name]
-                                   {:op    :binding
-                                    :env   env
-                                    :name  name
-                                    :form  name
-                                    :local true})
-                                 fns))
-          e (update-in env [:locals] merge binds)
+    (let [binds (map (fn [name]
+                       {:op    :binding
+                        :env   env
+                        :name  name
+                        :form  name
+                        :local :letfn})
+                     fns)
+          e (update-in env [:locals] merge (zipmap fns binds))
           binds (mapv (fn [{:keys [name] :as b}]
                         (assoc b
                           :init (analyze (bindings name) (assoc e :context :expr))))
-                      (vals binds))
+                      binds)
+          e (update-in env [:locals] merge (zipmap fns binds))
           body (parse (cons 'do body) e)]
       {:op       :letfn
        :env      env
@@ -367,7 +368,7 @@
                            :name  name
                            :init  init-expr
                            :form  name
-                           :local true}]
+                           :local (if loop? :loop :let)}]
             (recur (next bindings)
                    (assoc-in env [:locals name] bind-expr)
                    (conj binds bind-expr))))
