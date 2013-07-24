@@ -39,19 +39,16 @@
 (def ^:dynamic *clears* {:branch-clears #{}
                          :clears        #{}})
 
-(defmulti -clear-locals :op)
-
-(defmethod -clear-locals :local
-  [{:keys [name path? should-not-clear] :as ast}]
-  (if (and (not ((:clears *clears*) name))
+(defn -clear-locals
+  [{:keys [op name path? should-not-clear] :as ast}]
+  (if (and (= :local op)
+           (not ((:clears *clears*) name))
            (not should-not-clear))
     (do
       (update! *clears* update-in [:branch-clears] conj name)
       (update! *clears* update-in [:clears] conj name)
       (assoc ast :to-clear? true))
     ast))
-
-(defmethod -clear-locals :default [ast] ast)
 
 (defn clear-locals-around
   [{:keys [path? branch?] :as ast}]
