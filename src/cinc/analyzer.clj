@@ -538,7 +538,6 @@
             :env  env}
            expr)))
 
-
 (defn analyze-method-impls
   [[name [this & params :as args] & body :as form] env]
   {:pre [(symbol? name)

@@ -100,7 +100,8 @@
   [[_ interfaces & methods :as form] env]
   (let [interfaces (conj (set interfaces)
                          clojure.lang.IObj)
-        methods (mapv #(analyze-method-impls % env) methods)]
+        methods (mapv #(assoc (analyze-method-impls % env)
+                         :interfaces interfaces) methods)]
     (wrapping-meta
      {:op         :reify
       :env        env
@@ -118,7 +119,8 @@
                              :op   :binding})
                           fields)
         menv (assoc env :locals (zipmap fields fields-expr))
-        methods (mapv #(analyze-method-impls % menv) methods)]
+        methods (mapv #(assoc (analyze-method-impls % menv)
+                         :interfaces interfaces) methods)]
     {:op         :deftype
      :env        env
      :form       form

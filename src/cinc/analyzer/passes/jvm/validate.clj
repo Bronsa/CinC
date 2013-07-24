@@ -155,14 +155,28 @@
 (defmethod -validate :method
   [{:keys [name interfaces tag params fixed-arity] :as ast}]
   (if interfaces
-    (if-let [methods (seq (filter identity
-                                  (mapcat #(u/instance-methods % name fixed-arity) interfaces)))]
-      ast ;; validate types
-      (throw (ex-info (str "no such method found: " name " with given signature in any of the"
-                           " provided interfaces: " interfaces)
-                      {:method     name
-                       :interfaces interfaces
-                       :params     params})))
+    (let [interfaces (conj interfaces Object)
+          methods (seq (filter identity
+                               (mapcat #(u/instance-methods % name fixed-arity) interfaces)))]
+      (if-let [[m & rest] (seq (filter (partial tag-match? (mapv :tag params)) methods))]
+        (if (empty? rest)
+          (let [ret-tag (u/maybe-class (:return-type m))
+                i-tag (u/maybe-class (:declaring-class m))
+                arg-tags (mapv u/maybe-class (:parameter-types m))
+                args (mapv (fn [arg tag] (assoc arg :tag tag)) params arg-tags)]
+            (assoc (dissoc ast :interfaces)
+              :interface i-tag
+              :tag ret-tag
+              :args args))
+          (throw (ex-info (str "ambiguous method signature for method: " name)
+                          {:method     name
+                           :interfaces interfaces
+                           :params     params})))
+        (throw (ex-info (str "no such method found: " name " with given signature in any of the"
+                             " provided interfaces: " interfaces)
+                        {:method     name
+                         :interfaces interfaces
+                         :params     params}))))
     ast))
 
 (defmethod -validate :default [ast] ast)
