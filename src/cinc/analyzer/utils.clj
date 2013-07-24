@@ -3,26 +3,44 @@
                          IReference Var)
            java.util.regex.Pattern))
 
-(defn walk [ast pre post]
-  (let [ast (pre ast)
-        f (fn [ast k node]
-            (cond
-             (:op node)
-             (assoc-in ast [k] (walk node pre post))
+(defmacro update! [target f & args]
+  (list 'set! target (list* f target args)))
 
-             (and (vector? node)
-                  (seq node)
-                  (every? :op node))
-             (assoc-in ast [k] (mapv #(walk % pre post) node))
+(defn walk
+  ([ast pre post]
+     (walk ast pre post false))
+  ([ast pre post reversed-postwalk?]
+     (let [ast (pre ast)
+           f (fn [ast k node]
+               (cond
+                (:op node)
+                (assoc-in ast [k] (walk node pre post))
 
-             :else ast))]
-    (post (reduce-kv f ast ast))))
+                (and (vector? node)
+                     (seq node)
+                     (every? :op node))
+                (assoc-in ast [k] (if reversed-postwalk?
+                                    (vec (rseq (mapv #(walk % identity post)
+                                                     (rseq (if (= identity pre)
+                                                             node
+                                                             (mapv #(walk % pre identity) node))))))
+                                    (mapv #(walk % pre post) node)))
+
+                :else ast))]
+       (post (if-let [ret (and reversed-postwalk? (:ret ast))]
+               (let [{:keys [ret] :as ast} (f ast :ret ret)
+                     ast (dissoc ast :ret)] ;; make sure we walk :ret before :statement
+                 (assoc (reduce-kv f ast ast) :ret ret))
+               (reduce-kv f ast ast))))))
 
 (defn prewalk [ast f]
   (walk ast f identity))
 
-(defn postwalk [ast f]
-  (walk ast identity f))
+(defn postwalk
+  ([ast f]
+     (walk ast identity f false))
+  ([ast f reversed?]
+     (walk ast identity f reversed?)))
 
 (defn ctx
   "Returns a copy of the passe environment with :context set to ctx"
