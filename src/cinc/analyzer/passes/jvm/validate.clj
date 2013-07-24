@@ -21,16 +21,6 @@
   (throw (ex-info (str "No such namespace: " maybe-class)
                   {:ns maybe-class})))
 
-(defmethod -validate :new
-  [{:keys [maybe-class] :as ast}]
-  (if maybe-class
-    (if-let [the-class (u/maybe-class maybe-class)]
-      (assoc (dissoc ast :maybe-class)
-        :class the-class)
-      (throw (ex-info (str "class not found: " maybe-class)
-                      {:class maybe-class})))
-    ast))
-
 (defmethod -validate :catch
   [{:keys [maybe-class] :as ast}]
   (if maybe-class
@@ -43,6 +33,32 @@
 
 (defn tag-match? [arg-tags meth]
   (every? identity (map u/convertible? arg-tags (:parameter-types meth))))
+
+(defmethod -validate :new
+  [{:keys [maybe-class args] :as ast}]
+  (if maybe-class
+    (if-let [the-class (u/maybe-class maybe-class)]
+      (let [c-name (symbol (.getName the-class))
+            argc (count args)]
+        (if-let [[ctor & rest] (->> (filter #(= (count (:parameter-types %)) argc)
+                                           (u/members the-class c-name))
+                                   (filter (partial tag-match? (mapv :tag args)))
+                                   seq)]
+          (if (empty? rest)
+            (let [arg-tags (mapv u/maybe-class (:parameter-types ctor))
+                  args (mapv (fn [arg tag] (assoc arg :tag tag)) args arg-tags)]
+              (assoc (dissoc ast :maybe-class)
+                :class the-class
+                :args args))
+            (throw (ex-info (str "ambiguous signature for ctor of class: " the-class)
+                            {:class the-class
+                             :args  args})))
+          (throw (ex-info (str "no ctor found for ctor of class: " the-class " and give signature")
+                          {:class the-class
+                           :args  args}))))
+      (throw (ex-info (str "class not found: " maybe-class)
+                      {:class maybe-class})))
+    ast))
 
 (defmethod -validate :static-call
   [{:keys [class method args tag] :as ast}]
