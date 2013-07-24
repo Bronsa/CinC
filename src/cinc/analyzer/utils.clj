@@ -9,25 +9,26 @@
 (defn walk
   ([ast pre post]
      (walk ast pre post false))
-  ([ast pre post reversed-postwalk?]
+  ([ast pre post reversed?]
      (let [ast (pre ast)
            f (fn [ast k node]
                (cond
                 (:op node)
-                (assoc-in ast [k] (walk node pre post))
+                (assoc-in ast [k] (walk node pre post reversed?))
 
                 (and (vector? node)
                      (seq node)
                      (every? :op node))
-                (assoc-in ast [k] (if reversed-postwalk?
-                                    (vec (rseq (mapv #(walk % identity post)
+                (assoc-in ast [k] (if reversed?
+                                    (vec (rseq (mapv #(walk % identity post reversed?)
                                                      (rseq (if (= identity pre)
                                                              node
-                                                             (mapv #(walk % pre identity) node))))))
+                                                             (mapv #(walk % pre identity reversed?)
+                                                                   node))))))
                                     (mapv #(walk % pre post) node)))
 
                 :else ast))]
-       (post (if-let [ret (and reversed-postwalk? (:ret ast))]
+       (post (if-let [ret (and reversed? (:ret ast))]
                (let [{:keys [ret] :as ast} (f ast :ret ret)
                      ast (dissoc ast :ret)] ;; make sure we walk :ret before :statement
                  (assoc (reduce-kv f ast ast) :ret ret))
