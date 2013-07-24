@@ -17,6 +17,23 @@
     (assoc ast :should-not-clear true)
     ast))
 
+;; when emitting should check if it's a closed over, only clear when it's a ^:once fn*
+(defmethod annotate-branch :fn-method
+  [ast]
+  (assoc ast :path? true))
+
+(defmethod annotate-branch :method
+  [ast]
+  (assoc ast :path? true))
+
+(defmethod annotate-branch :case
+  [{:keys [thens]} ast]
+  (-> ast
+    (assoc :branch? true)
+    (assoc-in [:test :should-not-clear] true)
+    (assoc-in [:default :path?] true)
+    (assoc :thens (mapv #(assoc % :path? true) thens))))
+
 (defmethod annotate-branch :default [ast] ast)
 
 (def ^:dynamic *clears* {:branch-clears #{}
