@@ -12,6 +12,7 @@
             [cinc.analyzer.passes.warn-earmuff :refer [warn-earmuff]]
             [cinc.analyzer.passes.collect :refer [collect]]
             [cinc.analyzer.passes.jvm.box :refer [box]]
+            [cinc.analyzer.passes.jvm.clear-locals :refer [annotate-branch clear-locals]]
             [cinc.analyzer.passes.jvm.validate :refer [validate]]
             [cinc.analyzer.passes.jvm.infer-tag :refer [infer-tag infer-constant-tag]]
             [cinc.analyzer.passes.jvm.analyze-host-expr :refer [analyze-host-expr]]))
@@ -178,7 +179,9 @@
       (prewalk (collect :constants
                         :callsites
                         :closed-overs
-                        :vars)))))
+                        :vars))
+      annotate-branch
+      clear-locals)))
 
 (defn analyze-file
   [file]

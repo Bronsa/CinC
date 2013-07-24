@@ -1,8 +1,5 @@
 (ns cinc.analyzer.passes.collect
-  (:require [cinc.analyzer.utils :refer [postwalk protocol-node?]]))
-
-(defmacro update! [target f & args]
-  (list 'set! target (list* f args)))
+  (:require [cinc.analyzer.utils :refer [postwalk protocol-node? update!]]))
 
 (def ^:private ^:dynamic *collects*
   {:constants           {}
