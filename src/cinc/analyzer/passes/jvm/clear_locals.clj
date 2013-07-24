@@ -11,6 +11,12 @@
     (assoc-in [:then :path?] true)
     (assoc-in [:else :path?] true)))
 
+(defmethod annotate-branch :local
+  [{:keys [local] :as ast}]
+  (if (= :letfn local)
+    (assoc ast :should-not-clear true)
+    ast))
+
 (defmethod annotate-branch :default [ast] ast)
 
 (def ^:dynamic *clears* {:branch-clears #{}
@@ -31,7 +37,7 @@
 (defmethod -clear-locals :default [ast] ast)
 
 (defn clear-locals-around
-  [{:keys [path? branch? op] :as ast}]
+  [{:keys [path? branch?] :as ast}]
   (let [ast (-clear-locals ast)]
     (if path?
       (doseq [c (:clears *clears*)]
