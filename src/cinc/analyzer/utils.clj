@@ -90,7 +90,8 @@
 (defn constant? [var]
   (:const (meta var)))
 (defn dynamic? [var]
-  (:dynamic (meta var)))
+  (or (:dynamic (meta var))
+      (.isDynamic ^Var var)))
 (defn protocol-node? [var]
   (boolean (:protocol (meta var))))
 
