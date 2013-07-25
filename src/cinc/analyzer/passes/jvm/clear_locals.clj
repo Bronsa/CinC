@@ -27,7 +27,7 @@
   (assoc ast :path? true))
 
 (defmethod annotate-branch :case
-  [{:keys [thens]} ast]
+  [{:keys [thens] :as ast}]
   (-> ast
     (assoc :branch? true)
     (assoc-in [:test :should-not-clear] true)
