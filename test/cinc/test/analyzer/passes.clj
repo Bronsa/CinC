@@ -2,7 +2,7 @@
   (:refer-clojure :exclude [macroexpand-1])
   (:require  [clojure.test :refer :all]
              [cinc.analyzer :refer [analyze]]
-             [cinc.analyzer.jvm :refer [cycling]]
+             [cinc.analyzer.jvm :refer [cycling] :as jvm]
              [cinc.analyzer.utils :refer [walk prewalk postwalk]]
              [cinc.analyzer.passes.source-info :refer [source-info]]
              [cinc.analyzer.passes.elide-meta :refer [elide-meta]]
@@ -77,3 +77,18 @@
                       (cycling infer-tag)))]
     (is (every? #(= Number %) (->> t-ast :bindings (mapv :tag))))
     (is (= Number (-> t-ast :body :ret :tag)))))
+
+(deftest infer-validate-test
+  (let [t-ast (-> (jvm/analyze '(let [a 1
+                                     b 2
+                                     c (str a)
+                                     d (Integer/parseInt c b)]
+                                 (Integer/getInteger c d))
+                              {:context :expr})
+                (walk infer-constant-tag
+                      (cycling infer-tag analyze-host-expr validate)))]
+    (is (= Integer (-> t-ast :body :ret :tag)))
+    (is (= Integer (-> t-ast :tag)))
+    (is (= Number (->> t-ast :bindings (filter #(= 'a (:name %))) first :tag)))
+    (is (= String (->> t-ast :bindings (filter #(= 'c (:name %))) first :tag)))
+    (is (= Integer/TYPE (->> t-ast :bindings (filter #(= 'd (:name %))) first :tag)))))
