@@ -2,7 +2,8 @@
   (:refer-clojure :exclude [macroexpand-1])
   (:require  [clojure.test :refer :all]
              [cinc.analyzer :refer [analyze]]
-             [cinc.analyzer.utils :refer [prewalk postwalk]]
+             [cinc.analyzer.jvm :refer [cycling]]
+             [cinc.analyzer.utils :refer [walk prewalk postwalk]]
              [cinc.analyzer.passes.source-info :refer [source-info]]
              [cinc.analyzer.passes.elide-meta :refer [elide-meta]]
              [cinc.analyzer.passes.constant-lifter :refer [constant-lift]]
@@ -69,3 +70,10 @@
   (is (not= :const (-> (ast {:a {:b #()}}) (postwalk constant-lift) :op)))
   (is (= :const (-> (ast [:foo 1 "bar" #{#"baz" {23 cinc.test.analyzer.passes/pi}}])
                   (postwalk constant-lift) :op))))
+
+(deftest infer-tag-test
+  (let [t-ast (-> (ast (let [a 1 b (if "" a 2)] b))
+                (walk infer-constant-tag
+                      (cycling infer-tag)))]
+    (is (every? #(= Number %) (->> t-ast :bindings (mapv :tag))))
+    (is (= Number (-> t-ast :body :ret :tag)))))
