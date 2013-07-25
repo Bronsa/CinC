@@ -19,7 +19,7 @@
 
 (defmethod infer-constant-tag :set
   [ast]
-  (assoc ast :tag IPersistentMap))
+  (assoc ast :tag IPersistentSet))
 
 (defmethod infer-constant-tag :seq
   [ast]
