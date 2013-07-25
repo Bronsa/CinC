@@ -59,13 +59,13 @@
      (.isPrimitive c))))
 
 (def convertible-primitives?
-  {Integer/TYPE   #{Integer Long/TYPE Long Short/TYPE Byte/TYPE}
-   Float/TYPE     #{Float Double/TYPE}
-   Double/TYPE    #{Double Float/TYPE}
-   Long/TYPE      #{Long Integer/TYPE Short/TYPE Byte/TYPE}
+  {Integer/TYPE   #{Number Integer Long/TYPE Long Short/TYPE Byte/TYPE}
+   Float/TYPE     #{Number Float Double/TYPE}
+   Double/TYPE    #{Number Double Float/TYPE}
+   Long/TYPE      #{Number Long Integer/TYPE Short/TYPE Byte/TYPE}
    Character/TYPE #{Character}
-   Short/TYPE     #{Short}
-   Byte/TYPE      #{Byte}
+   Short/TYPE     #{Number Short}
+   Byte/TYPE      #{Number Byte}
    Boolean/TYPE   #{Boolean}})
 
 (defn box [c]
@@ -84,9 +84,10 @@
       (let [c1 (maybe-class from)
             c2 (maybe-class to)]
         (or (= c1 c2)
-            (.isAssignableFrom c2 c1)
-            (and (primitive? to)
-                 (boolean ((convertible-primitives? to) from)))))))
+            (and (primitive? c2)
+                 (boolean ((convertible-primitives? c2) c1)))
+            (and c2
+                 (.isAssignableFrom c2 c1))))))
 
 (defn members [class member]
   (let [members (-> (maybe-class class)
