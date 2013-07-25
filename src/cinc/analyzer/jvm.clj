@@ -40,7 +40,7 @@
 
           (= (first opname) \.) ; (.foo bar ..)
           (let [[target & args] expr
-                target (if (maybe-class target)
+                target (if-let [target (maybe-class target)]
                          (with-meta (list 'clojure.core/identity target) {:tag Class})
                          target)
                 args (list* (symbol (subs opname 1)) args)]
