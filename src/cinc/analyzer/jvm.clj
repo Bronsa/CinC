@@ -98,7 +98,7 @@
 
 (defmethod parse 'reify*
   [[_ interfaces & methods :as form] env]
-  (let [interfaces (conj (set interfaces)
+  (let [interfaces (conj (disj (set (mapv maybe-class interfaces)) Object)
                          clojure.lang.IObj)
         methods (mapv #(assoc (analyze-method-impls % env)
                          :interfaces interfaces) methods)]
@@ -111,7 +111,7 @@
 
 (defmethod parse 'deftype*
   [[_ name class-name fields _ interfaces & methods :as form] env]
-  (let [interfaces (set interfaces)
+  (let [interfaces (disj (set (mapv maybe-class interfaces)) Object)
         fields-expr (mapv (fn [name]
                             {:env  env
                              :form name
