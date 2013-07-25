@@ -137,9 +137,13 @@
         [tests thens] (reduce (fn [[te th] [min-hash [test then]]]
                                 (let [test-expr (-analyze (list 'quote test) env)
                                       then-expr (-analyze then env)]
-                                  [(assoc te min-hash test-expr)
-                                   (assoc th min-hash then-expr)]))
-                              [(sorted-map) {}] case-map)
+                                  [(conj te {:op :case-test
+                                             :hash min-hash
+                                             :test test-expr})
+                                   (conj th {:op   :case-then
+                                             :hash min-hash
+                                             :then then-expr})]))
+                              [[] []] case-map)
         default-expr (-analyze default env)]
     {:op          :case
      :form        form
