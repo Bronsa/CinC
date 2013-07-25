@@ -1,4 +1,4 @@
-(ns cinc.test.core
+(ns cinc.test.analyzer.core
   (:refer-clojure :exclude [macroexpand-1])
   (:require [clojure.test :refer :all]
             [cinc.analyzer :refer [analyze macroexpand-1]]))
@@ -37,7 +37,7 @@
   (is (= 'foo/bar (mexpand foo/bar)))
   (is (= '(. bar (foo 1)) (mexpand (.foo bar 1))))
   (is (= '(. bar foo) (mexpand (.foo bar))))
-  (is (= 1 (mexpand (cinc.test.core/foo))))
+  (is (= 1 (mexpand (cinc.test.analyzer.core/foo))))
 
   (let [s-ast (ast '+)]
     (is (= :symbol (:type s-ast)))
