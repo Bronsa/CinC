@@ -31,8 +31,11 @@
   (-> ast
     (assoc :branch? true)
     (assoc-in [:test :should-not-clear] true)
-    (assoc-in [:default :path?] true)
-    (assoc :thens (mapv #(assoc % :path? true) thens))))
+    (assoc-in [:default :path?] true)))
+
+(defmethod annotate-branch :case-then
+  [ast]
+  (assoc ast :path? true))
 
 (defmethod annotate-branch :default [ast] ast)
 
