@@ -5,7 +5,7 @@
 
 (def ^:private prims
   {"byte" Byte/TYPE
-   "bool" Boolean/TYPE
+   "boolean" Boolean/TYPE
    "char" Character/TYPE
    "int" Integer/TYPE
    "long" Long/TYPE
@@ -59,16 +59,16 @@
      (.isPrimitive c))))
 
 (def convertible-primitives?
-  {Integer/TYPE   #{Number Integer Long/TYPE Long Short/TYPE Byte/TYPE}
-   Float/TYPE     #{Number Float Double/TYPE}
-   Double/TYPE    #{Number Double Float/TYPE}
-   Long/TYPE      #{Number Long Integer/TYPE Short/TYPE Byte/TYPE}
+  {Integer/TYPE   #{Integer Long/TYPE Long Short/TYPE Byte/TYPE}
+   Float/TYPE     #{Float Double/TYPE}
+   Double/TYPE    #{Double Float/TYPE}
+   Long/TYPE      #{Long Integer/TYPE Short/TYPE Byte/TYPE}
    Character/TYPE #{Character}
-   Short/TYPE     #{Number Short}
-   Byte/TYPE      #{Number Byte}
+   Short/TYPE     #{Short}
+   Byte/TYPE      #{Byte}
    Boolean/TYPE   #{Boolean}})
 
-(defn box [c]
+(defn ^Class box [c]
   ({Integer/TYPE   Integer
     Float/TYPE     Float
     Double/TYPE    Double
@@ -79,6 +79,9 @@
     Boolean/TYPE   Boolean}
    c c))
 
+(defn numeric? [c]
+  (.isAssignableFrom Number (box c)))
+
 (defn convertible? [from to]
   (or (nil? from)
       (let [c1 (maybe-class from)
@@ -86,8 +89,8 @@
         (or (= c1 c2)
             (and (primitive? c2)
                  (boolean ((convertible-primitives? c2) c1)))
-            (and c2
-                 (.isAssignableFrom c2 c1))))))
+            (or (.isAssignableFrom c2 c1)
+                (and (numeric? c1) (numeric? c2)))))))
 
 (defn members [class member]
   (let [members (-> (maybe-class class)
