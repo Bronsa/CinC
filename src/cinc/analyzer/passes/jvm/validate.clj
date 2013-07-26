@@ -60,52 +60,38 @@
                       {:class maybe-class})))
     ast))
 
+(defn validate-call [class method args tag ast type]
+  (let [argc (count args)
+        f (if (= :static type) u/static-methods u/instance-methods)]
+    (if-let [matching-methods (seq (f class method argc))]
+      (if-let [[m & rest] (seq (filter (partial tag-match? (mapv :tag args)) matching-methods))]
+        (if (empty? rest)
+          (let [ret-tag  (u/maybe-class (:return-type m))
+                arg-tags (mapv u/maybe-class (:parameter-types m))
+                args     (mapv (fn [arg tag] (assoc arg :tag tag)) args arg-tags)]
+            (assoc ast
+              :tag  ret-tag
+              :args args))
+          ast)
+        (throw (ex-info (str "No matching method: " method " for class: " class " and given signature")
+                        {:method method
+                         :class  class
+                         :args   args})))
+      (throw (ex-info (str "No matching method: " method " for class: " class " and arity: " argc)
+                      {:method method
+                       :class  class
+                       :argc   argc})))))
+
 (defmethod -validate :static-call
   [{:keys [class method args tag] :as ast}]
   (if tag
     ast
-    (let [argc (count args)]
-      (if-let [matching-methods (seq (u/static-methods class method argc))]
-        (if-let [[m & rest] (seq (filter (partial tag-match? (mapv :tag args)) matching-methods))]
-          (if (empty? rest)
-            (let [ret-tag (u/maybe-class (:return-type m))
-                  arg-tags (mapv u/maybe-class (:parameter-types m))
-                  args (mapv (fn [arg tag] (assoc arg :tag tag)) args arg-tags)]
-              (assoc ast
-                :tag ret-tag
-                :args args))
-            ast)
-          (throw (ex-info (str "No matching method: " method " for class: " class " and given signature")
-                          {:method method
-                           :class  class
-                           :args   args})))
-        (throw (ex-info (str "No matching method: " method " for class: " class " and arity: " argc)
-                        {:method method
-                         :class  class
-                         :argc   argc}))))))
+    (validate-call class method args tag ast :static)))
 
 (defmethod -validate :instance-call
   [{:keys [class method args tag] :as ast}]
   (if (and class (not tag))
-    (let [argc (count args)]
-      (if-let [matching-methods (seq (u/instance-methods class method argc))]
-        (if-let [[m & rest] (seq (filter (partial tag-match? (mapv :tag args)) matching-methods))]
-          (if (empty? rest)
-            (let [ret-tag (u/maybe-class (:return-type m))
-                  arg-tags (mapv u/maybe-class (:parameter-types m))
-                  args (mapv (fn [arg tag] (assoc arg :tag tag)) args arg-tags)]
-              (assoc ast
-                :tag ret-tag
-                :args args))
-            ast)
-          (throw (ex-info (str "No matching method: " method " for class: " class " and given signature")
-                          {:method method
-                           :class  class
-                           :args   args})))
-        (throw (ex-info (str "No matching method: " method " for class: " class " and arity: " argc)
-                        {:method method
-                         :class  class
-                         :argc   argc}))))
+    (validate-call class method args tag ast :instance)
     ast))
 
 (defmethod -validate :import
