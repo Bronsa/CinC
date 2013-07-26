@@ -93,7 +93,18 @@
     (is (= Integer (-> t-ast :tag)))
     (is (= Long (->> t-ast :bindings (filter #(= 'a (:name %))) first :tag)))
     (is (= String (->> t-ast :bindings (filter #(= 'c (:name %))) first :tag)))
-    (is (= Integer/TYPE (->> t-ast :bindings (filter #(= 'd (:name %))) first :tag)))))
+    (is (= Integer/TYPE (->> t-ast :bindings (filter #(= 'd (:name %))) first :tag))))
+
+  (binding [macroexpand-1 jvm/macroexpand-1]
+    (let [l-ast (postwalk (analyze '(fn [x] (Long. x)) {})
+                          (cycling infer-tag analyze-host-expr validate))]
+      (is (= Long (-> l-ast :methods first :tag)))))
+
+  (binding [macroexpand-1 jvm/macroexpand-1]
+    (let [d-ast (postwalk (analyze '(Double/isInfinite 2) {})
+                          (cycling infer-tag analyze-host-expr validate))]
+      (is (= Boolean/TYPE (-> d-ast :tag)))
+      (is Double/TYPE (->> d-ast :args first :tag)))))
 
 (deftest collect-test
   (let [c-test (-> (ast (let [a 1 b 2] (fn [x] (fn [] [+ (:foo {}) x a]))))
