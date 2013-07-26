@@ -12,6 +12,7 @@
             [cinc.analyzer.passes.warn-earmuff :refer [warn-earmuff]]
             [cinc.analyzer.passes.collect :refer [collect]]
             [cinc.analyzer.passes.jvm.box :refer [box]]
+            [cinc.analyzer.passes.uniquify :refer [uniquify-locals]]
             [cinc.analyzer.passes.jvm.clear-locals :refer [annotate-branch clear-locals]]
             [cinc.analyzer.passes.jvm.validate :refer [validate]]
             [cinc.analyzer.passes.jvm.infer-tag :refer [infer-tag infer-constant-tag]]
@@ -179,6 +180,7 @@
   [form env]
   (binding [ana/macroexpand-1 macroexpand-1]
     (-> (-analyze form env)
+      uniquify-locals
       (walk (fn [ast]
               (-> ast
                 remove-locals
