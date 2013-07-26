@@ -1,18 +1,19 @@
 (ns cinc.test.analyzer.passes
   (:refer-clojure :exclude [macroexpand-1])
-  (:require  [clojure.test :refer :all]
-             [cinc.analyzer :refer [analyze]]
-             [cinc.analyzer.jvm :refer [cycling] :as jvm]
-             [cinc.analyzer.utils :refer [walk prewalk postwalk]]
-             [cinc.analyzer.passes.source-info :refer [source-info]]
-             [cinc.analyzer.passes.elide-meta :refer [elide-meta]]
-             [cinc.analyzer.passes.constant-lifter :refer [constant-lift]]
-             [cinc.analyzer.passes.warn-earmuff :refer [warn-earmuff]]
-             [cinc.analyzer.passes.collect :refer [collect]]
-             [cinc.analyzer.passes.jvm.clear-locals :refer [annotate-branch clear-locals]]
-             [cinc.analyzer.passes.jvm.validate :refer [validate]]
-             [cinc.analyzer.passes.jvm.infer-tag :refer [infer-tag infer-constant-tag]]
-             [cinc.analyzer.passes.jvm.analyze-host-expr :refer [analyze-host-expr]])
+  (:require [clojure.test :refer :all]
+            [clojure.set :as set]
+            [cinc.analyzer :refer [analyze]]
+            [cinc.analyzer.jvm :refer [cycling] :as jvm]
+            [cinc.analyzer.utils :refer [walk prewalk postwalk]]
+            [cinc.analyzer.passes.source-info :refer [source-info]]
+            [cinc.analyzer.passes.elide-meta :refer [elide-meta]]
+            [cinc.analyzer.passes.constant-lifter :refer [constant-lift]]
+            [cinc.analyzer.passes.warn-earmuff :refer [warn-earmuff]]
+            [cinc.analyzer.passes.collect :refer [collect]]
+            [cinc.analyzer.passes.jvm.clear-locals :refer [annotate-branch clear-locals]]
+            [cinc.analyzer.passes.jvm.validate :refer [validate]]
+            [cinc.analyzer.passes.jvm.infer-tag :refer [infer-tag infer-constant-tag]]
+            [cinc.analyzer.passes.jvm.analyze-host-expr :refer [analyze-host-expr]])
   (:import (clojure.lang IPersistentVector IPersistentMap
                          IPersistentSet ISeq Keyword Var
                          Symbol IFn)
@@ -92,3 +93,19 @@
     (is (= Number (->> t-ast :bindings (filter #(= 'a (:name %))) first :tag)))
     (is (= String (->> t-ast :bindings (filter #(= 'c (:name %))) first :tag)))
     (is (= Integer/TYPE (->> t-ast :bindings (filter #(= 'd (:name %))) first :tag)))))
+
+(deftest collect-test
+  (let [c-test (-> (ast (let [a 1 b 2] (fn [x] (fn [] [+ (:foo {}) x a]))))
+                 (postwalk (comp validate constant-lift))
+                 (prewalk (collect :constants
+                                   :callsites
+                                   :closed-overs
+                                   :vars))
+                 :body :ret)]
+    (is (= '#{a} (-> c-test :closed-overs)))
+    (is (set/subset? #{:foo #' + {}}
+                     (-> c-test :constants keys set))) ;; it registers metadata too (line+col info)
+    (is (= #{#'+} (-> c-test :vars keys set)))
+    (is (= '#{a x} (-> c-test :methods first :body :ret :closed-overs)))
+
+    (is (= #{:foo} (-> c-test :keyword-callsites)))))
