@@ -58,6 +58,15 @@
      (not (or (nil? c) (= c Void/TYPE)))
      (.isPrimitive c))))
 
+(defn subsumes [cs1 cs2]
+  (and (not (= cs1 cs2))
+       (every? (fn [[^Class c1 ^Class c2]]
+            (or (= c1 c2)
+                (and (not (.isPrimitive c1))
+                     (.isPrimitive c2))
+                (.isAssignableFrom c2 c1)))
+          (map list (mapv maybe-class cs1) (mapv maybe-class cs2)))))
+
 (def convertible-primitives?
   {Integer/TYPE   #{Integer Long/TYPE Long Short/TYPE Byte/TYPE}
    Float/TYPE     #{Float Double/TYPE}

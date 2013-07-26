@@ -2,7 +2,7 @@
   (:refer-clojure :exclude [macroexpand-1])
   (:require [clojure.test :refer :all]
             [clojure.set :as set]
-            [cinc.analyzer :refer [analyze]]
+            [cinc.analyzer :refer [analyze macroexpand-1]]
             [cinc.analyzer.jvm :refer [cycling] :as jvm]
             [cinc.analyzer.utils :refer [walk prewalk postwalk]]
             [cinc.analyzer.passes.source-info :refer [source-info]]
@@ -80,12 +80,13 @@
     (is (= Long (-> t-ast :body :ret :tag)))))
 
 (deftest infer-validate-test
-  (let [t-ast (-> (jvm/analyze '(let [a 1
-                                     b 2
-                                     c (str a)
-                                     d (Integer/parseInt c b)]
-                                 (Integer/getInteger c d))
-                              {:context :expr})
+  (let [t-ast (->  (binding [macroexpand-1 jvm/macroexpand-1]
+                    (analyze '(let [a 1
+                                    b 2
+                                    c (str a)
+                                    d (Integer/parseInt c b)]
+                                (Integer/getInteger c d))
+                             {:context :expr}))
                 (walk infer-constant-tag
                       (cycling infer-tag analyze-host-expr validate)))]
     (is (= Integer (-> t-ast :body :ret :tag)))

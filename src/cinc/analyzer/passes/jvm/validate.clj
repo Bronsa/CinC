@@ -34,25 +34,32 @@
 (defn tag-match? [arg-tags meth]
   (every? identity (map u/convertible? arg-tags (:parameter-types meth))))
 
+(defn subsume [tags methods]
+  (let [match? (fn [[x y]] (or (nil? y) (= (u/maybe-class x) (u/maybe-class y))))
+        methods (or (seq (filter #(every? match? (mapv list (:parameter-types %) tags)) methods))
+                    methods)]
+    (remove (fn [x] (some #(and (not= % x) (u/subsumes (:parameter-types x)
+                                                   (:parameter-types %))) methods))
+            methods)))
+
 (defmethod -validate :new
   [{:keys [maybe-class args] :as ast}]
   (if maybe-class
     (if-let [the-class (u/maybe-class maybe-class)]
       (let [c-name (symbol (.getName the-class))
-            argc (count args)]
+            argc (count args)
+            tags (mapv :tag args)]
         (if-let [[ctor & rest] (->> (filter #(= (count (:parameter-types %)) argc)
-                                           (u/members the-class c-name))
-                                   (filter (partial tag-match? (mapv :tag args)))
-                                   seq)]
+                                            (u/members the-class c-name))
+                                    (filter (partial tag-match? tags))
+                                    (subsume tags))]
           (if (empty? rest)
             (let [arg-tags (mapv u/maybe-class (:parameter-types ctor))
                   args (mapv (fn [arg tag] (assoc arg :tag tag)) args arg-tags)]
               (assoc (dissoc ast :maybe-class)
                 :class the-class
                 :args args))
-            (throw (ex-info (str "ambiguous signature for ctor of class: " the-class)
-                            {:class the-class
-                             :args  args})))
+            (assoc ast :class the-class))
           (throw (ex-info (str "no ctor found for ctor of class: " the-class " and give signature")
                           {:class the-class
                            :args  args}))))
@@ -62,9 +69,10 @@
 
 (defn validate-call [class method args tag ast type]
   (let [argc (count args)
-        f (if (= :static type) u/static-methods u/instance-methods)]
+        f (if (= :static type) u/static-methods u/instance-methods)
+        tags (mapv :tag args)]
     (if-let [matching-methods (seq (f class method argc))]
-      (if-let [[m & rest] (seq (filter (partial tag-match? (mapv :tag args)) matching-methods))]
+      (if-let [[m & rest :as matching] (subsume tags (filter (partial tag-match? tags) matching-methods))]
         (if (empty? rest)
           (let [ret-tag  (u/maybe-class (:return-type m))
                 arg-tags (mapv u/maybe-class (:parameter-types m))
@@ -72,7 +80,9 @@
             (assoc ast
               :tag  ret-tag
               :args args))
-          ast)
+          (if (reduce = (mapv (comp u/maybe-class :return-type) matching))
+            (assoc ast :tag (:return-type m))
+            ast))
         (throw (ex-info (str "No matching method: " method " for class: " class " and given signature")
                         {:method method
                          :class  class
