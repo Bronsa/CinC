@@ -41,10 +41,9 @@
   [ast]
   (assoc ast :tag String))
 
-;; need to specialize
 (defmethod infer-constant-tag :number
-  [ast]
-  (assoc ast :tag Number))
+  [{:keys [form] :as ast}]
+  (assoc ast :tag (class form)))
 
 (defmethod infer-constant-tag :type
   [{:keys [form] :as ast}]

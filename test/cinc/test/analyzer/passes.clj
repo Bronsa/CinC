@@ -41,7 +41,7 @@
   (is (= String (-> (ast "foo") infer-constant-tag :tag)))
   (is (= Keyword (-> (ast :foo) infer-constant-tag :tag)))
   (is (= Character (-> (ast \f) infer-constant-tag :tag)))
-  (is (= Number (-> (ast 1) infer-constant-tag :tag)))
+  (is (= Long (-> (ast 1) infer-constant-tag :tag)))
   (is (= Pattern (-> (ast #"foo") infer-constant-tag :tag)))
   (is (= Var (-> (ast #'+)  infer-constant-tag :tag)))
   (is (= Boolean (-> (ast true) infer-constant-tag :tag)))
@@ -76,8 +76,8 @@
   (let [t-ast (-> (ast (let [a 1 b (if "" a 2)] b))
                 (walk infer-constant-tag
                       (cycling infer-tag)))]
-    (is (every? #(= Number %) (->> t-ast :bindings (mapv :tag))))
-    (is (= Number (-> t-ast :body :ret :tag)))))
+    (is (every? #(= Long %) (->> t-ast :bindings (mapv :tag))))
+    (is (= Long (-> t-ast :body :ret :tag)))))
 
 (deftest infer-validate-test
   (let [t-ast (-> (jvm/analyze '(let [a 1
@@ -90,7 +90,7 @@
                       (cycling infer-tag analyze-host-expr validate)))]
     (is (= Integer (-> t-ast :body :ret :tag)))
     (is (= Integer (-> t-ast :tag)))
-    (is (= Number (->> t-ast :bindings (filter #(= 'a (:name %))) first :tag)))
+    (is (= Long (->> t-ast :bindings (filter #(= 'a (:name %))) first :tag)))
     (is (= String (->> t-ast :bindings (filter #(= 'c (:name %))) first :tag)))
     (is (= Integer/TYPE (->> t-ast :bindings (filter #(= 'd (:name %))) first :tag)))))
 
