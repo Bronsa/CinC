@@ -4,11 +4,12 @@
             [cinc.analyzer.jvm.utils :refer :all]))
 
 (defn maybe-static-field [[_ class sym]]
-  (when-let [{:keys [flags]} (static-field class sym)]
+  (when-let [{:keys [flags type]} (static-field class sym)]
     {:op          :static-field
      :assignable? (not (:final flags))
      :class       class
-     :field       sym}))
+     :field       sym
+     :tag         type}))
 
 (defn maybe-static-method [[_ class sym]]
   (when-let [{:keys [return-type]} (static-method class sym)]
@@ -26,12 +27,13 @@
        :method   sym}))
 
 (defn maybe-instance-field [target-expr class sym]
-  (when-let [{:keys [flags]} (instance-field class sym)]
+  (when-let [{:keys [flags type]} (instance-field class sym)]
     {:op          :instance-field
      :assignable? (not (:final flags))
      :class       class
      :instance    target-expr
-     :field       sym}))
+     :field       sym
+     :tag         type}))
 
 (defn analyze-host-call
   [target-type method args target-expr class env]

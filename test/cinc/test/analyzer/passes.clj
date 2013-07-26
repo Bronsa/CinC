@@ -80,13 +80,12 @@
     (is (= Long (-> t-ast :body :ret :tag)))))
 
 (deftest infer-validate-test
-  (let [t-ast (->  (binding [macroexpand-1 jvm/macroexpand-1]
-                    (analyze '(let [a 1
-                                    b 2
-                                    c (str a)
-                                    d (Integer/parseInt c b)]
-                                (Integer/getInteger c d))
-                             {:context :expr}))
+  (let [t-ast (-> (binding [macroexpand-1 jvm/macroexpand-1]
+                   (ast (let [a 1
+                              b 2
+                              c (str a)
+                              d (Integer/parseInt c b)]
+                          (Integer/getInteger c d))))
                 (walk infer-constant-tag
                       (cycling infer-tag analyze-host-expr validate)))]
     (is (= Integer (-> t-ast :body :ret :tag)))
@@ -95,16 +94,23 @@
     (is (= String (->> t-ast :bindings (filter #(= 'c (:name %))) first :tag)))
     (is (= Integer/TYPE (->> t-ast :bindings (filter #(= 'd (:name %))) first :tag))))
 
+  (let [so-ast (binding [macroexpand-1 jvm/macroexpand-1]
+                 (-> (ast (.println System/out "foo"))
+                   (walk infer-constant-tag
+                         (cycling infer-tag analyze-host-expr validate))))]
+
+    (is (= Void/TYPE (-> so-ast :tag))))
+
   (binding [macroexpand-1 jvm/macroexpand-1]
-    (let [l-ast (postwalk (analyze '(fn [x] (Long. x)) {})
+    (let [l-ast (postwalk (ast (fn [x] (Long. x)))
                           (cycling infer-tag analyze-host-expr validate))]
       (is (= Long (-> l-ast :methods first :tag)))))
 
   (binding [macroexpand-1 jvm/macroexpand-1]
-    (let [d-ast (postwalk (analyze '(Double/isInfinite 2) {})
+    (let [d-ast (postwalk (ast (Double/isInfinite 2))
                           (cycling infer-tag analyze-host-expr validate))]
       (is (= Boolean/TYPE (-> d-ast :tag)))
-      (is Double/TYPE (->> d-ast :args first :tag)))))
+      (is (= Double/TYPE (->> d-ast :args first :tag))))))
 
 (deftest collect-test
   (let [c-test (-> (ast (let [a 1 b 2] (fn [x] (fn [] [+ (:foo {}) x a]))))
