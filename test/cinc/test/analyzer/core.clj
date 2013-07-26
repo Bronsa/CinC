@@ -97,7 +97,7 @@
     (is (= 0 (-> t-ast :body :ret :form)))
     (is (= 2 (-> t-ast :catches second :body :ret :form)))
     (is (= 'E1 (-> t-ast :catches first :maybe-class)))
-    (is (= 'e (-> t-ast :catches first :local)))
+    (is (= 'e (-> t-ast :catches first :local :name)))
     (is (= 3 (-> t-ast :finally :ret :form))))
 
   (let [lfn-ast (ast (letfn [(a [] (b)) (b [] (a))] a))]

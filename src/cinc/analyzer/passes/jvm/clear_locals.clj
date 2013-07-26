@@ -43,8 +43,10 @@
                          :clears        #{}})
 
 (defn -clear-locals
-  [{:keys [op name path? should-not-clear] :as ast}]
+  [{:keys [op name local path? should-not-clear] :as ast}]
   (if (and (= :local op)
+           (#{:let :loop :letfn :arg} local) ;; could alternatively tag #{:field :this :catch}
+                                             ;; :should-not-clear
            (not ((:clears *clears*) name))
            (not should-not-clear))
     (do

@@ -298,17 +298,18 @@
   [[_ etype ename & body :as form] env]
   (if (and (symbol? ename)
            (not (namespace ename)))
-    {:op          :catch
-     :maybe-class etype
-     :local       ename
-     :env         env
-     :form        form
-     :body        (parse (cons 'do body) (assoc-in env [:locals ename]
-                                                   {:op   :binding
-                                                    :env  env
-                                                    :form ename
-                                                    :name ename
-                                                    :tag  etype}))}
+    (let [local {:op    :binding
+                 :env   env
+                 :form  ename
+                 :name  ename
+                 :local :catch
+                 :tag   etype}]
+      {:op          :catch
+       :maybe-class etype
+       :local       local
+       :env         env
+       :form        form
+       :body        (parse (cons 'do body) (assoc-in env [:locals ename] local))})
     (throw (ex-info (str "invalid binding form: " ename) {:sym ename}))))
 
 (defmethod parse 'throw
@@ -416,11 +417,11 @@
   (let [variadic? (boolean (some '#{&} params))
         params-names (vec (remove '#{&} params))
         params-expr (mapv (fn [name]
-                            {:env  env
-                             :form name
-                             :name name
-                             :op   :binding
-                             :arg  true})
+                            {:env   env
+                             :form  name
+                             :name  name
+                             :op    :binding
+                             :local :arg})
                           params-names)
         arity (count params-names)
         fixed-arity (if variadic?
@@ -544,16 +545,16 @@
          (vector? args)
          this]}
   (let [meth (cons params body)
-        env (assoc-in env [:locals this] {:name this
-                                          :env  env
-                                          :form this
-                                          :op   :binding
-                                          :arg  true
-                                          :this true})
+        env (assoc-in env [:locals this] {:name  this
+                                          :env   env
+                                          :form  this
+                                          :op    :binding
+                                          :local :this})
         method (analyze-fn-method meth env)]
     (assoc (dissoc method :variadic?)
       :op   :method
       :form form
+      :this this
       :name name)))
 
 ;; primitives

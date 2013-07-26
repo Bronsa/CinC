@@ -26,16 +26,12 @@
                                                              (mapv #(walk % pre identity reversed?)
                                                                    node))))))
                                     (mapv #(walk % pre post) node)))
-
                 :else ast))]
-       (post (let [env (:env ast)
-                   ast (dissoc ast :env)]
-               (assoc (if-let [ret (and reversed? (:ret ast))]
-                        (let [{:keys [ret] :as ast} (f ast :ret ret)
-                              ast (dissoc ast :ret)] ;; make sure we walk :ret before :statement
-                          (assoc (reduce-kv f ast ast) :ret ret))
-                        (reduce-kv f ast ast))
-                 :env env))))))
+       (post (if-let [ret (and reversed? (:ret ast))]
+               (let [{:keys [ret] :as ast} (f ast :ret ret)
+                     ast (dissoc ast :ret)] ;; make sure we walk :ret before :statement
+                 (assoc (reduce-kv f ast ast) :ret ret))
+               (reduce-kv f ast ast))))))
 
 (defn prewalk [ast f]
   (walk ast f identity))

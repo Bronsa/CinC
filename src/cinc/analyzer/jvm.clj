@@ -113,10 +113,11 @@
   [[_ name class-name fields _ interfaces & methods :as form] env]
   (let [interfaces (disj (set (mapv maybe-class interfaces)) Object)
         fields-expr (mapv (fn [name]
-                            {:env  env
-                             :form name
-                             :name name
-                             :op   :binding})
+                            {:env   env
+                             :form  name
+                             :name  name
+                             :local :field
+                             :op    :binding})
                           fields)
         menv (assoc env :locals (zipmap fields fields-expr))
         methods (mapv #(assoc (analyze-method-impls % menv)
