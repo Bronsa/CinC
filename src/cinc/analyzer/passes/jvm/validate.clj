@@ -147,12 +147,24 @@
 (defn -deftype [name class-name args interfaces]
   (eval (list 'deftype* name class-name args :implements (vec interfaces))))
 
+(defn validate-interfaces [interfaces]
+  (when-not (every? #(.isInterface ^Class %) (disj interfaces Object))
+    (throw (ex-info "only interfaces or Object can be implemented by deftype/reify"
+                    {:interfaces interfaces}))))
+
 (defmethod -validate :deftype
   [{:keys [name class-name fields interfaces] :as ast}]
+  (validate-interfaces interfaces)
   (if class-name
-    (do(-deftype name class-name (mapv :name fields) interfaces)
-       (dissoc (assoc ast :tag (u/maybe-class class-name)) :class-name))
+    (do
+      (-deftype name class-name (mapv :name fields) interfaces)
+      (dissoc (assoc ast :tag (u/maybe-class class-name)) :class-name))
     ast))
+
+(defmethod -validate :reify
+  [{:keys [interfaces] :as ast}]
+  (validate-interfaces interfaces)
+  ast)
 
 (defmethod -validate :method
   [{:keys [name interfaces tag params fixed-arity] :as ast}]
