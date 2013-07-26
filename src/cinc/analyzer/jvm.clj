@@ -168,6 +168,9 @@
         ast
         (recur new-ast)))))
 
+(defn remove-locals [ast]
+  (update-in ast [:env] dissoc :locals))
+
 (defn analyze
   "Given an environment, a map containing
    -  :locals (mapping of names to lexical bindings),
@@ -178,6 +181,7 @@
     (-> (-analyze form env)
       (walk (fn [ast]
               (-> ast
+                remove-locals
                 warn-earmuff
                 annotate-branch
                 infer-constant-tag
