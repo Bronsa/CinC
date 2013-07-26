@@ -109,3 +109,18 @@
     (is (= '#{a x} (-> c-test :methods first :body :ret :closed-overs)))
 
     (is (= #{:foo} (-> c-test :keyword-callsites)))))
+
+(deftest clear-locals-test
+  (let [f-expr (-> (ast (fn [x] (if x x x) x (if x (do x x) (if x x x))))
+                 (prewalk annotate-branch)
+                 clear-locals :methods first :body)]
+    (is (= true (-> f-expr :statements first :test :should-not-clear)))
+    (is (= true (-> f-expr :statements first :then :to-clear? nil?)))
+    (is (= true (-> f-expr :statements first :else :to-clear? nil?)))
+    (is (= true (-> f-expr :statements second :to-clear? nil?)))
+    (is (= true (-> f-expr :ret :test :should-not-clear)))
+    (is (= true (-> f-expr :ret :then :statements first :to-clear? nil?)))
+    (is (= true (-> f-expr :ret :then :ret :to-clear?)))
+    (is (= true (-> f-expr :ret :else :test :should-not-clear)))
+    (is (= true (-> f-expr :ret :else :then :to-clear?)))
+    (is (= true (-> f-expr :ret :else :else :to-clear?)))))
