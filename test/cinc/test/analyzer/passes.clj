@@ -37,7 +37,7 @@
   (is (= IPersistentMap (-> (ast {}) infer-constant-tag :tag)))
   (is (= IPersistentSet (-> (ast #{}) infer-constant-tag :tag)))
   (is (= ISeq (-> (ast '()) infer-constant-tag :tag)))
-  (is (= Object (-> {:op :const :type :class :form Object} infer-constant-tag :tag)))
+  (is (= Class (-> {:op :const :type :class :form Object} infer-constant-tag :tag)))
   (is (= String (-> (ast "foo") infer-constant-tag :tag)))
   (is (= Keyword (-> (ast :foo) infer-constant-tag :tag)))
   (is (= Character (-> (ast \f) infer-constant-tag :tag)))
@@ -143,9 +143,91 @@
     (is (= true (-> f-expr :ret :else :then :to-clear?)))
     (is (= true (-> f-expr :ret :else :else :to-clear?)))))
 
+(defmacro jvm-ast [form]
+  `(jvm/analyze '~form {:context :expr}))
+
 (deftest uniquify-test
-  (let [f-expr (jvm/analyze '(let [x 1 y x x (let [x x] x)]
-                               (fn [y] x)) {:context :expr})]
+  (let [f-expr (jvm-ast (let [x 1 y x x (let [x x] x)]
+                          (fn [y] x)))]
     (is (= 'x__#2 (-> f-expr :body :ret :methods first :body :ret :name)))
     (is (= 'y__#1 (-> f-expr :body :ret :methods first :params first :name)))
     (is (set/subset? '#{x__#2} (-> f-expr :body :ret :closed-overs)))))
+
+
+(deftest all-tests-all-pass
+  (is (= IPersistentVector (-> (jvm-ast []) :tag)))
+  (is (= IPersistentMap (-> (jvm-ast {}) :tag)))
+  (is (= IPersistentSet (-> (jvm-ast #{}) :tag)))
+  (is (= ISeq (-> (jvm-ast ()) :tag)))
+  (is (= Class (-> (jvm-ast Object) :tag)))
+  (is (= String (-> (jvm-ast "foo") :tag)))
+  (is (= Keyword (-> (jvm-ast :foo) :tag)))
+  (is (= Character (-> (jvm-ast \f) :tag)))
+  (is (= Long (-> (jvm-ast 1) :tag)))
+  (is (= Pattern (-> (jvm-ast #"foo") :tag)))
+  (is (= Var (-> (jvm-ast #'+)  :tag)))
+  (is (= Boolean (-> (jvm-ast true) :tag)))
+  (is (= IFn (-> (jvm-ast #()) :tag)))
+
+  (let [i-ast (jvm-ast (if 1 2 3))]
+    (is (:branch? i-ast))
+    (is (= true (-> i-ast :test :should-not-clear)))
+    (is (= true (-> i-ast :then :path?)))
+    (is (= true (-> i-ast :else :path?))))
+
+  (let [fn-ast (jvm-ast (fn ([]) ([x])))]
+    (is (every? :path? (-> fn-ast :methods))))
+
+  (let [r-ast (jvm-ast (reify Object (toString [this] "")))]
+    (is (every? :path? (-> r-ast :methods))))
+
+  (let [c-ast (-> (jvm-ast (case 1 0 0 2 2 1)) :body :ret)]
+    (is (:branch? c-ast))
+    (is (= true (-> c-ast :test :should-not-clear)))
+    (is (= true (-> c-ast :default :path?)))
+    (is (every? :path? (-> c-ast :thens))))
+
+  (let [t-ast (jvm-ast (let [a 1 b (if "" a 2)] b))]
+    (is (every? #(= Long %) (->> t-ast :bindings (mapv :tag))))
+    (is (= Long (-> t-ast :body :ret :tag))))
+
+  (let [d-ast (jvm-ast (Double/isInfinite 2))]
+      (is (= Boolean/TYPE (-> d-ast :tag)))
+      (is (= Double/TYPE (->> d-ast :args first :tag))))
+
+  (let [t-ast (jvm-ast (let [a 1
+                             b 2
+                             c (str a)
+                             d (Integer/parseInt c b)]
+                         (Integer/getInteger c d)))]
+    (is (= Integer (-> t-ast :body :ret :tag)))
+    (is (= Integer (-> t-ast :tag)))
+    (is (= Long (->> t-ast :bindings (filter #(= 'a__#0 (:name %))) first :tag)))
+    (is (= String (->> t-ast :bindings (filter #(= 'c__#0 (:name %))) first :tag)))
+    (is (= Integer/TYPE (->> t-ast :bindings (filter #(= 'd__#0 (:name %))) first :tag))))
+
+  (let [so-ast (jvm-ast (.println System/out "foo"))]
+    (is (= Void/TYPE (-> so-ast :tag))))
+
+  (let [c-test (-> (jvm-ast (let [a 1 b 2] (fn [x] (fn [] [+ (:foo {}) x a]))))
+                 :body :ret)]
+    (is (= '#{a__#0} (-> c-test :closed-overs)))
+    (is (set/subset? #{:foo #' + {}}
+                     (-> c-test :constants keys set))) ;; it registers metadata too (line+col info)
+    (is (= #{#'+} (-> c-test :vars keys set)))
+    (is (= '#{a__#0 x__#0} (-> c-test :methods first :body :ret :closed-overs)))
+
+    (is (= #{:foo} (-> c-test :keyword-callsites))))
+
+  (let [f-expr (-> (jvm-ast (fn [x] (if x x x) x (if x (do x x) (if x x x))))
+                 :methods first :body)]
+    (is (= true (-> f-expr :statements first :test :should-not-clear)))
+    (is (= true (-> f-expr :statements first :then :to-clear? nil?)))
+    (is (= true (-> f-expr :statements first :else :to-clear? nil?)))
+    (is (= true (-> f-expr :statements second :to-clear? nil?)))
+    (is (= true (-> f-expr :ret :test :should-not-clear)))
+    (is (= true (-> f-expr :ret :then :statements first :to-clear? nil?)))
+    (is (= true (-> f-expr :ret :then :ret :to-clear?)))
+    (is (= true (-> f-expr :ret :else :test :should-not-clear)))
+    (is (= true (-> f-expr :ret :else :then :to-clear?)))
+    (is (= true (-> f-expr :ret :else :else :to-clear?)))))
