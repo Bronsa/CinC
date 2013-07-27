@@ -567,12 +567,14 @@
 ;; invoke
 (defmethod parse :default
   [[f & args :as form] env]
-  (let [e (ctx env :expr)
-        fn-expr (analyze f e)
-        args-expr (mapv (analyze-in-env e) args)]
-    {:op   :invoke
-     :form form
-     :env  env
-     :meta (analyze (meta form) (ctx env :expr))
-     :fn   fn-expr
-     :args args-expr}))
+  (if-not f
+    (-analyze :const form env)
+    (let [e (ctx env :expr)
+          fn-expr (analyze f e)
+          args-expr (mapv (analyze-in-env e) args)]
+      {:op   :invoke
+       :form form
+       :env  env
+       :meta (analyze (meta form) (ctx env :expr))
+       :fn   fn-expr
+       :args args-expr})))
