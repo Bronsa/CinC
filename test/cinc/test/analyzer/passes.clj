@@ -142,3 +142,10 @@
     (is (= true (-> f-expr :ret :else :test :should-not-clear)))
     (is (= true (-> f-expr :ret :else :then :to-clear?)))
     (is (= true (-> f-expr :ret :else :else :to-clear?)))))
+
+(deftest uniquify-test
+  (let [f-expr (jvm/analyze '(let [x 1 y x x (let [x x] x)]
+                               (fn [y] x)) {:context :expr})]
+    (is (= 'x__#2 (-> f-expr :body :ret :methods first :body :ret :name)))
+    (is (= 'y__#1 (-> f-expr :body :ret :methods first :params first :name)))
+    (is (set/subset? '#{x__#2} (-> f-expr :body :ret :closed-overs)))))
