@@ -148,10 +148,11 @@
             (throw (ex-info (str "No matching arity found for function: " (:name fn))
                             {:arity (count args)
                              :fn    fn }))))
-        (when (= :const (:op fn))
-          (when (not (instance? IFn (:form fn)))
-            (throw (ex-info (str (class (:form fn)) " is not a function, but it's used as such")
-                            {:form form}))))
+        (when (and (= :const (:op fn))
+                   (not= nil (:form fn))
+                   (not (instance? IFn (:form fn))))
+          (throw (ex-info (str (class (:form fn)) " is not a function, but it's used as such")
+                          {:form form})))
         ast))))
 
 (defn -deftype [name class-name args interfaces]
