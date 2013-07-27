@@ -27,11 +27,13 @@
                                                                    node))))))
                                     (mapv #(walk % pre post) node)))
                 :else ast))]
-       (post (if-let [ret (and reversed? (:ret ast))]
-               (let [{:keys [ret] :as ast} (f ast :ret ret)
-                     ast (dissoc ast :ret)] ;; make sure we walk :ret before :statement
-                 (assoc (reduce-kv f ast ast) :ret ret))
-               (reduce-kv f ast ast))))))
+       (post
+        (if (= :do (:op ast))
+          (let [{:keys [ret statements] :as ast} ast]
+            (if reversed?
+              (f (f ast :ret ret) :statements statements)
+              (f (f ast :statements statements) :ret ret)))
+          (reduce-kv f ast ast))))))
 
 (defn prewalk [ast f]
   (walk ast f identity))
