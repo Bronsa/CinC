@@ -9,7 +9,8 @@
 (defmethod -validate :maybe-class
   [{:keys [maybe-class env] :as ast}]
   (if-let [the-class (u/maybe-class maybe-class)]
-    (-analyze :const the-class env :class)
+    (assoc (-analyze :const the-class env :class)
+      :tag Class)
     (if (.contains (str maybe-class) ".") ;; try and be smart for the exception
       (throw (ex-info (str "class not found: " maybe-class)
                       {:class maybe-class}))
