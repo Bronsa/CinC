@@ -451,7 +451,11 @@
   (let [[name meths] (if (symbol? (first args))
                        [(first args) (next args)]
                        [name (seq args)])
-        e (if name (assoc-in env [:locals name] {:name name}) env)
+        e (if name (assoc-in env [:locals name]
+                             {:op    :binding
+                              :local :fn
+                              :name  name})
+              env)
         meths (if (vector? (first meths)) (list meths) meths) ;;turn (fn [] ...) into (fn ([]...))
         menv (if (> (count meths) 1) (ctx env :expr) e)
         methods-exprs (mapv #(analyze-fn-method % menv) meths)
