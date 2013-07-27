@@ -183,14 +183,14 @@
       uniquify-locals
       (walk (fn [ast]
               (-> ast
+                constant-lift
                 remove-locals
                 warn-earmuff
                 annotate-branch
                 infer-constant-tag
                 elide-meta
                 source-info))
-            (comp constant-lift
-               (cycling infer-tag analyze-host-expr validate box)))
+            (cycling infer-tag analyze-host-expr validate box))
       (prewalk (collect :constants
                         :callsites
                         :closed-overs
