@@ -46,8 +46,9 @@
   (let [match? (fn [[x y]] (or (nil? y) (= (u/maybe-class x) (u/maybe-class y))))
         methods (or (seq (filter #(every? match? (mapv list (:parameter-types %) tags)) methods))
                     methods)]
-    (remove (fn [x] (some #(and (not= % x) (u/subsumes (:parameter-types x)
-                                                   (:parameter-types %))) methods))
+    (remove (fn [x] (some #(and (not= % x)
+                               (u/subsumes (:parameter-types %)
+                                           (:parameter-types x))) methods))
             methods)))
 
 (defmethod -validate :new
