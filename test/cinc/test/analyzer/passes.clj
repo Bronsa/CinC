@@ -222,6 +222,23 @@
   (is (jvm-ast (set! clojure.lang.Agent/pooledExecutor nil)))
   (is (jvm-ast (deftype x [^:volatile-mutable a] Object (toString [this] (set! (.a this) "") a))))
 
+  (let [dt-ast (jvm-ast (deftype* x user.x [a b]
+                          :implements [Appendable]
+                          (append [this ^char x] this)))]
+    (is (= :deftype (-> dt-ast :op)))
+    (is (= '[a b] (->> dt-ast :fields (mapv :name))))
+    (is (= '[append] (->> dt-ast :methods (mapv :name))))
+    (is (= 'user.x (-> dt-ast :tag .getName symbol))))
+
+  (let [r-ast (jvm-ast (reify
+                         Object (toString [this] "")
+                         Appendable (append [this ^char x] this)
+                         (meta [this] {})))]
+    (is (= :reify (-> r-ast :op)))
+    (is (= #{Appendable clojure.lang.IObj} (-> r-ast :interfaces)))
+    (is (= '#{toString append meta} (->> r-ast :methods (mapv :name) set)))
+    (is (= clojure.lang.IMeta (->> r-ast :methods (filter #(= 'meta (:name %))) first :interface))))
+
   (let [f-expr (-> (jvm-ast (fn [x] (if x x x) x (if x (do x x) (if x x x))))
                  :methods first :body)]
     (is (= true (-> f-expr :statements first :test :should-not-clear)))

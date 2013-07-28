@@ -183,7 +183,7 @@
                                    (conj th {:op   :case-then
                                              :hash min-hash
                                              :then then-expr})]))
-                              [[] []] case-map)
+                              [[] []] case-map) ;; transform back in a sorted-map + hash-map when emitting
         default-expr (-analyze default env)]
     {:op          :case
      :form        form
