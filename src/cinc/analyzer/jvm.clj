@@ -107,8 +107,9 @@
                    :env   env
                    :form  this
                    :op    :binding
+                   :tag   (:this env)
                    :local :this}
-        env (assoc-in env [:locals this] this-expr)
+        env (assoc-in (dissoc env :this) [:locals this] this-expr)
         method (analyze-fn-method meth env)]
     (assoc (dissoc method :variadic?)
       :op   :method
@@ -129,6 +130,10 @@
       :methods    methods
       :interfaces interfaces})))
 
+(defn -deftype [name class-name args interfaces]
+  (let [interfaces (mapv #(symbol (.getName ^Class %)) interfaces)]
+    (eval (list 'deftype* name class-name args :implements interfaces))))
+
 (defmethod parse 'deftype*
   [[_ name class-name fields _ interfaces & methods :as form] env]
   (let [interfaces (disj (set (mapv maybe-class interfaces)) Object)
@@ -142,9 +147,13 @@
                              :local   :field
                              :op      :binding})
                           fields)
-        menv (assoc env :locals (zipmap fields fields-expr))
-        methods (mapv #(assoc (analyze-method-impls % menv)
-                         :interfaces interfaces) methods)]
+        menv (assoc env
+               :locals (zipmap fields fields-expr)
+               :this class-name)
+        methods (mapv #(analyze-method-impls % menv) methods)]
+
+    (-deftype name class-name fields interfaces)
+
     {:op         :deftype
      :env        env
      :form       form

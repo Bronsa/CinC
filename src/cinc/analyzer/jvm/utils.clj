@@ -3,6 +3,11 @@
   (:import (clojure.lang RT Symbol Var)
            (org.objectweb.asm Type)))
 
+(defn type-reflect [typeref & options]
+  (apply reflect/type-reflect typeref
+         :reflector (reflect/->JavaReflector (RT/baseLoader))
+         options))
+
 (def ^:private prims
   {"byte" Byte/TYPE
    "boolean" Boolean/TYPE
@@ -104,7 +109,7 @@
 (defn members [class member]
   (let [members (-> (maybe-class class)
                   box
-                  (reflect/type-reflect :ancestors true)
+                  (type-reflect :ancestors true)
                   :members)]
     (when-let [members (filter #(= member (:name %)) members)]
       members)))

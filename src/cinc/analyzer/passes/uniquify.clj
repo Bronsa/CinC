@@ -81,8 +81,8 @@
   [{:keys [params this] :as ast}]
   (doseq [{:keys [name]} params]
     (uniquify name))
-  (uniquify this)
-  (assoc ast :this (normalize this)))
+  (uniquify (:name this))
+  (assoc-in ast [:this :name] (normalize (:name this))))
 
 (defmethod -uniquify-locals :fn
   [{:keys [name] :as ast}]

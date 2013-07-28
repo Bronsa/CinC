@@ -34,7 +34,8 @@
 
 (defmethod -validate :set!
   [{:keys [target] :as ast}]
-  (when (not (:assignable? target))
+  (when (and (not (:assignable? target))
+             (not (= :host-interop (:op target))))
     (throw (ex-info "cannot set! non-assignable target" {:target target})))
   ast)
 
@@ -151,7 +152,7 @@
                         {:form form})))
       (do
         (when (:arg-lists fn)
-          (when-not (doto (arglist-for-arity fn argc))
+          (when-not (arglist-for-arity fn argc)
             (throw (ex-info (str "No matching arity found for function: " (:name fn))
                             {:arity (count args)
                              :fn    fn }))))
@@ -162,10 +163,6 @@
                           {:form form})))
         ast))))
 
-(defn -deftype [name class-name args interfaces]
-  (let [interfaces (mapv #(symbol (.getName ^Class %)) interfaces)]
-    (eval (list 'deftype* name class-name args :implements interfaces))))
-
 (defn validate-interfaces [interfaces]
   (when-not (every? #(.isInterface ^Class %) (disj interfaces Object))
     (throw (ex-info "only interfaces or Object can be implemented by deftype/reify"
@@ -175,9 +172,7 @@
   [{:keys [name class-name fields interfaces] :as ast}]
   (validate-interfaces interfaces)
   (if class-name
-    (do
-      (-deftype name class-name (mapv :name fields) interfaces)
-      (dissoc (assoc ast :tag (u/maybe-class class-name)) :class-name))
+    (dissoc (assoc ast :tag (u/maybe-class class-name)) :class-name)
     ast))
 
 (defmethod -validate :reify
