@@ -163,7 +163,8 @@
         ast))))
 
 (defn -deftype [name class-name args interfaces]
-  (eval (list 'deftype* name class-name args :implements (vec interfaces))))
+  (let [interfaces (mapv #(symbol (.getName ^Class %)) interfaces)]
+    (eval (list 'deftype* name class-name args :implements interfaces))))
 
 (defn validate-interfaces [interfaces]
   (when-not (every? #(.isInterface ^Class %) (disj interfaces Object))
