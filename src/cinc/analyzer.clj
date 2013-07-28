@@ -453,6 +453,8 @@
                        [name (seq args)])
         e (if name (assoc-in env [:locals name]
                              {:op    :binding
+                              :env   env
+                              :form  name
                               :local :fn
                               :name  name})
               env)
