@@ -32,6 +32,12 @@
                       {:class maybe-class})))
     ast))
 
+(defmethod -validate :set!
+  [{:keys [target] :as ast}]
+  (when (not (:assignable? target))
+    (throw (ex-info "cannot set! non-assignable target" {:target target})))
+  ast)
+
 (defn tag-match? [arg-tags meth]
   (every? identity (map u/convertible? arg-tags (:parameter-types meth))))
 

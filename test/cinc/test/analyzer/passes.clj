@@ -219,6 +219,8 @@
 
     (is (= #{:foo} (-> c-test :keyword-callsites))))
 
+  (is (jvm-ast (set! clojure.lang.Agent/pooledExecutor nil)))
+
   (let [f-expr (-> (jvm-ast (fn [x] (if x x x) x (if x (do x x) (if x x x))))
                  :methods first :body)]
     (is (= true (-> f-expr :statements first :test :should-not-clear)))

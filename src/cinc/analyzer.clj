@@ -262,13 +262,11 @@
   {:pre [(= (count form) 3)]}
   (let [target (analyze target (ctx env :expr))
         val (analyze val (ctx env :expr))]
-    (if (:assignable? target) ;; move validation to validate pass?
-      {:op     :set!
-       :env    env
-       :form   form
-       :target target
-       :val    val}
-      (throw (ex-info "cannot set! non-assignable target" {:target target})))))
+    {:op     :set!
+     :env    env
+     :form   form
+     :target target
+     :val    val}))
 
 (defmethod parse 'try
   [[_ & body :as form] {:keys [context] :as env}]
