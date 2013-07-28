@@ -445,7 +445,6 @@
      :fixed-arity fixed-arity
      :body        body}))
 
-;; TODO name generation
 (defmethod parse 'fn*
   [[_ & args :as form] {:keys [name] :as env}]
   (let [[name meths] (if (symbol? (first args))
@@ -498,6 +497,7 @@
                  {:pre [(string? doc)]}
                  {:init init :doc doc}))
         args (apply pfn expr)
+        env (assoc env :name sym)
         doc (or (:doc args) (-> sym meta :doc))
         meta ((fnil merge {}) (meta sym) (when doc {:doc doc}))
         meta-expr (when meta (analyze meta
