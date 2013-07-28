@@ -103,16 +103,17 @@
          (vector? args)
          this]}
   (let [meth (cons params body)
-        env (assoc-in env [:locals this] {:name  this
-                                          :env   env
-                                          :form  this
-                                          :op    :binding
-                                          :local :this})
+        this-expr {:name  this
+                   :env   env
+                   :form  this
+                   :op    :binding
+                   :local :this}
+        env (assoc-in env [:locals this] this-expr)
         method (analyze-fn-method meth env)]
     (assoc (dissoc method :variadic?)
       :op   :method
       :form form
-      :this this
+      :this this-expr
       :name name)))
 
 (defmethod parse 'reify*
