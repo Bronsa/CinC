@@ -2,7 +2,7 @@
   (:refer-clojure :exclude [macroexpand-1 macroexpand])
   (:require [cinc.analyzer
              :as ana
-             :refer [analyze parse analyze-in-env analyze-method-impls wrapping-meta]
+             :refer [analyze parse analyze-in-env wrapping-meta analyze-fn-method]
              :rename {analyze -analyze}]
             [cinc.analyzer.utils :refer [ctx maybe-var walk prewalk]]
             [cinc.analyzer.jvm.utils :refer :all :exclude [box]]
@@ -96,6 +96,24 @@
    :env         env
    :form        form
    :maybe-class class})
+
+(defn analyze-method-impls
+  [[name [this & params :as args] & body :as form] env]
+  {:pre [(symbol? name)
+         (vector? args)
+         this]}
+  (let [meth (cons params body)
+        env (assoc-in env [:locals this] {:name  this
+                                          :env   env
+                                          :form  this
+                                          :op    :binding
+                                          :local :this})
+        method (analyze-fn-method meth env)]
+    (assoc (dissoc method :variadic?)
+      :op   :method
+      :form form
+      :this this
+      :name name)))
 
 (defmethod parse 'reify*
   [[_ interfaces & methods :as form] env]

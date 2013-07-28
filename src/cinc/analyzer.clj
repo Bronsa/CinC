@@ -545,24 +545,6 @@
             :env  env}
            expr)))
 
-(defn analyze-method-impls
-  [[name [this & params :as args] & body :as form] env]
-  {:pre [(symbol? name)
-         (vector? args)
-         this]}
-  (let [meth (cons params body)
-        env (assoc-in env [:locals this] {:name  this
-                                          :env   env
-                                          :form  this
-                                          :op    :binding
-                                          :local :this})
-        method (analyze-fn-method meth env)]
-    (assoc (dissoc method :variadic?)
-      :op   :method
-      :form form
-      :this this
-      :name name)))
-
 ;; primitives
 ;; keyword callsites
 ;; runtime instanceof for constant exprs
