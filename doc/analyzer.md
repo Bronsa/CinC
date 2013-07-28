@@ -9,6 +9,8 @@ Additionally, every node has some specific attributes:
 
 ## cinc.analyzer
 
+The macroexpander of cinc.analyzer is platform agnostic so it doesn't try to transform foo/bar in (. foo bar) if foo is a class, as such, it produces a `:maybe-host-form` if foo is not a namespace
+
 ### :with-meta
 
 This node wraps: `:const`, `:vector`, `:map`, `:set` if the form contains metadata
@@ -160,7 +162,7 @@ If present
 
 * `:target-expr ` the analyzed expr of the target of the host call
 * `:method` the symbol of the method to be called
-* `:args` a vector of the analyzed expressions of the args of the call, env is set to :expr
+* `:args` a vector of the analyzed expressions of the args of the call, context is set to `:expr`
 
 ### :host-field
 
@@ -175,5 +177,38 @@ If present
 ### :invoke
 
 * `:fn` the analyzed expression of the function to invoke
-* `:args` a vector of the analyzed expressions of the args of the call, env is set to :expr
-* `:meta` the analyzed expression of the invoke form metadata if present, context is set to :expr
+* `:args` a vector of the analyzed expressions of the args of the call, context is set to `:expr`
+* `:meta` the analyzed expression of the invoke form metadata if present, context is set to `:expr`
+
+## cinc.analyzer.jvm
+
+The cinc.analyze.jvm macroexpander transforms foo/bar in a dot expression if foo is a class, as such, if a `:maybe-host-form` occurs it means that foo is neither a namespace or a class, and thus an error is thrown by the `validate` pass
+
+### :monitor-enter/:monitor-exit
+
+* `:target-expr` the analyzed expr of the monitor object, context is set to `expr`
+
+### :import
+
+* `maybe-class` the symbol of the (maybe) class to import
+
+### :reify
+
+* `:methods` a vector of the `:method` nodes of the reify expression
+* `:interfaces` a set of the implemented interfaces by the reify expression, plus clojure.lang.IObj
+
+### :deftype
+
+* `:name` the name of the deftype, a symbol
+* `:class-name` the class name of the deftype, a symbol
+* `:fields` a vectopr of the analyzed fields of the deftype as bindings
+* `:methods` a vector of the `:method` nodes of the deftype
+* `:interfaces` a set of the implemented interfaces by the deftype
+
+### :method
+
+As `:fn-method` but:
+
+* `:this` the analyzed expression of the this parameter
+
+The this paramater is not part of the method parameters
