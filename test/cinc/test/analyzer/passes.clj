@@ -220,6 +220,7 @@
     (is (= #{:foo} (-> c-test :keyword-callsites))))
 
   (is (jvm-ast (set! clojure.lang.Agent/pooledExecutor nil)))
+  (is (jvm-ast (deftype x [^:volatile-mutable a] Object (toString [this] (set! (.a this) "") a))))
 
   (let [f-expr (-> (jvm-ast (fn [x] (if x x x) x (if x (do x x) (if x x x))))
                  :methods first :body)]

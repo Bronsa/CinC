@@ -117,22 +117,28 @@
       :this this-expr
       :name name)))
 
+(defn -deftype [name class-name args interfaces]
+  (let [interfaces (mapv #(symbol (.getName ^Class %)) interfaces)]
+    (eval (list 'deftype* name class-name args :implements interfaces))))
+
 (defmethod parse 'reify*
   [[_ interfaces & methods :as form] env]
   (let [interfaces (conj (disj (set (mapv maybe-class interfaces)) Object)
                          clojure.lang.IObj)
-        methods (mapv #(assoc (analyze-method-impls % env)
+        name (gensym "reify__")
+        class-name (symbol (str (namespace-munge *ns*) "." name))
+        menv (assoc env :this class-name)
+        methods (mapv #(assoc (analyze-method-impls % menv)
                          :interfaces interfaces) methods)]
+
+    (-deftype name class-name [] interfaces)
+
     (wrapping-meta
      {:op         :reify
       :env        env
       :form       form
       :methods    methods
       :interfaces interfaces})))
-
-(defn -deftype [name class-name args interfaces]
-  (let [interfaces (mapv #(symbol (.getName ^Class %)) interfaces)]
-    (eval (list 'deftype* name class-name args :implements interfaces))))
 
 (defmethod parse 'deftype*
   [[_ name class-name fields _ interfaces & methods :as form] env]
@@ -150,7 +156,8 @@
         menv (assoc env
                :locals (zipmap fields fields-expr)
                :this class-name)
-        methods (mapv #(analyze-method-impls % menv) methods)]
+        methods (mapv #(assoc (analyze-method-impls % menv)
+                         :interfaces interfaces) methods)]
 
     (-deftype name class-name fields interfaces)
 

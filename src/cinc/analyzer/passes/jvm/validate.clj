@@ -123,12 +123,10 @@
     ast))
 
 (defn validate-tag [tag]
-  (if (set? tag)
-    (set (mapv validate-tag tag))
-    (if-let [the-class (u/maybe-class tag)]
-      the-class
-      (throw (ex-info (str "class not found: " tag)
-                      {:class tag})))))
+  (if-let [the-class (u/maybe-class tag)]
+    the-class
+    (throw (ex-info (str "class not found: " tag)
+                    {:class tag}))))
 
 (defmethod -validate :def
   [{:keys [var init] :as ast}]
