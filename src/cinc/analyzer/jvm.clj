@@ -4,7 +4,7 @@
              :as ana
              :refer [analyze parse analyze-in-env wrapping-meta analyze-fn-method]
              :rename {analyze -analyze}]
-            [cinc.analyzer.utils :refer [ctx maybe-var walk prewalk]]
+            [cinc.analyzer.utils :refer [ctx maybe-var walk prewalk cycling]]
             [cinc.analyzer.jvm.utils :refer :all :exclude [box]]
             [cinc.analyzer.passes.source-info :refer [source-info]]
             [cinc.analyzer.passes.elide-meta :refer [elide-meta]]
@@ -183,13 +183,6 @@
      :switch-type switch-type
      :test-type   test-type
      :skip-check? skip-check?}))
-
-(defn cycling [& fns]
-  (fn [ast]
-    (let [new-ast (reduce #(%2 %) ast fns)]
-      (if (= new-ast ast)
-        ast
-        (recur new-ast)))))
 
 (defn remove-locals [ast]
   (update-in ast [:env] dissoc :locals))

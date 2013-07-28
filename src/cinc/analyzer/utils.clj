@@ -6,6 +6,13 @@
 (defmacro update! [target f & args]
   (list 'set! target (list* f target args)))
 
+(defn cycling [& fns]
+  (fn [ast]
+    (let [new-ast (reduce #(%2 %) ast fns)]
+      (if (= new-ast ast)
+        ast
+        (recur new-ast)))))
+
 (defn walk
   ([ast pre post]
      (walk ast pre post false))
