@@ -211,4 +211,4 @@ As `:fn-method` but:
 
 * `:this` the analyzed expression of the this parameter
 
-The this paramater is not part of the method parameters
+The this parameter is not part of the method parameters
