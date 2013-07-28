@@ -249,6 +249,7 @@
      :var  var}
     (throw (ex-info (str "var not found: " var) {:var var}))))
 
+;; form is lost, we cannot assoc it back because we rely on :form for e.g. numbers
 (defmethod parse 'quote
   [[_ expr :as form] env]
   (let [expr (if-let [m (meta expr)]
@@ -261,7 +262,7 @@
   {:pre [(= (count form) 3)]}
   (let [target (analyze target (ctx env :expr))
         val (analyze val (ctx env :expr))]
-    (if (:assignable? target) ;; + fields
+    (if (:assignable? target) ;; move validation to validate pass?
       {:op     :set!
        :env    env
        :form   form
@@ -282,8 +283,7 @@
     (when-not (empty? fbs)
       (throw (ex-info "only one finally clause allowed in try expression"
                       {:expr fblocks})))
-    (let [body (when-not (empty? body)
-                 (parse (cons 'do body) (assoc env :in-try true))) ;; avoid recur
+    (let [body (parse (cons 'do body) (assoc env :in-try true)) ;; avoid recur
           cenv (ctx env :expr)
           cblocks (mapv #(parse % cenv) cblocks)
           fblock (parse (cons 'do (rest fblock)) (ctx env :statement))]
@@ -340,7 +340,7 @@
           e (update-in env [:locals] merge (zipmap fns binds))
           binds (mapv (fn [{:keys [name] :as b}]
                         (assoc b
-                          :init (analyze (bindings name) (assoc e :context :expr))))
+                          :init (analyze (bindings name) (ctx e :expr))))
                       binds)
           e (update-in env [:locals] merge (zipmap fns binds))
           body (parse (cons 'do body) e)]
