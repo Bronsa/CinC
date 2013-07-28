@@ -34,7 +34,7 @@ e.g
 ```clojure
 user=> (def ^:const pi 3.14)
 ; #'user/pi
-user=> (analyze ''[1 {:foo pi}] {:context :expr})
+user=> (analyze '[1 {:foo pi}] {:context :expr})
 ; {:op :vector, :env {}, :items [{:op :const, :env {:context :expr}, :type :number, :literal? true, :form 1} {:op :map, :env {:context :expr}, :keys [{:op :const, :env {:context :expr}, :type :keyword, :literal? true, :form :foo}], :vals [{:form pi, :env {:context :expr}, :op :var, :name pi, :ns user, :assignable? false, :var #'user/pi}], :form {:foo pi}}], :form [1 {:foo pi}]}
 user=> (postwalk *1 constant-lift)
 ; {:op :const, :env {}, :type :vector, :literal? true, :form [1 {:foo 3.14}]}
