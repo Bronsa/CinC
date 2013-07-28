@@ -201,8 +201,8 @@
                 remove-locals
                 warn-earmuff
                 annotate-branch
-                elide-meta
-                source-info))
+                source-info
+                elide-meta))
             (comp (cycling infer-tag analyze-host-expr validate box)
                infer-constant-tag
                constant-lift))
