@@ -120,6 +120,101 @@ This pass adds `:tag` info to every `:const` node.
 Those pass don't wrap any walking, but **must** be run in a cycling postwalk in this order and **depend** on `infer-constant-tag`.
 
 * `infer-tag` infers the tag of non constant expressions
-* `analyze-host-expr` use reflection to tag and specialize host forms.
+* `analyze-host-expr` use reflection to tag and specialize host forms
 * `validate` use reflection to validate and tag host forms
 * `box` marks nodes to be boxed with `:box` true (still **incomplete**)
+
+#### infer-tag
+
+This pass adds `:tag` all the AST nodes that don't have one and it can be infered.
+
+It also adds `:arglist`, a vector with tagged args to `:fn-method` that get propagated in `:arglists`, a vector of `:arglist` in the `:fn` node; this gets propagated to the locals that refer to the function.
+
+Note that the tag is not validated and can be either a Class or still a Symbol.
+
+#### analyze-host-expr
+
+After this pass, `:host-call` and `:host-field` nodes are no longer present, the pass tries to classify the host expr in `#{:static-field :static-call :instance-call :instance-field}`, if it cannot infer any of those, it will return a `:host-interop` node.
+
+Follows a description of the newly introduced nodes, it should be noted that all those nodes contains a `:tag` field so no `infer-tag` is needed
+
+##### :static-field
+
+* `:assignable?` true if the field is not final
+* `:class` the class to which the field belongs
+* `:field` the name of the field, a symbol
+
+##### :static-call
+
+* `:class` the class to which the method belongs
+* `:method` the name of the methods, a symbol
+
+##### :instance-field
+
+* `:instance` the analyzed expression of the instance
+* `:assignable?` true if the field is not final
+* `:class` the class to which the field belongs
+* `:field` the name of the field, a symbol
+
+##### :instance-call
+
+* `:instance` the analyzed expression of the instance
+* `:assignable?` true if the field is not final
+* `:class` the class to which the method belongs
+* `:method` the name of the methods, a symbol
+
+#### validate
+
+The tags are validated to a Class, if no class can be resolved for the tag, an exception is thrown.
+This pass does diffent kind of validation depending on the node:
+
+##### :maybe-class
+
+If the symbol can be resolved to a class, the node gets transformed to a `:const` node with `:type :class` and `:tag Class`, other an exception is thrown.
+
+##### :maybe-host-form
+
+If this node is hit, it means that the macroexpander found out that in `foo/bar` where foo was neither a Class nor a Namespace, so an exception is thrown.
+
+##### :catch/import
+
+The class tries to get resolved, if it can, `:maybe-class` gets renamed to `:class` and bound to the resolved class, otherwise an exception is thrown.
+
+##### :set!
+
+If target is not `:assignable?`, an exception is thrown.
+
+If the target however is a `:host-interop` exception, no exception is thrown since it could be classified later.
+
+##### :new/:static-call/:instance-call
+
+As per `:catch`, `:maybe-class` gets resolved into a `:class` or an exception is thrown.
+Additionally reflection is used to check for valid constructor arity.
+
+If no constructor/method with the given arity is found, an exception is thrown.
+
+If more constructors/methods with the given arity are found and the tags on the arguments are sufficient to pick one of those, `:args` are tagged with the exact types of the constructor/method and the node is tagged with the return type, otherwise only the validated node is returned.
+
+##### :deftype/:reify
+
+If one of the classes in `:interface` is not either an interface or `Object`, an exception is thrown
+
+##### :def
+
+`:tag` and `:arg-lists` are added to the var metadata
+
+##### :invoke
+
+If the `:fn` is a keyword, `:op` gets changed to `:keyword-invoke`, if more than 2 args are passed, an exception is thrown.
+
+If the invoked function has `:arglists` info and no matching arity is found, an exception is thrown.
+
+If the invoked function is a `:const` and not an `IFn`, an exception is thrown.
+
+##### :method
+
+If no matching method can be found on the `:interfaces`, an exception is thrown.
+
+If more than one method can be found an no one can be preferred over the others, an exception is thrown.
+
+Otherwise, the node gets tagged with the returning class of the method, `:args` get tagged with their specific type and `:interface` is addedd to the node to denote the interface of the method.

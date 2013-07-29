@@ -133,7 +133,7 @@
   [{:keys [var init] :as ast}]
   (when-let [tag (:tag init)]
     (alter-meta! var assoc :tag tag))
-  (when-let [arglists (:arg-lists init)]
+  (when-let [arglists (:arglists init)]
     (doseq [arglist arglists]
       (when-let [tag (:tag (meta arglist))]
         (validate-tag tag)))
@@ -150,13 +150,12 @@
         (throw (ex-info (str "Cannot invoke keyword with " argc " arguments")
                         {:form form})))
       (do
-        (when (:arg-lists fn)
+        (when (:arglists fn)
           (when-not (arglist-for-arity fn argc)
             (throw (ex-info (str "No matching arity found for function: " (:name fn))
                             {:arity (count args)
                              :fn    fn }))))
         (when (and (= :const (:op fn))
-                   (not= nil (:form fn))
                    (not (instance? IFn (:form fn))))
           (throw (ex-info (str (class (:form fn)) " is not a function, but it's used as such")
                           {:form form})))
@@ -187,14 +186,14 @@
                                (mapcat #(u/instance-methods % name fixed-arity) interfaces)))]
       (if-let [[m & rest] (seq (filter (partial tag-match? (mapv :tag params)) methods))]
         (if (empty? rest)
-          (let [ret-tag (u/maybe-class (:return-type m))
-                i-tag (u/maybe-class (:declaring-class m))
+          (let [ret-tag  (u/maybe-class (:return-type m))
+                i-tag    (u/maybe-class (:declaring-class m))
                 arg-tags (mapv u/maybe-class (:parameter-types m))
-                args (mapv (fn [arg tag] (assoc arg :tag tag)) params arg-tags)]
+                args     (mapv (fn [arg tag] (assoc arg :tag tag)) params arg-tags)]
             (assoc (dissoc ast :interfaces)
               :interface i-tag
-              :tag ret-tag
-              :args args))
+              :tag       ret-tag
+              :args      args))
           (throw (ex-info (str "ambiguous method signature for method: " name)
                           {:method     name
                            :interfaces interfaces

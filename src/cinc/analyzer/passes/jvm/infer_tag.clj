@@ -86,19 +86,19 @@
     (merge ast
            (when-let [tag (:tag init)]
              {:tag tag})
-           (when-let [arglists (:arg-lists init)]
-             {:arg-lists arglists}))
+           (when-let [arglists (:arglists init)]
+             {:arglists arglists}))
     ast))
 
 (defmethod -infer-tag :local
   [{:keys [init] :as ast}]
   (if init
-        (merge ast
+    (merge ast
            (when-let [tag (:tag init)]
              {:tag tag})
-           (when-let [arglists (:arg-lists init)]
-             {:arg-lists arglists}))
-        ast))
+           (when-let [arglists (:arglists init)]
+             {:arglists arglists}))
+    ast))
 
 (defmethod -infer-tag :var
   [{:keys [var] :as ast}]
@@ -106,16 +106,17 @@
     (if (not dynamic)
       (merge ast
              (when tag {:tag tag})
-             (when arg-lists {:arg-lists arg-lists}))
+             (when arg-lists {:arglists arg-lists}))
       ast)))
 
 (defmethod -infer-tag :def
   [{:keys [init var] :as ast}]
   (let [ast (assoc ast :tag Var)]
-    (if-let [arglists (:arg-lists init)]
-      (assoc ast :arg-lists arglists)
+    (if-let [arglists (:arglists init)]
+      (assoc ast :arglists arglists)
       ast)))
 
+;; smarter with subsumes
 (defmethod -infer-tag :if
   [{:keys [then else] :as ast}]
   (let [[then-tag else-tag] (mapv :tag [then else])]
@@ -174,7 +175,7 @@
 
 (defmethod -infer-tag :fn
   [{:keys [methods] :as ast}]
-  (assoc ast :arg-lists (mapv :arglist methods)))
+  (assoc ast :arglists (mapv :arglist methods)))
 
 (defmethod -infer-tag :try
   [{:keys [body catches] :as ast}]
