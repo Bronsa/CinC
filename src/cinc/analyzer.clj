@@ -497,7 +497,7 @@
         args (apply pfn expr)
         env (assoc env :name sym)
         doc (or (:doc args) (-> sym meta :doc))
-        meta ((fnil merge {}) (meta sym) (when doc {:doc doc}))
+        meta (merge (meta sym) (when doc {:doc doc}))
         meta-expr (when meta (analyze meta
                                       (ctx env :expr)))
         var (doto (intern *ns* sym)
