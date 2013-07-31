@@ -42,8 +42,10 @@
         :else else))))
 
 (defmethod box :def
-  [ast]
-  (assoc-in ast [:init :box] true))
+  [{:keys [init] :as ast}]
+  (if init
+    (assoc-in ast [:init :box] true)
+    ast))
 
 (defmethod box :vector
   [{:keys [items] :as ast}]

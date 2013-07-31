@@ -177,7 +177,7 @@
         [tests thens] (reduce (fn [[te th] [min-hash [test then]]]
                                 (let [test-expr (-analyze (list 'quote test) env)
                                       then-expr (-analyze then env)]
-                                  [(conj te {:op :case-test
+                                  [(conj te {:op   :case-test
                                              :hash min-hash
                                              :test test-expr})
                                    (conj th {:op   :case-then
