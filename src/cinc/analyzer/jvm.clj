@@ -119,7 +119,8 @@
 
 (defn -deftype [name class-name args interfaces]
   (let [interfaces (mapv #(symbol (.getName ^Class %)) interfaces)]
-    (eval (list 'deftype* name class-name args :implements interfaces))))
+    (eval (list 'do (list 'deftype* name class-name args :implements interfaces)
+                (list 'import class-name)))))
 
 (defmethod parse 'reify*
   [[_ interfaces & methods :as form] env]
