@@ -169,14 +169,12 @@
 (defmethod -validate :deftype
   [{:keys [name class-name fields interfaces] :as ast}]
   (validate-interfaces interfaces)
-  (if class-name
-    (dissoc (assoc ast :tag (u/maybe-class class-name)) :class-name)
-    ast))
+  (assoc ast :class-name (u/maybe-class class-name)))
 
 (defmethod -validate :reify
-  [{:keys [interfaces] :as ast}]
+  [{:keys [interfaces class-name] :as ast}]
   (validate-interfaces interfaces)
-  ast)
+  (assoc ast :class-name (u/maybe-class class-name)))
 
 (defmethod -validate :method
   [{:keys [name interfaces tag params fixed-arity] :as ast}]

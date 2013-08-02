@@ -138,6 +138,7 @@
      {:op         :reify
       :env        env
       :form       form
+      :class-name class-name
       :methods    methods
       :interfaces interfaces})))
 

@@ -206,6 +206,14 @@
       (assoc ast :tag tag)
       ast)))
 
+(defmethod -infer-tag :deftype
+  [ast]
+  (assoc ast :tag Class))
+
+(defmethod -infer-tag :reify
+  [{:keys [class-name] :as ast}]
+  (assoc ast :tag class-name))
+
 (defmethod infer-constant-tag :default [ast] ast)
 (defmethod -infer-tag :default [ast] ast)
 
