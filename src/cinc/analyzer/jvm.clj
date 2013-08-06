@@ -202,8 +202,10 @@
      :test-type   test-type
      :skip-check? skip-check?}))
 
-(defn remove-locals [ast]
-  (update-in ast [:env] dissoc :locals))
+(defn cleanup [ast]
+  (-> ast
+    (update-in [:env] dissoc :locals)
+    (update-in [:env] dissoc :loop-locals)))
 
 (defn analyze
   "Given an environment, a map containing
@@ -216,7 +218,7 @@
       uniquify-locals
       (walk (fn [ast]
               (-> ast
-                remove-locals
+                cleanup
                 warn-earmuff
                 annotate-branch
                 source-info

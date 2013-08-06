@@ -404,10 +404,11 @@
          (= (count exprs) (count loop-locals))]}
   (let [exprs (mapv (analyze-in-env (ctx env :expr))
                     exprs)]
-    {:op    :recur
-     :env   env
-     :form  form
-     :exprs exprs}))
+    {:op          :recur
+     :env         env
+     :loop-locals loop-locals
+     :form        form
+     :exprs       exprs}))
 
 (defn analyze-fn-method [[params & body :as form] {:keys [locals] :as env}]
   {:pre [(every? symbol? params)
