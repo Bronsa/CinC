@@ -1,7 +1,6 @@
 (ns cinc.analyzer.passes.jvm.box
   (:require [cinc.analyzer.jvm.utils :as u]))
 
-
 (defmulti box :op)
 
 (defmacro if-let-box [class then else]
@@ -14,14 +13,14 @@
 (defmethod box :instance-call
   [{:keys [class] :as ast}]
   (if-let-box class
-   (assoc (update-in ast [:instance] :box true)
+   (assoc (assoc-in ast [:instance] :box true)
      :class class)
    ast))
 
 (defmethod box :instance-field
   [{:keys [class] :as ast}]
   (if-let-box class
-    (assoc (update-in ast [:instance] :box true)
+    (assoc (assoc-in ast [:instance] :box true)
       :class class)
     ast))
 
