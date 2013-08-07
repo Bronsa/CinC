@@ -20,11 +20,11 @@
 
 (defmulti ^Class maybe-class class)
 
-(defn- ^Type asm-type [^String s]
+(defn ^Type asm-type [s]
   (when s
     (if-let [class (maybe-class s)]
       (Type/getType class)
-      (Type/getType s))))
+      (Type/getType ^String s))))
 
 (defn array-class [element-type]
   (RT/classForName
