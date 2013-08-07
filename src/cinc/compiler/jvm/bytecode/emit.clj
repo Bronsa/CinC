@@ -3,6 +3,7 @@
   (:require [cinc.analyzer.jvm.utils :refer [asm-type]]))
 
 (defmulti -emit (fn [{:keys [op]} _] op))
+(defmulti -emit-set! (fn [{:keys [op]} _] op))
 
 (defn emit
   ([ast]
@@ -34,6 +35,21 @@
 (defn emit-var [var frame]
   (emit-constant (get-in frame [:vars var]) frame))
 
+(defmethod -emit :var
+  [{:keys [var]} frame]
+  [(emit-var var frame)
+   [:invoke-virtual [(if (u/dynamic? var) :get-raw-root :get)]]])
+
+(defmethod -emit-set! :var
+  [{:keys [var val]} frame]
+  [(emit-var var frame)
+   (emit val frame)
+   [:invoke-virtual [:set :object]]])
+
+(defmethod -emit :the-var
+  [{:keys [var]} frame]
+  [(emit-var var frame)])
+
 (defmethod -emit :def
   [{:keys [var meta init]} frame]
   (into
@@ -50,6 +66,10 @@
      [[:dup]
       (emit init frame)
       [:invoke-virtual [:bind-root :object]]])))
+
+(defmethod -emit :set!
+  [{:keys [target val]} frame]
+  (-emit-set! target val frame))
 
 (defn emit-as-array [list frame]
   (into [[:push (int (count list))]
