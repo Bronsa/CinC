@@ -63,9 +63,9 @@
                                          field " for class " class)
                                     {:instance target-expr
                                      :field    field}))))
-    {:op          :host-interop
-     :target-expr target-expr
-     :m-or-f      field}))
+    {:op     :host-interop
+     :target target-expr
+     :m-or-f field}))
 
 (defn -analyze-host-expr
   [target-type m-or-f target-expr class env]
@@ -83,14 +83,14 @@
                                m-or-f " for class " class)
                           {:instance target-expr
                            :m-or-f   m-or-f})))
-      {:op          :host-interop
-       :target-expr target-expr
-       :m-or-f      m-or-f})))
+      {:op     :host-interop
+       :target target-expr
+       :m-or-f m-or-f})))
 
 (defn analyze-host-expr
   [{:keys [op form env] :as ast}]
   (if (#{:host-interop :host-call :host-field} op)
-    (let [target (:target-expr ast)
+    (let [target (:target ast)
           class? (maybe-class (:form target))
           target-type (if class? :static :instance)]
       (merge {:form form
