@@ -1,6 +1,7 @@
 (ns cinc.compiler.jvm.bytecode.emit
-  (:require [cinc.analyzer.utils :as u])
-  (:require [cinc.analyzer.jvm.utils :refer [asm-type]]))
+  (:require [cinc.analyzer.utils :as u]
+            [cinc.analyzer.jvm.utils :refer [asm-type]])
+  (:import [org.objectweb.asm Opcodes]))
 
 (defmulti -emit (fn [{:keys [op]} _] op))
 (defmulti -emit-set! (fn [{:keys [op]} _] op))
@@ -23,7 +24,7 @@
 (defmethod -emit :import
   [{:keys [class]} frame]
   ^:value
-  [[:get-static :rt/current-ns]
+  [[:get-static :rt/current-ns :var]
    [:invoke-virtual [:deref]]
    [:check-cast :ns]
    [:push class]
@@ -55,36 +56,45 @@
 
 (defn emit-constant [id frame]
   (let [c (get-in frame [:constants id])]
-    [:get-static (frame :class) (str "const__" id) (asm-type (class c))]))
+    ^:value
+    [(case c
+       ;; (true false)
+       ;; [:get-static (if c :boolean/TRUE :boolean/FALSE) :boolean]
+
+       nil
+       [:visit-inst Opcodes/ACONST_NULL]
+
+       [:get-static (frame :class) (str "const__" id) (class c)])])) ;; asm-type (after specialize)
+
+(defmethod -emit :const
+  [{:keys [id]} frame]
+  (emit-constant id frame))
 
 (defn emit-var [var frame]
   (emit-constant (get-in frame [:vars var]) frame))
 
 (defmethod -emit :var
   [{:keys [var]} frame]
-  ^:value
-  [(emit-var var frame)
-   [:invoke-virtual [(if (u/dynamic? var) :get :get-raw-root)]]])
+  (into
+   (emit-var var frame)
+   [:invoke-virtual [(if (u/dynamic? var) :get :get-raw-root)]]))
 
 (defmethod -emit-set! :var
   [{:keys [var val]} frame]
   (into
-   ^:value
-   [(emit-var var frame)]
+   (emit-var var frame)
    (conj
     (emit val frame)
     [:invoke-virtual [:set :object]])))
 
 (defmethod -emit :the-var
   [{:keys [var]} frame]
-  ^:value
-  [(emit-var var frame)])
+  (emit-var var frame))
 
 (defmethod -emit :def
   [{:keys [var meta init]} frame]
   (into
-   ^:value
-   [(emit-var var frame)]
+   (emit-var var frame)
    (when (u/dynamic? var) ;; why not when macro?
      [[:push true]
       [:invoke-virtual [:set-dynamic :bool]]])
