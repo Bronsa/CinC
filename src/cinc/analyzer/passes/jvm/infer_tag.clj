@@ -91,14 +91,16 @@
     ast))
 
 (defmethod -infer-tag :local
-  [{:keys [init] :as ast}]
+  [{:keys [init local] :as ast}]
   (if init
     (merge ast
            (when-let [tag (:tag init)]
              {:tag tag})
            (when-let [arglists (:arglists init)]
              {:arglists arglists}))
-    ast))
+    (if (= :fn local)
+      (assoc ast :tag AFunction)
+      ast)))
 
 (defmethod -infer-tag :var
   [{:keys [var] :as ast}]
