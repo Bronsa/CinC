@@ -228,7 +228,7 @@
     (is (= :deftype (-> dt-ast :op)))
     (is (= '[a b] (->> dt-ast :fields (mapv :name))))
     (is (= '[append] (->> dt-ast :methods (mapv :name))))
-    (is (= 'user.x (-> dt-ast :class-name .getName symbol))))))
+    (is (= 'user.x (-> dt-ast :class-name .getName symbol))))
 
   (let [r-ast (jvm-ast (reify
                          Object (toString [this] "")

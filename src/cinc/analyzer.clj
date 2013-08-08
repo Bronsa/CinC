@@ -526,20 +526,20 @@
         call? (and (not field?) (seq? m-or-f))
         expr (cond
               call?
-              {:op          :host-call
-               :target-expr target-expr
-               :method      (first m-or-f)
-               :args        (mapv (analyze-in-env (ctx env :expr)) (next m-or-f))}
+              {:op     :host-call
+               :target target-expr
+               :method (first m-or-f)
+               :args   (mapv (analyze-in-env (ctx env :expr)) (next m-or-f))}
 
               field?
-              {:op          :host-field
-               :target-expr target-expr
-               :field       m-or-f}
+              {:op     :host-field
+               :target target-expr
+               :field  m-or-f}
 
               :else
-              {:op          :host-interop ;; either field access or single method call
-               :target-expr target-expr
-               :m-or-f      m-or-f})]
+              {:op     :host-interop ;; either field access or single method call
+               :target target-expr
+               :m-or-f m-or-f})]
     (merge {:form form
             :env  env}
            expr)))

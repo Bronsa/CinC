@@ -78,17 +78,17 @@
 
 (defmethod parse 'monitor-enter
   [[_ target :as form] env]
-  {:op          :monitor-enter
-   :env         env
-   :form        form
-   :target-expr (-analyze target (ctx env :expr))})
+  {:op     :monitor-enter
+   :env    env
+   :form   form
+   :target (-analyze target (ctx env :expr))})
 
 (defmethod parse 'monitor-exit
   [[_ target :as form] env]
-  {:op          :monitor-exit
-   :env         env
-   :form        form
-   :target-expr (-analyze target (ctx env :expr))})
+  {:op     :monitor-exit
+   :env    env
+   :form   form
+   :target (-analyze target (ctx env :expr))})
 
 (defmethod parse 'clojure.core/import*
   [[_ class :as form] env]
