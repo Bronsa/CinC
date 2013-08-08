@@ -28,6 +28,21 @@
    [:check-cast :throwable]
    [:throw-exception]])
 
+(def nil-expr
+  {:op :const :type :nil :form nil})
+
+(defmethod -emit :monitor-enter
+  [{:keys [target]} frame]
+  [(emit target frame)
+   [:monitor-enter]
+   (emit nil-expr frame)]) ;; return nil
+
+(defmethod -emit :monitor-exit
+  [{:keys [target]} frame]
+  [(emit target frame)
+   [:monitor-exit]
+   (emit nil-expr frame)]) ;; return nil
+
 (defn emit-constant [id frame]
   (let [c (get-in frame [:constants id])]
     [:get-static (frame :class) (str "const__" id) (asm-type (class c))]))
