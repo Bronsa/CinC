@@ -38,7 +38,7 @@
 (defmethod -emit :var
   [{:keys [var]} frame]
   [(emit-var var frame)
-   [:invoke-virtual [(if (u/dynamic? var) :get-raw-root :get)]]])
+   [:invoke-virtual [(if (u/dynamic? var) :get :get-raw-root)]]])
 
 (defmethod -emit-set! :var
   [{:keys [var val]} frame]
