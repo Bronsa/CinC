@@ -16,7 +16,7 @@
             [cinc.analyzer.passes.jvm.analyze-host-expr :refer [analyze-host-expr]])
   (:import (clojure.lang IPersistentVector IPersistentMap
                          IPersistentSet ISeq Keyword Var
-                         Symbol IFn)
+                         Symbol AFunction)
            java.util.regex.Pattern))
 
 (defmacro ast [form]
@@ -45,7 +45,7 @@
   (is (= Pattern (-> (ast #"foo") infer-constant-tag :tag)))
   (is (= Var (-> (ast #'+)  infer-constant-tag :tag)))
   (is (= Boolean (-> (ast true) infer-constant-tag :tag)))
-  (is (= IFn (-> (ast #()) infer-constant-tag :tag))))
+  (is (= AFunction (-> (ast #()) infer-constant-tag :tag))))
 
 (deftest annotate-branch-test
   (let [i-ast (annotate-branch (ast (if 1 2 3)))]
@@ -167,7 +167,7 @@
   (is (= Pattern (-> (jvm-ast #"foo") :tag)))
   (is (= Var (-> (jvm-ast #'+)  :tag)))
   (is (= Boolean (-> (jvm-ast true) :tag)))
-  (is (= IFn (-> (jvm-ast #()) :tag)))
+  (is (= AFunction (-> (jvm-ast #()) :tag)))
 
   (let [i-ast (jvm-ast (if 1 2 3))]
     (is (:branch? i-ast))

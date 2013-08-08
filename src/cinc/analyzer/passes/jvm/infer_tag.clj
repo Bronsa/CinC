@@ -3,7 +3,7 @@
             [cinc.analyzer.jvm.utils :refer [convertible?]])
   (:import (clojure.lang IPersistentVector IPersistentMap
                          IPersistentSet ISeq Keyword Var
-                         Symbol IFn)
+                         Symbol AFunction)
            java.util.regex.Pattern))
 
 (defmulti infer-constant-tag :op)
@@ -71,7 +71,7 @@
 
 (defmethod infer-constant-tag :fn
   [ast]
-  (assoc ast :tag IFn))
+  (assoc ast :tag AFunction))
 
 (defmethod infer-constant-tag :const
   [{:keys [op type form] :as ast}]
