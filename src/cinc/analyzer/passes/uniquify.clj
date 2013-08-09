@@ -66,7 +66,7 @@
 (defmethod -uniquify-locals :binding
   [{:keys [name local] :as ast}]
   (if (not (#{:field :let :letfn :loop} local))
-    (do (assoc ast :name (normalize name)))
+    (assoc ast :name (normalize name))
     ast))
 
 (defmethod -uniquify-locals :default [ast] ast)
