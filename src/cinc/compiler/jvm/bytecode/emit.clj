@@ -160,3 +160,9 @@
        [:check-cast :i-persistent-map]
        [:invoke-interface [:i-obj/with-meta :i-persistent-map]]))
      {:value true})))
+
+(defmethod -emit :do
+  [{:keys [statements ret]} frame]
+  (with-meta
+    (vec (mapcat #(emit % frame) (conj statements ret)))
+    {:value t}))
