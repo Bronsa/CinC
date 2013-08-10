@@ -1,5 +1,5 @@
 (ns cinc.analyzer.passes.jvm.clear-locals
-  (:require [cinc.analyzer.utils :refer [update! postwalk prewalk]]))
+  (:require [cinc.analyzer.utils :refer [update! walk]]))
 
 (defmulti annotate-branch :op)
 
@@ -17,7 +17,6 @@
     (assoc ast :should-not-clear true)
     ast))
 
-;; when emitting should check if it's a closed over, only clear when it's a ^:once fn*
 (defmethod annotate-branch :fn-method
   [ast]
   (assoc ast :path? true))
@@ -40,13 +39,15 @@
 (defmethod annotate-branch :default [ast] ast)
 
 (def ^:dynamic *clears* {:branch-clears #{}
-                         :clears        #{}})
+                         :clears        #{}
+                         :closes        #{}})
 
 (defn -clear-locals
-  [{:keys [op name local path? should-not-clear] :as ast}]
+  [{:keys [op name  local path? should-not-clear env] :as ast}]
   (if (and (= :local op)
-           (#{:let :loop :letfn :arg} local) ;; could alternatively tag #{:field :this :catch}
-                                             ;; :should-not-clear
+           (#{:let :loop :letfn :arg} local)
+           (or (not ((:closes *clears*) name))
+               (:once env))
            (not ((:clears *clears*) name))
            (not should-not-clear))
     (do
@@ -67,6 +68,12 @@
         (update! *clears* assoc :branch-clears #{})))
     ast))
 
+(defn -propagate-closed-overs
+  [{:keys [op closed-overs] :as ast}]
+  (when (#{:reify :fn} op)
+    (update! *clears* assoc-in [:closes] (or closed-overs #{})))
+  ast)
+
 (defn clear-locals [ast]
   (binding [*clears* *clears*]
-    (postwalk ast clear-locals-around :reversed)))
+    (walk ast -propagate-closed-overs clear-locals-around :reversed)))

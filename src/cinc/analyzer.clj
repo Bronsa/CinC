@@ -445,7 +445,7 @@
      :body        body}))
 
 (defmethod parse 'fn*
-  [[_ & args :as form] {:keys [name] :as env}]
+  [[op & args :as form] {:keys [name] :as env}]
   (let [[name meths] (if (symbol? (first args))
                        [(first args) (next args)]
                        [name (seq args)])
@@ -456,6 +456,7 @@
                               :local :fn
                               :name  name})
               env)
+        e (assoc e :once (-> op meta :once boolean))
         meths (if (vector? (first meths)) (list meths) meths) ;;turn (fn [] ...) into (fn ([]...))
         menv (if (> (count meths) 1) (ctx env :expr) e)
         methods-exprs (mapv #(analyze-fn-method % menv) meths)
