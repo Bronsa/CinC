@@ -122,9 +122,9 @@
                         ((ns-map *ns*) name))]
            (when (var? var)
              (let [var-ns (.ns ^Var var)]
-               (when (and (not= *ns* var-ns)
-                          (private? var))
-                 (throw (ex-info (str "var: " sym " is not public") {:var sym})))
+               #_(when (and (not= *ns* var-ns)
+                            (private? var))
+                   (throw (ex-info (str "var: " sym " is not public") {:var sym})))
                (if (and (macro? var) (not allow-macro?))
                  (throw (ex-info (str "can't take value of a macro: " var) {:var var}))
                  var)))
