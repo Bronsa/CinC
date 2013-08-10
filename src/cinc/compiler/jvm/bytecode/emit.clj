@@ -147,3 +147,16 @@
   (conj
    (emit-as-array items frame)
    [:invoke-static [:rt/set :objects]]))
+
+(defmethod -emit :with-meta
+  [{:keys [meta expr]} frame]
+  (with-meta
+    (into
+     (emit expr frame)
+     (into
+      [[:check-cast :i-obj]]
+      (conj
+       (emit meta frame)
+       [:check-cast :i-persistent-map]
+       [:invoke-interface [:i-obj/with-meta :i-persistent-map]]))
+     {:value true})))
