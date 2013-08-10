@@ -203,9 +203,12 @@
      :skip-check? skip-check?}))
 
 (defn cleanup [ast]
-  (-> ast
-    (update-in [:env] dissoc :locals)
-    (update-in [:env] dissoc :loop-locals)))
+  (let [ast (-> ast
+              (update-in [:env] dissoc :locals)
+              (update-in [:env] dissoc :loop-locals))]
+    (if (= :local (:op ast))
+      (dissoc ast :init)
+      ast)))
 
 (defn analyze
   "Given an environment, a map containing
@@ -218,7 +221,6 @@
       uniquify-locals
       (walk (fn [ast]
               (-> ast
-                cleanup
                 warn-earmuff
                 annotate-branch
                 source-info
@@ -226,10 +228,11 @@
             (comp (cycling infer-tag analyze-host-expr validate box)
                infer-constant-tag
                constant-lift))
-      (prewalk (collect :constants
-                        :callsites
-                        :closed-overs
-                        :vars))
+      (prewalk (comp (collect :constants
+                           :callsites
+                           :closed-overs
+                           :vars)
+                  cleanup))
       clear-locals)))
 
 (defn analyze-file
