@@ -43,7 +43,7 @@
                          :closes        #{}})
 
 (defn -clear-locals
-  [{:keys [op name  local path? should-not-clear env] :as ast}]
+  [{:keys [op name local path? should-not-clear env] :as ast}]
   (if (and (= :local op)
            (#{:let :loop :letfn :arg} local)
            (or (not ((:closes *clears*) name))
@@ -70,7 +70,7 @@
 
 (defn -propagate-closed-overs
   [{:keys [op closed-overs] :as ast}]
-  (when (#{:reify :fn} op)
+  (when (#{:reify :fn :deftype} op)
     (update! *clears* assoc-in [:closes] (or closed-overs #{})))
   ast)
 
