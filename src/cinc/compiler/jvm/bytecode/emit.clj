@@ -58,13 +58,13 @@
   (let [c (get-in frame [:constants id])]
     ^:value
     [(case c
-       ;; (true false)
-       ;; [:get-static (if c :boolean/TRUE :boolean/FALSE) :boolean]
+       (true false)
+       [:get-static (if c :boolean/TRUE :boolean/FALSE) :boolean]
 
        nil
-       [:visit-inst Opcodes/ACONST_NULL]
+       [:visit-inst :opcodes/ACONST_NULL]
 
-       [:get-static (frame :class) (str "const__" id) (class c)])])) ;; asm-type (after specialize)
+       [:get-static (symbol (name (frame :class)) (str "const__" id)) (class c)])]))
 
 (defmethod -emit :const
   [{:keys [id]} frame]
