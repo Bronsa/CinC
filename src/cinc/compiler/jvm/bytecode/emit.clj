@@ -13,12 +13,17 @@
   ([ast]
      (emit ast {}))
   ([{:keys [env] :as ast} frame]
-     (let [bytecode (-emit ast frame)]
-       (into bytecode
-             (if (= :statement (:context env))
-               (when-not (#{:untyped} (meta bytecode))
-                 [[:pop]])
-               (when (#{:untyped} (meta bytecode))
+     (let [bytecode (-emit ast frame)
+           statement? (= :statement (:context env))
+           m (meta bytecode)]
+       (if statement?
+         (if (:const m)
+           []
+           (into bytecode
+                 (when (not= :untyped m)
+                   [[:pop]])))
+         (into bytecode
+               (when (= :untyped m)
                  [(emit nil-expr)]))))))
 
 (defmethod -emit :import
@@ -55,7 +60,7 @@
 
 (defn emit-constant [id frame]
   (let [c (get-in frame [:constants id])]
-    ^:value
+    ^:const
     [(case c
        (true false)
        [:get-static (if c :boolean/TRUE :boolean/FALSE) :boolean]
