@@ -44,29 +44,25 @@
 
 (defmethod -emit :monitor-enter
   [{:keys [target]} frame]
-  (with-meta
-    (into
-     (emit target frame)
-     [:monitor-enter])
-    {:untyped true}))
+  `^:untyped
+  [~@(emit target frame)
+   [:monitor-enter]])
 
 (defmethod -emit :monitor-exit
   [{:keys [target]} frame]
-  (with-meta
-    (into
-     (emit target frame)
-     [:monitor-exit])
-    {:untyped true}))
+  `^:untyped
+  [~@(emit target frame)
+   [:monitor-exit]])
 
 (defn emit-constant [id frame]
   (let [c (get-in frame [:constants id])]
     ^:const
     [(case c
        (true false)
-       [:get-static (if c :boolean/TRUE :boolean/FALSE) :boolean]
+       [:get-static (if c :boolean/true :boolean/false) :boolean]
 
        nil
-       [:visit-inst :opcodes/ACONST_NULL]
+       [:visit-inst :opcodes/aconst-null]
 
        [:get-static (symbol (name (frame :class)) (str "const__" id)) (class c)])]))
 
