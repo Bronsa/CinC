@@ -24,8 +24,10 @@
       :class class)
     ast))
 
-(defn -box [x]
-  (assoc x :box true))
+(defn -box [{:keys [tag] :as ast}]
+  (if (u/primitive? tag)
+    (assoc ast :box true)
+    ast))
 
 (defmethod box :if
   [{:keys [test then else box] :as ast}]
