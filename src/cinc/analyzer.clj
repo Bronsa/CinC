@@ -446,16 +446,17 @@
 
 (defmethod parse 'fn*
   [[op & args :as form] {:keys [name] :as env}]
-  (let [[name meths] (if (symbol? (first args))
+  (let [[n meths] (if (symbol? (first args))
                        [(first args) (next args)]
-                       [name (seq args)])
-        e (if name (assoc-in env [:locals name]
+                       [nil (seq args)])
+        e (if n (assoc-in env [:locals name]
                              {:op    :binding
                               :env   env
                               :form  name
                               :local :fn
                               :name  name})
               env)
+        name (or n name)
         e (assoc e :once (-> op meta :once boolean))
         meths (if (vector? (first meths)) (list meths) meths) ;;turn (fn [] ...) into (fn ([]...))
         menv (if (> (count meths) 1) (ctx env :expr) e)
