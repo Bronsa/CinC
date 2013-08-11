@@ -16,20 +16,19 @@
      (let [bytecode (-emit ast frame)]
        (into bytecode
              (if (= :statement (:context env))
-               (when (#{:value} (meta bytecode))
+               (when-not (#{:untyped} (meta bytecode))
                  [[:pop]])
                (when (#{:untyped} (meta bytecode))
                  [(emit nil-expr)]))))))
 
 (defmethod -emit :import
   [{:keys [class]} frame]
-  ^:value
   [[:get-static :rt/current-ns :var]
-   [:invoke-virtual [:deref]]
+   [:invoke-virtual [:deref] :object]
    [:check-cast :ns]
    [:push class]
-   [:invoke-static [:class/for-name :string]]
-   [:invoke-virtual [:import-class :class]]])
+   [:invoke-static [:class/for-name :string] :class]
+   [:invoke-virtual [:import-class :class]] :class])
 
 (defmethod -emit :throw
   [{:keys [exception]} frame]
@@ -77,15 +76,13 @@
   [{:keys [var]} frame]
   (into
    (emit-var var frame)
-   [:invoke-virtual [(if (u/dynamic? var) :get :get-raw-root)]]))
+   [:invoke-virtual [(if (u/dynamic? var) :get :get-raw-root)] :object]))
 
 (defmethod -emit-set! :var
   [{:keys [var val]} frame]
-  (into
-   (emit-var var frame)
-   (conj
-    (emit val frame)
-    [:invoke-virtual [:set :object]])))
+  `[~@(emit-var var frame)
+    ~@(emit val frame)
+    [:invoke-virtual [:set :object] :object]])
 
 (defmethod -emit :the-var
   [{:keys [var]} frame]
@@ -93,24 +90,23 @@
 
 (defmethod -emit :def
   [{:keys [var meta init]} frame]
-  (into
-   (emit-var var frame)
-   (when (u/dynamic? var) ;; why not when macro?
-     [[:push true]
-      [:invoke-virtual [:set-dynamic :bool]]])
-   (when meta
-     (into
-      [[:dup]]
-      (conj
-       (emit meta frame)
-       [:check-cast :i-persistent-map]
-       [:invoke-virtual [:set-meta :i-persistent-map]])))
-   (when init
-     (into
-      [[:dup]]
-      (conj
-       (emit init frame)
-       [:invoke-virtual [:bind-root :object]])))))
+  `[~@(emit-var var frame)
+    ~@(when (u/dynamic? var) ;; why not when macro?
+        [[:push true]
+         [:invoke-virtual [:set-dynamic :bool] :var]])
+    ~@(when meta
+      (into
+       [[:dup]]
+       (conj
+        (emit meta frame)
+        [:check-cast :i-persistent-map]
+        [:invoke-virtual [:set-meta :i-persistent-map] :void])))
+    ~@(when init
+        (into
+         [[:dup]]
+         (conj
+          (emit init frame)
+          [:invoke-virtual [:bind-root :object] :void])))])
 
 (defmethod -emit :set!
   [{:keys [target val]} frame]
@@ -118,7 +114,6 @@
 
 (defn emit-as-array [list frame]
   (into
-   ^:value
    [[:push (int (count list))]
     [:new-array :object]]
    (mapcat (fn [i item]
@@ -134,35 +129,31 @@
   [{:keys [keys vals]} frame]
   (conj
    (emit-as-array (interleave keys vals) frame)
-   [:invoke-static [:rt/map-unique-keys :objects]]))
+   [:invoke-static [:rt/map-unique-keys :objects] :i-persistent-map]))
 
 (defmethod -emit :vector
   [{:keys [items]} frame]
   (conj
    (emit-as-array items frame)
-   [:invoke-static [:rt/vector :objects]]))
+   [:invoke-static [:rt/vector :objects] :i-persistent-vector]))
 
 (defmethod -emit :set
   [{:keys [items]} frame]
   (conj
    (emit-as-array items frame)
-   [:invoke-static [:rt/set :objects]]))
+   [:invoke-static [:rt/set :objects] :i-persistent-set]))
 
 (defmethod -emit :with-meta
   [{:keys [meta expr]} frame]
-  (with-meta
-    (into
-     (emit expr frame)
-     (into
-      [[:check-cast :i-obj]]
-      (conj
-       (emit meta frame)
-       [:check-cast :i-persistent-map]
-       [:invoke-interface [:i-obj/with-meta :i-persistent-map]]))
-     {:value true})))
+  (into
+   (emit expr frame)
+   (into
+    [[:check-cast :i-obj]]
+    (conj
+     (emit meta frame)
+     [:check-cast :i-persistent-map]
+     [:invoke-interface [:i-obj/with-meta :i-persistent-map] :i-obj]))))
 
 (defmethod -emit :do
   [{:keys [statements ret]} frame]
-  (with-meta
-    (vec (mapcat #(emit % frame) (conj statements ret)))
-    {:value t}))
+  (vec (mapcat #(emit % frame) (conj statements ret))))
