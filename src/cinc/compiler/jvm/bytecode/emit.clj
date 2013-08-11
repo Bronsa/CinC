@@ -9,10 +9,13 @@
 (def nil-expr
   {:op :const :type :nil :form nil})
 
+(defn emit-box [tag]
+  [])
+
 (defn emit
   ([ast]
      (emit ast {}))
-  ([{:keys [env] :as ast} frame]
+  ([{:keys [env box tag] :as ast} frame]
      (let [bytecode (-emit ast frame)
            statement? (= :statement (:context env))
            m (meta bytecode)]
@@ -24,7 +27,9 @@
                    [[:pop]])))
          (into bytecode
                (when (= :untyped m)
-                 [(emit nil-expr)]))))))
+                 (emit nil-expr))
+               (when box
+                 (emit-box tag)))))))
 
 (defmethod -emit :import
   [{:keys [class]} frame]
