@@ -23,8 +23,11 @@
          (if (:const m)
            []
            (into bytecode
-                 (when (not= :untyped m)
-                   [[:pop]])))
+                 (when (and (not= :untyped m)
+                            (not= Void/TYPE tag))
+                   (if (#{Double/TYPE Long/TYPE} tag)
+                     [[:pop2]]
+                     [[:pop]]))))
          (into bytecode
                (when (= :untyped m)
                  (emit nil-expr))
