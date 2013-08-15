@@ -1,7 +1,6 @@
 (ns cinc.compiler.jvm.bytecode.emit
   (:require [cinc.analyzer.utils :as u]
-            [cinc.analyzer.jvm.utils :refer [asm-type]])
-  (:import [org.objectweb.asm Opcodes]))
+            [cinc.analyzer.jvm.utils :refer [asm-type]]))
 
 (defmulti -emit (fn [{:keys [op]} _] op))
 (defmulti -emit-set! (fn [{:keys [op]} _] op))
@@ -166,3 +165,62 @@
 (defmethod -emit :do
   [{:keys [statements ret]} frame]
   (vec (mapcat #(emit % frame) (conj statements ret))))
+
+(defn label []
+  (keyword (gensym "label__")))
+
+(defn local [] ;; use :local :name?
+  (keyword (gensym "local__")))
+
+(defmethod -emit :try
+  [{:keys [body catches finally env]} frame]
+  (let [[start-label end-label ret-label finally-label] (repeatedly label)
+        catches (mapv #(assoc %
+                         :start-label (label)
+                         :end-label (label)
+                         :c-local (local)) catches)
+        context (:context env)
+        [ret-local finally-local] (repeatedly local)]
+
+    `[[:mark ~start-label]
+      ~@(emit body frame)
+      ~@(when (not= :statement context) ;; do this automatically on emit?
+          [[:visit-var-insn [:object/istore ret-local]]]) ;; specialize type?
+      [:mark ~end-label]
+      ~@(emit finally frame) ;; check for null?
+      [:go-to ~ret-label]
+
+      ;; emit :catch
+      ~@(mapcat
+         (fn [{:keys [body start-label end-label c-local]}]
+           `[[:mark ~start-label]
+             [:visit-var-insn [:object/istore c-local]]
+             ~@(emit body frame)
+             ~@(when (not= :statement context)
+                 [[:visit-var-insn [:object/istore ret-local]]])
+             [:mark ~end-label]
+             ~@(emit finally frame)
+             [:go-to ~ret-label]])
+         catches)
+
+      [:mark ~finally-label]
+      [:visit-var-insn [:object/istore ~finally-local]]
+      ~@(emit finally frame)
+      [:visit-var-insn [:object/iload ~finally-local]]
+      [:throw-exception]
+
+      [:mark ~ret-label]
+      ~@(when (not= :statement context)
+          [[:visit-var-insn [:object/iload ret-local]]])
+      [:mark ~(label)]
+
+      ~@(for [{:keys [^Class class] :as c} catches]
+          [:visit-try-catch-block start-label end-label (:start-label c)
+           (-> class .getName (.replace \. \/))])
+
+      [:visit-try-catch-block start-label end-label finally-label nil]
+      ~@(for [{:keys [start-label end-label] :as c} catches]
+          [:visit-try-catch-block start-label end-label finally-label nil])
+
+      ~@(for [{:keys [local start-label end-label c-local] :as c} catches]
+          [:visit-local-variable (:name local) :objects nil start-label end-label c-local])]))
