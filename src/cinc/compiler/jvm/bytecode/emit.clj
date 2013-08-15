@@ -74,7 +74,7 @@
           nil
           [:visit-inst :opcodes/aconst-null]
 
-          [:get-static (symbol (name (frame :class)) (str "const__" id)) tag])])))
+          [:get-static (keyword (name (frame :class)) (str "const__" id)) tag])])))
 
 (defmethod -emit :const
   [{:keys [id tag]} frame]
@@ -188,7 +188,7 @@
     `[[:mark ~start-label]
       ~@(emit body frame)
       ~@(when (not= :statement context) ;; do this automatically on emit?
-          [[:visit-var-insn [:object/istore ret-local]]]) ;; specialize type?
+          [[:visit-var-insn [:istore :object ret-local]]]) ;; specialize type?
       [:mark ~end-label]
       ~@(emit finally frame) ;; check for null?
       [:go-to ~ret-label]
@@ -196,24 +196,24 @@
       ~@(mapcat
          (fn [{:keys [body start-label end-label c-local]}]
            `[[:mark ~start-label]
-             [:visit-var-insn [:object/istore c-local]]
+             [:visit-var-insn [:istore :object c-local]]
              ~@(emit body frame)
              ~@(when (not= :statement context)
-                 [[:visit-var-insn [:object/istore ret-local]]])
+                 [[:visit-var-insn [:istore :object ret-local]]])
              [:mark ~end-label]
              ~@(emit finally frame)
              [:go-to ~ret-label]])
          catches)
 
       [:mark ~finally-label]
-      [:visit-var-insn [:object/istore ~finally-local]]
+      [:visit-var-insn [:istore :object ~finally-local]]
       ~@(emit finally frame)
-      [:visit-var-insn [:object/iload ~finally-local]]
+      [:visit-var-insn [:iload :object ~finally-local]]
       [:throw-exception]
 
       [:mark ~ret-label]
       ~@(when (not= :statement context)
-          [[:visit-var-insn [:object/iload ret-local]]])
+          [[:visit-var-insn [:iload :istore ret-local]]])
       [:mark ~(label)]
 
       ~@(for [{:keys [^Class class] :as c} catches]
