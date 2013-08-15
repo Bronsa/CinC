@@ -61,21 +61,24 @@
   [~@(emit target frame)
    [:monitor-exit]])
 
-(defn emit-constant [id frame]
-  (let [c (get-in frame [:constants id])]
-    ^:const
-    [(case c
-       (true false)
-       [:get-static (if c :boolean/true :boolean/false) :boolean]
+(defn emit-constant
+  ([id frame] (emit-constant id nil frame))
+  ([id tag frame]
+     (let [c (get-in frame [:constants id])
+           tag (or tag (class c))]
+       ^:const
+       [(case c
+          (true false)
+          [:get-static (if c :boolean/true :boolean/false) :boolean]
 
-       nil
-       [:visit-inst :opcodes/aconst-null]
+          nil
+          [:visit-inst :opcodes/aconst-null]
 
-       [:get-static (symbol (name (frame :class)) (str "const__" id)) (class c)])]))
+          [:get-static (symbol (name (frame :class)) (str "const__" id)) tag])])))
 
 (defmethod -emit :const
-  [{:keys [id]} frame]
-  (emit-constant id frame))
+  [{:keys [id tag]} frame]
+  (emit-constant id tag frame))
 
 (defn emit-var [var frame]
   (emit-constant (get-in frame [:vars var]) frame))
@@ -190,7 +193,6 @@
       ~@(emit finally frame) ;; check for null?
       [:go-to ~ret-label]
 
-      ;; emit :catch
       ~@(mapcat
          (fn [{:keys [body start-label end-label c-local]}]
            `[[:mark ~start-label]
