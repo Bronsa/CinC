@@ -73,7 +73,7 @@
            :java.lang.Boolean]
 
           nil
-          [:visit-inst :org.objectweb.asm.Opcodes/ACONST_NULL]
+          [:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
 
           [:get-static (keyword (name (frame :class)) (str "const__" id)) tag])])))
 
@@ -190,7 +190,7 @@
     `[[:mark ~start-label]
       ~@(emit body frame)
       ~@(when (not= :statement context) ;; do this automatically on emit?
-          [[:visit-var-insn [:istore :java.lang.Object ret-local]]]) ;; specialize type?
+          [[:var-insn :istore :java.lang.Object ret-local]]) ;; specialize type?
       [:mark ~end-label]
       ~@(emit finally frame) ;; check for null?
       [:go-to ~ret-label]
@@ -198,33 +198,33 @@
       ~@(mapcat
          (fn [{:keys [body start-label end-label c-local]}]
            `[[:mark ~start-label]
-             [:visit-var-insn [:istore :java.lang.Object c-local]]
+             [:var-insn :istore :java.lang.Object c-local]
              ~@(emit body frame)
              ~@(when (not= :statement context)
-                 [[:visit-var-insn [:istore :java.lang.Object ret-local]]])
+                 [[:var-insn :istore :java.lang.Object ret-local]])
              [:mark ~end-label]
              ~@(emit finally frame)
              [:go-to ~ret-label]])
          catches)
 
       [:mark ~finally-label]
-      [:visit-var-insn [:istore :java.lang.Object ~finally-local]]
+      [:var-insn :istore :java.lang.Object ~finally-local]
       ~@(emit finally frame)
-      [:visit-var-insn [:iload :java.lang.Object ~finally-local]]
+      [:var-insn :iload :java.lang.Object ~finally-local]
       [:throw-exception]
 
       [:mark ~ret-label]
       ~@(when (not= :statement context)
-          [[:visit-var-insn [:iload :java.lang.Object ret-local]]])
+          [[:var-insn [:iload :java.lang.Object ret-local]]])
       [:mark ~(label)]
 
       ~@(for [{:keys [^Class class] :as c} catches]
-          [:visit-try-catch-block start-label end-label (:start-label c)
+          [:try-catch-block start-label end-label (:start-label c)
            (-> class .getName (.replace \. \/))])
 
-      [:visit-try-catch-block start-label end-label finally-label nil]
+      [:try-catch-block start-label end-label finally-label nil]
       ~@(for [{:keys [start-label end-label] :as c} catches]
-          [:visit-try-catch-block start-label end-label finally-label nil])
+          [:try-catch-block start-label end-label finally-label nil])
 
       ~@(for [{:keys [local start-label end-label c-local] :as c} catches]
-          [:visit-local-variable (:name local) :objects nil start-label end-label c-local])]))
+          [:local-variable (:name local) :objects nil start-label end-label c-local])]))
