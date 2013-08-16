@@ -35,18 +35,18 @@
 
 (defmethod -emit :import
   [{:keys [class]} frame]
-  [[:get-static :rt/current-ns :var]
-   [:invoke-virtual [:deref] :object]
-   [:check-cast :ns]
+  [[:get-static :clojure.lang.RT/CURRENT_NS :var]
+   [:invoke-virtual [:deref] :java.lang.Object]
+   [:check-cast :clojure.lang.Namespace]
    [:push class]
-   [:invoke-static [:class/for-name :string] :class]
-   [:invoke-virtual [:import-class :class]] :class])
+   [:invoke-static [:java.lang.Class/forName :java.lang.String] :java.lang.Class]
+   [:invoke-virtual [:importClass :java.lang.Class]] :java.lang.Class])
 
 (defmethod -emit :throw
   [{:keys [exception]} frame]
   (into
    (emit exception)
-   [:check-cast :throwable]
+   [:check-cast :java.lang.Throwable]
    [:throw-exception]))
 
 (defmethod -emit :monitor-enter
@@ -69,10 +69,11 @@
        ^:const
        [(case c
           (true false)
-          [:get-static (if c :boolean/true :boolean/false) :boolean]
+          [:get-static (if c :java.lang.Boolean/TRUE :java.lang.Boolean/FALSE)
+           :java.lang.Boolean]
 
           nil
-          [:visit-inst :opcodes/aconst-null]
+          [:visit-inst :org.objectweb.asm.Opcodes/ACONST_NULL]
 
           [:get-static (keyword (name (frame :class)) (str "const__" id)) tag])])))
 
@@ -87,13 +88,13 @@
   [{:keys [var]} frame]
   (into
    (emit-var var frame)
-   [:invoke-virtual [(if (u/dynamic? var) :get :get-raw-root)] :object]))
+   [:invoke-virtual [(if (u/dynamic? var) :get :getRawRoot)] :java.lang.Object]))
 
 (defmethod -emit-set! :var
   [{:keys [var val]} frame]
   `[~@(emit-var var frame)
     ~@(emit val frame)
-    [:invoke-virtual [:set :object] :object]])
+    [:invoke-virtual [:set :java.lang.Object] :java.lang.Object]])
 
 (defmethod -emit :the-var
   [{:keys [var]} frame]
@@ -104,20 +105,20 @@
   `[~@(emit-var var frame)
     ~@(when (u/dynamic? var) ;; why not when macro?
         [[:push true]
-         [:invoke-virtual [:set-dynamic :bool] :var]])
+         [:invoke-virtual [:setDynamic :boolean] :clojure.lang.Var]])
     ~@(when meta
       (into
        [[:dup]]
        (conj
         (emit meta frame)
-        [:check-cast :i-persistent-map]
-        [:invoke-virtual [:set-meta :i-persistent-map] :void])))
+        [:check-cast :clojure.lang.IPersistentMap]
+        [:invoke-virtual [:setMeta :clojure.lang.IPersistentMap] :void])))
     ~@(when init
         (into
          [[:dup]]
          (conj
           (emit init frame)
-          [:invoke-virtual [:bind-root :object] :void])))])
+          [:invoke-virtual [:bindRoot :java.lang.Object] :void])))])
 
 (defmethod -emit :set!
   [{:keys [target val]} frame]
@@ -126,44 +127,45 @@
 (defn emit-as-array [list frame]
   (into
    [[:push (int (count list))]
-    [:new-array :object]]
+    [:new-array :java.lang.Object]]
    (mapcat (fn [i item]
              (into
               [[:dup]
                [:push (int i)]]
               (conj
                (emit item frame)
-               [:array-store :object])))
+               [:array-store :java.lang.Object])))
            (range) list)))
 
 (defmethod -emit :map
   [{:keys [keys vals]} frame]
   (conj
    (emit-as-array (interleave keys vals) frame)
-   [:invoke-static [:rt/map-unique-keys :objects] :i-persistent-map]))
+   [:invoke-static [:clojure.lang.RT/mapUniqueKeys :objects] :clojure.lang.IPersistentMap]))
 
 (defmethod -emit :vector
   [{:keys [items]} frame]
   (conj
    (emit-as-array items frame)
-   [:invoke-static [:rt/vector :objects] :i-persistent-vector]))
+   [:invoke-static [:clojure.lang.RT/vector :objects] :clojure.lang.IPersistentVector]))
 
 (defmethod -emit :set
   [{:keys [items]} frame]
   (conj
    (emit-as-array items frame)
-   [:invoke-static [:rt/set :objects] :i-persistent-set]))
+   [:invoke-static [:clojure.lang.RT/set :objects] :clojure.lang.IPersistentSet]))
 
 (defmethod -emit :with-meta
   [{:keys [meta expr]} frame]
   (into
    (emit expr frame)
    (into
-    [[:check-cast :i-obj]]
+    [[:check-cast :clojure.lang.IObj]]
     (conj
      (emit meta frame)
-     [:check-cast :i-persistent-map]
-     [:invoke-interface [:i-obj/with-meta :i-persistent-map] :i-obj]))))
+     [:check-cast :clojure.lang.IPersistentMap]
+     [:invoke-interface [:clojure.lang.IObj/withMeta :clojure.lang.IPersistentMap]
+      :clojure.lang.IObj]))))
 
 (defmethod -emit :do
   [{:keys [statements ret]} frame]
@@ -188,7 +190,7 @@
     `[[:mark ~start-label]
       ~@(emit body frame)
       ~@(when (not= :statement context) ;; do this automatically on emit?
-          [[:visit-var-insn [:istore :object ret-local]]]) ;; specialize type?
+          [[:visit-var-insn [:istore :java.lang.Object ret-local]]]) ;; specialize type?
       [:mark ~end-label]
       ~@(emit finally frame) ;; check for null?
       [:go-to ~ret-label]
@@ -196,24 +198,24 @@
       ~@(mapcat
          (fn [{:keys [body start-label end-label c-local]}]
            `[[:mark ~start-label]
-             [:visit-var-insn [:istore :object c-local]]
+             [:visit-var-insn [:istore :java.lang.Object c-local]]
              ~@(emit body frame)
              ~@(when (not= :statement context)
-                 [[:visit-var-insn [:istore :object ret-local]]])
+                 [[:visit-var-insn [:istore :java.lang.Object ret-local]]])
              [:mark ~end-label]
              ~@(emit finally frame)
              [:go-to ~ret-label]])
          catches)
 
       [:mark ~finally-label]
-      [:visit-var-insn [:istore :object ~finally-local]]
+      [:visit-var-insn [:istore :java.lang.Object ~finally-local]]
       ~@(emit finally frame)
-      [:visit-var-insn [:iload :object ~finally-local]]
+      [:visit-var-insn [:iload :java.lang.Object ~finally-local]]
       [:throw-exception]
 
       [:mark ~ret-label]
       ~@(when (not= :statement context)
-          [[:visit-var-insn [:iload :istore ret-local]]])
+          [[:visit-var-insn [:iload :java.lang.Object ret-local]]])
       [:mark ~(label)]
 
       ~@(for [{:keys [^Class class] :as c} catches]
