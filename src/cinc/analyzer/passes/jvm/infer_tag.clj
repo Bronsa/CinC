@@ -118,23 +118,13 @@
       (assoc ast :arglists arglists)
       ast)))
 
-;; smarter with subsumes
 (defmethod -infer-tag :if
   [{:keys [then else] :as ast}]
   (let [[then-tag else-tag] (mapv :tag [then else])]
-    (cond
-
-     (or (nil? (:form else)) (nil? (:form then))
-         (= then-tag else-tag))
-     (assoc ast :tag (or then-tag else-tag))
-
-     (convertible? else-tag then-tag)
-     (assoc ast :tag then-tag)
-
-     (convertible? then-tag else-tag)
-     (assoc ast :tag else-tag)
-
-     :else ast)))
+    (if (or (not else)
+            (= then-tag else-tag))
+      (assoc ast :tag then-tag)
+      ast)))
 
 (defmethod -infer-tag :new
   [{:keys [maybe-class class] :as ast}]
@@ -182,11 +172,9 @@
 (defmethod -infer-tag :try
   [{:keys [body catches] :as ast}]
   (if-let [body-tag (:tag body)]
-    (if-let [catches-tags (seq (filter identity (map (comp :tag :body) catches)))]
-      (if (every? = (conj catches-tags body-tag))
-        (assoc ast :tag body-tag)
-        ast)
-      (assoc ast :tag body-tag)) ;; or should it infer nothing? we need to differenciate between nil and not there
+    (if (every? = (conj (seq (filter identity (map (comp :tag :body) catches))) body-tag))
+      (assoc ast :tag body-tag)
+      ast)
     ast))
 
 (defmethod -infer-tag :invoke

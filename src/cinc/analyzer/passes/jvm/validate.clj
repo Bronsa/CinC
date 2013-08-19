@@ -42,14 +42,11 @@
 (defn tag-match? [arg-tags meth]
   (every? identity (map u/convertible? arg-tags (:parameter-types meth))))
 
-(defn subsume [tags methods]
+(defn try-best-match [tags methods]
   (let [match? (fn [[x y]] (or (nil? y) (= (u/maybe-class x) (u/maybe-class y))))
         methods (or (seq (filter #(every? match? (mapv list (:parameter-types %) tags)) methods))
                     methods)]
-    (remove (fn [x] (some #(and (not= % x)
-                               (u/subsumes (:parameter-types %)
-                                           (:parameter-types x))) methods))
-            methods)))
+    methods))
 
 (defmethod -validate :new
   [{:keys [maybe-class args] :as ast}]
@@ -61,7 +58,7 @@
         (if-let [[ctor & rest] (->> (filter #(= (count (:parameter-types %)) argc)
                                             (u/members the-class c-name))
                                     (filter (partial tag-match? tags))
-                                    (subsume tags))]
+                                    (try-best-match tags))]
           (if (empty? rest)
             (let [arg-tags (mapv u/maybe-class (:parameter-types ctor))
                   args (mapv (fn [arg tag] (assoc arg :tag tag)) args arg-tags)]
@@ -81,7 +78,7 @@
         f (if (= :static type) u/static-methods u/instance-methods)
         tags (mapv :tag args)]
     (if-let [matching-methods (seq (f class method argc))]
-      (if-let [[m & rest :as matching] (subsume tags (filter (partial tag-match? tags) matching-methods))]
+      (if-let [[m & rest :as matching] (try-best-match tags (filter (partial tag-match? tags) matching-methods))]
         (if (empty? rest)
           (let [ret-tag  (u/maybe-class (:return-type m))
                 arg-tags (mapv u/maybe-class (:parameter-types m))

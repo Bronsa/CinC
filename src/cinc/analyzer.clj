@@ -284,13 +284,15 @@
     (let [body (parse (cons 'do body) (assoc env :in-try true)) ;; avoid recur
           cenv (ctx env :expr)
           cblocks (mapv #(parse % cenv) cblocks)
-          fblock (parse (cons 'do (rest fblock)) (ctx env :statement))]
-      {:op      :try
-       :env     env
-       :form    form
-       :body    body
-       :catches cblocks
-       :finally fblock})))
+          fblock (when-not (empty? fblock)
+                   (parse (cons 'do (rest fblock)) (ctx env :statement)))]
+      (merge {:op      :try
+              :env     env
+              :form    form
+              :body    body
+              :catches cblocks}
+             (when fblock
+               {:finally fblock})))))
 
 (defmethod parse 'catch
   [[_ etype ename & body :as form] env]
