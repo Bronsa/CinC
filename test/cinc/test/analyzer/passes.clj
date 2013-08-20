@@ -110,7 +110,7 @@
     (let [d-ast (postwalk (ast (Double/isInfinite 2))
                           (cycling infer-tag analyze-host-expr validate))]
       (is (= Boolean/TYPE (-> d-ast :tag)))
-      (is (= Double/TYPE (->> d-ast :args first :tag))))))
+      (is (= Double/TYPE (->> d-ast :args first :cast))))))
 
 (deftest collect-test
   (let [c-test (-> (ast (let [a 1 b 2] (fn [x] (fn [] [+ (:foo {}) x a]))))
@@ -193,7 +193,7 @@
 
   (let [d-ast (jvm-ast (Double/isInfinite 2))]
       (is (= Boolean/TYPE (-> d-ast :tag)))
-      (is (= Double/TYPE (->> d-ast :args first :tag))))
+      (is (= Double/TYPE (->> d-ast :args first :cast))))
 
   (let [t-ast (jvm-ast (let [a 1
                              b 2
