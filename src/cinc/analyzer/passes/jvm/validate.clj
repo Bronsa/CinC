@@ -43,10 +43,29 @@
   (every? identity (map u/convertible? arg-tags (:parameter-types meth))))
 
 (defn try-best-match [tags methods]
-  (let [match? (fn [[x y]] (or (nil? y) (= (u/maybe-class x) (u/maybe-class y))))
-        methods (or (seq (filter #(every? match? (mapv list (:parameter-types %) tags)) methods))
-                    methods)]
-    methods))
+  (let [exact-match? (fn [[x y]] (or (nil? y) (= (u/maybe-class x) (u/maybe-class y))))
+        filter-methods (fn [methods f] (seq (filter #(every? f (mapv list (:parameter-types %) tags)) methods)))
+        methods (or (filter-methods methods exact-match?) methods)]
+    (or
+     (seq
+      (filter #(reduce (fn [subsumes? m]
+                         (and subsumes?
+                              (or (= m %)
+                                  (and (= (:parameter-types %) (:parameter-types m))
+                                       (let [dc1 (:declaring-class %)
+                                             dc2 (:declaring-class m)]
+                                         (and (u/subsumes? dc1 dc2)
+                                              (or (not= dc1 dc2)
+                                                  (and (some #{:synthetic :bridge :abstract} (:flags m))
+                                                       (not-any? #{:synthetic :bridge :abstract} (:flags %)))))))
+                                  (and (not= (:parameter-types %) (:parameter-types m))
+                                       (every? (fn [[m1 m2 t]]
+                                            (if (nil? t)
+                                              (= Object (u/maybe-class m1))
+                                              (u/subsumes? m1 m2)))
+                                          (mapv list (:parameter-types %) (:parameter-types m) tags))))))
+                       true methods) methods))
+     methods)))
 
 (defmethod -validate :new
   [{:keys [maybe-class args] :as ast}]
@@ -61,10 +80,12 @@
                                     (try-best-match tags))]
           (if (empty? rest)
             (let [arg-tags (mapv u/maybe-class (:parameter-types ctor))
-                  args (mapv (fn [arg tag] (assoc arg :tag tag)) args arg-tags)]
+                  args (mapv (fn [arg tag] (if (not= tag (:tag args))
+                                            (assoc arg :cast tag)
+                                            arg)) args arg-tags)]
               (assoc (dissoc ast :maybe-class)
                 :class the-class
-                :args args))
+                :args  args))
             (assoc ast :class the-class))
           (throw (ex-info (str "no ctor found for ctor of class: " the-class " and give signature")
                           {:class the-class
@@ -82,11 +103,13 @@
         (if (empty? rest)
           (let [ret-tag  (u/maybe-class (:return-type m))
                 arg-tags (mapv u/maybe-class (:parameter-types m))
-                args     (mapv (fn [arg tag] (assoc arg :tag tag)) args arg-tags)]
+                args     (mapv (fn [arg tag] (if (not= tag (:tag args))
+                                              (assoc arg :cast tag)
+                                              arg)) args arg-tags)]
             (assoc ast
               :tag  ret-tag
               :args args))
-          (if (reduce = (mapv (comp u/maybe-class :return-type) matching))
+          (if (apply = (mapv (comp u/maybe-class :return-type) matching))
             (assoc ast :tag (:return-type m))
             ast))
         (throw (ex-info (str "No matching method: " method " for class: " class " and given signature")

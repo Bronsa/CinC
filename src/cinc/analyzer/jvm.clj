@@ -69,12 +69,27 @@
     (let [op (first form)]
       (if (jvm-specials op)
         form
-        (let [v (maybe-var op)]
-          (if (and (not (-> env :locals (get op))) ;; locals cannot be macros
-                   (:macro (meta v)))
-            (apply @v env form (rest form)) ; (m &env &form & args)
-            (desugar-host-expr form)))))
-        (desugar-host-expr form)))
+        (let [v (maybe-var op)
+              m (meta v)
+              local? (-> env :locals (get op))
+              macro? (and (not local?) (:macro m))
+              inline? (and (not local?) (:inline m))]
+          (cond
+
+           macro?
+           (apply @v env form (rest form)) ; (m &env &form & args)
+
+           inline?
+           (let [f inline?
+                 inline-arities-f (:inline-arities m)
+                 args (rest form)]
+             (vary-meta
+              (apply ((or inline-arities-f (constantly f)) (count args)) args)
+              merge m))
+
+           :else
+           (desugar-host-expr form)))))
+    (desugar-host-expr form)))
 
 (defmethod parse 'monitor-enter
   [[_ target :as form] env]

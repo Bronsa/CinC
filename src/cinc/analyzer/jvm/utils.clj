@@ -63,15 +63,6 @@
      (not (or (nil? c) (= c Void/TYPE)))
      (.isPrimitive c))))
 
-(defn subsumes [cs1 cs2]
-  (and (not (= cs1 cs2))
-       (every? (fn [[^Class c1 ^Class c2]]
-            (or (= c1 c2)
-                (and (not (primitive? c1))
-                     (primitive? c2))
-                (.isAssignableFrom c2 c1)))
-          (map list (mapv maybe-class cs1) (mapv maybe-class cs2)))))
-
 (def convertible-primitives?
   {Integer/TYPE   #{Integer Long/TYPE Long Short/TYPE Byte/TYPE}
    Float/TYPE     #{Float Double/TYPE}
@@ -96,15 +87,22 @@
 (defn numeric? [c]
   (.isAssignableFrom Number (box c)))
 
+(defn subsumes? [c1 c2]
+  (let [c1 (maybe-class c1)
+        c2 (maybe-class c2)]
+    (or (= c1 c2)
+        (and (not (primitive? c1))
+             (primitive? c2))
+        (.isAssignableFrom c2 c1)
+        (and (primitive? c2)
+             (boolean ((convertible-primitives? c2) c1))))))
+
 (defn convertible? [from to]
   (or (nil? from)
       (let [c1 (maybe-class from)
             c2 (maybe-class to)]
-        (or (= c1 c2)
-            (and (primitive? c2)
-                 (boolean ((convertible-primitives? c2) c1)))
-            (or (.isAssignableFrom c2 c1)
-                (and (numeric? c1) (numeric? c2)))))))
+        (or (subsumes? c1 c2)
+            (and (numeric? c1) (numeric? c2))))))
 
 (defn members [class member]
   (let [members (-> (maybe-class class)

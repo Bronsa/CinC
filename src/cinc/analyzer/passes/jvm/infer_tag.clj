@@ -1,7 +1,7 @@
 (ns cinc.analyzer.passes.jvm.infer-tag
   (:require [cinc.analyzer.utils :refer [arglist-for-arity]]
             [cinc.analyzer.jvm.utils :refer [convertible?]])
-  (:import (clojure.lang IPersistentVector IPersistentMap
+  (:import (clojure.lang PersistentVector IPersistentMap
                          IPersistentSet ISeq Keyword Var
                          Symbol AFunction)
            java.util.regex.Pattern))
@@ -11,7 +11,7 @@
 
 (defmethod infer-constant-tag :vector
   [ast]
-  (assoc ast :tag IPersistentVector))
+  (assoc ast :tag PersistentVector))
 
 (defmethod infer-constant-tag :map
   [ast]

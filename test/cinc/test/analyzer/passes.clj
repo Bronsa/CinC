@@ -14,7 +14,7 @@
             [cinc.analyzer.passes.jvm.validate :refer [validate]]
             [cinc.analyzer.passes.jvm.infer-tag :refer [infer-tag infer-constant-tag]]
             [cinc.analyzer.passes.jvm.analyze-host-expr :refer [analyze-host-expr]])
-  (:import (clojure.lang IPersistentVector IPersistentMap
+  (:import (clojure.lang PersistentVector IPersistentMap
                          IPersistentSet ISeq Keyword Var
                          Symbol AFunction)
            java.util.regex.Pattern))
@@ -32,8 +32,8 @@
 (deftest elide-meta-test)
 
 (deftest infer-constant-tag-test
-  (is (= IPersistentVector (-> {:op :const :type :vector} infer-constant-tag :tag)))
-  (is (= IPersistentVector (-> (ast []) infer-constant-tag :tag)))
+  (is (= PersistentVector (-> {:op :const :type :vector} infer-constant-tag :tag)))
+  (is (= PersistentVector (-> (ast []) infer-constant-tag :tag)))
   (is (= IPersistentMap (-> (ast {}) infer-constant-tag :tag)))
   (is (= IPersistentSet (-> (ast #{}) infer-constant-tag :tag)))
   (is (= ISeq (-> (ast '()) infer-constant-tag :tag)))
@@ -155,7 +155,7 @@
 
 
 (deftest all-tests-all-pass
-  (is (= IPersistentVector (-> (jvm-ast []) :tag)))
+  (is (= PersistentVector (-> (jvm-ast []) :tag)))
   (is (= IPersistentMap (-> (jvm-ast {}) :tag)))
   (is (= IPersistentSet (-> (jvm-ast #{}) :tag)))
   (is (= ISeq (-> (jvm-ast ()) :tag)))
