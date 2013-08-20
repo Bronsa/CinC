@@ -45,25 +45,27 @@
 (defn try-best-match [tags methods]
   (let [exact-match? (fn [[x y]] (or (nil? y) (= (u/maybe-class x) (u/maybe-class y))))
         filter-methods (fn [methods f] (seq (filter #(every? f (mapv list (:parameter-types %) tags)) methods)))
-        ]
-    (-> (filter-methods methods exact-match?)
-      (or (seq
-           (filter #(reduce (fn [subsumes? m]
-                              (and subsumes?
-                                   (or (= m %)
-                                       (and (= (:parameter-types %) (:parameter-types m))
-                                            (or (some #{:synthetic :bridge :abstract} (:flags m))
-                                                (let [dc1 (:declaring-class %)
-                                                      dc2 (:declaring-class m)]
-                                                  (and (u/subsumes? dc1 dc2)
-                                                       (or (not= dc1 dc2)
-                                                           (not (some #{:synthetic :bridge :abstract} (:flags %))))))))
-                                       (and (not= (:parameter-types %) (:parameter-types m))
-                                        (every? (fn [[m1 m2 t]] (or (nil? t)
-                                                              (u/subsumes? m1 m2)))
-                                           (mapv list (:parameter-types %) (:parameter-types m) tags))))))
-                            true methods) methods)))
-      (or methods))))
+        methods (or (filter-methods methods exact-match?) methods)]
+    (or
+     (seq
+      (filter #(reduce (fn [subsumes? m]
+                         (and subsumes?
+                              (or (= m %)
+                                  (and (= (:parameter-types %) (:parameter-types m))
+                                       (let [dc1 (:declaring-class %)
+                                             dc2 (:declaring-class m)]
+                                         (and (u/subsumes? dc1 dc2)
+                                              (or (not= dc1 dc2)
+                                                  (and (some #{:synthetic :bridge :abstract} (:flags m))
+                                                       (not-any? #{:synthetic :bridge :abstract} (:flags %)))))))
+                                  (and (not= (:parameter-types %) (:parameter-types m))
+                                       (every? (fn [[m1 m2 t]]
+                                            (if (nil? t)
+                                              (= Object (u/maybe-class m1))
+                                              (u/subsumes? m1 m2)))
+                                          (mapv list (:parameter-types %) (:parameter-types m) tags))))))
+                       true methods) methods))
+     methods)))
 
 (defmethod -validate :new
   [{:keys [maybe-class args] :as ast}]
