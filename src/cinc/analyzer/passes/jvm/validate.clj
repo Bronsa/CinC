@@ -80,7 +80,9 @@
                                     (try-best-match tags))]
           (if (empty? rest)
             (let [arg-tags (mapv u/maybe-class (:parameter-types ctor))
-                  args (mapv (fn [arg tag] (assoc arg :tag tag)) args arg-tags)]
+                  args (mapv (fn [arg tag] (if (not= tag (:tag args))
+                                            (assoc arg :cast tag)
+                                            arg)) args arg-tags)]
               (assoc (dissoc ast :maybe-class)
                 :class the-class
                 :args  args))
@@ -101,7 +103,9 @@
         (if (empty? rest)
           (let [ret-tag  (u/maybe-class (:return-type m))
                 arg-tags (mapv u/maybe-class (:parameter-types m))
-                args     (mapv (fn [arg tag] (assoc arg :tag tag)) args arg-tags)]
+                args     (mapv (fn [arg tag] (if (not= tag (:tag args))
+                                              (assoc arg :cast tag)
+                                              arg)) args arg-tags)]
             (assoc ast
               :tag  ret-tag
               :args args))
