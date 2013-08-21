@@ -6,7 +6,7 @@
 (defmacro if-let-box [class then else]
   `(let [c# ~class
          ~class (u/box c#)]
-     (if (not= c# ~class)
+     (if (u/primitive? c#)
        ~then
        ~else)))
 
