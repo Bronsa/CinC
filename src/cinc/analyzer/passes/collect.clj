@@ -9,18 +9,18 @@
    :keyword-callsites  #{}})
 
 (defn -register-constant
-  [form]
+  [form tag]
   (or ((:constants *collects*) form)
       (let [id (count (:constants *collects*))]
-        (update! *collects* assoc-in [:constants form] id)
+        (update! *collects* assoc-in [:constants form] [id tag])
         id)))
 
 (defn -collect-constants
-  [{:keys [op form type] :as ast}]
+  [{:keys [op form tag type] :as ast}]
   (if (and (= op :const)
            (not= type :nil)
            (not= type :boolean))
-    (let [id (-register-constant form)]
+    (let [id (-register-constant form tag)]
       (assoc ast :id id))
     ast))
 
@@ -28,7 +28,7 @@
   [{:keys [op var] :as ast}]
   (if (#{:def :var :the-var} op)
     (let [id (or ((:vars *collects*) var)
-                 (let [id (-register-constant var)]
+                 (let [id (-register-constant var clojure.lang.Var)]
                    (update! *collects* assoc-in [:vars var] id)
                    id))]
       (assoc ast :id id))
