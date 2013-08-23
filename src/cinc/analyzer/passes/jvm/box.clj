@@ -1,5 +1,6 @@
 (ns cinc.analyzer.passes.jvm.box
-  (:require [cinc.analyzer.jvm.utils :as u]))
+  (:require [cinc.analyzer.jvm.utils :as u])
+  (:require [cinc.analyzer.utils :refer [protocol-node?]]))
 
 (defmulti box :op)
 
@@ -69,5 +70,16 @@
   (if box
     (update-in ast [:ret] -box)
     ast))
+
+(defmethod box :invoke
+  [{:keys [fn args] :as ast}]
+  (if-not (and (#{:var :the-var} (:op fn))
+               (protocol-node? (:var fn)))
+    (assoc ast :args (mapv -box args))
+    ast))
+
+(defmethod box :keyword-invoke
+  [{:keys [args] :as ast}]
+  (assoc ast :args (mapv -box args)))
 
 (defmethod box :default [ast] ast)
