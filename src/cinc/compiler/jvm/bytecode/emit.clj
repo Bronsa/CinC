@@ -1,6 +1,6 @@
 (ns cinc.compiler.jvm.bytecode.emit
   (:require [cinc.analyzer.utils :as u]
-            [cinc.analyzer.jvm.utils :refer [asm-type]]))
+            [cinc.analyzer.jvm.utils :refer [asm-type primitive?]]))
 
 (defmulti -emit (fn [{:keys [op]} _] op))
 (defmulti -emit-set! (fn [{:keys [op]} _] op))
@@ -8,13 +8,20 @@
 (def nil-expr
   {:op :const :type :nil :form nil})
 
-(defn emit-box [tag]
+;; TODO: emit box/unbox
+(defn emit-box [tag box]
   [])
+
+(defn emit-cast [tag cast]
+  (if (not (or (primitive? tag)
+             (primitive? cast)))
+    [[:check-cast cast]]
+    []))
 
 (defn emit
   ([ast]
      (emit ast {}))
-  ([{:keys [env box tag] :as ast} frame]
+  ([{:keys [env box tag cast] :as ast} frame]
      (let [bytecode (-emit ast frame)
            statement? (= :statement (:context env))
            m (meta bytecode)]
@@ -30,8 +37,10 @@
          (into bytecode
                (when (= :untyped m)
                  (emit nil-expr))
+               (when cast
+                 (emit-cast tag cast))
                (when box
-                 (emit-box tag)))))))
+                 (emit-box tag box)))))))
 
 (defmethod -emit :import
   [{:keys [class]} frame]
