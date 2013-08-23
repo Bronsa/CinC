@@ -45,11 +45,11 @@
 (defmethod -emit :import
   [{:keys [class]} frame]
   [[:get-static :clojure.lang.RT/CURRENT_NS :var]
-   [:invoke-virtual [:deref] :java.lang.Object]
+   [:invoke-virtual [:clojure.lang.Var/deref] :java.lang.Object]
    [:check-cast :clojure.lang.Namespace]
    [:push class]
    [:invoke-static [:java.lang.Class/forName :java.lang.String] :java.lang.Class]
-   [:invoke-virtual [:importClass :java.lang.Class]] :java.lang.Class])
+   [:invoke-virtual [:clojure.lang.Namespace/importClass :java.lang.Class]] :java.lang.Class])
 
 (defmethod -emit :throw
   [{:keys [exception]} frame]
@@ -97,13 +97,15 @@
   [{:keys [var]} frame]
   (into
    (emit-var var frame)
-   [:invoke-virtual [(if (u/dynamic? var) :get :getRawRoot)] :java.lang.Object]))
+   [:invoke-virtual [(if (u/dynamic? var)
+                       :clojure.lang.Var/get
+                       :clojure.lang.Var/getRawRoot)] :java.lang.Object]))
 
 (defmethod -emit-set! :var
   [{:keys [var val]} frame]
   `[~@(emit-var var frame)
     ~@(emit val frame)
-    [:invoke-virtual [:set :java.lang.Object] :java.lang.Object]])
+    [:invoke-virtual [:clojure.lang.Var/set :java.lang.Object] :java.lang.Object]])
 
 (defmethod -emit :the-var
   [{:keys [var]} frame]
@@ -114,20 +116,20 @@
   `[~@(emit-var var frame)
     ~@(when (u/dynamic? var) ;; why not when macro?
         [[:push true]
-         [:invoke-virtual [:setDynamic :boolean] :clojure.lang.Var]])
+         [:invoke-virtual [:clojure.lang.Var/setDynamic :boolean] :clojure.lang.Var]])
     ~@(when meta
       (into
        [[:dup]]
        (conj
         (emit meta frame)
         [:check-cast :clojure.lang.IPersistentMap]
-        [:invoke-virtual [:setMeta :clojure.lang.IPersistentMap] :void])))
+        [:invoke-virtual [:clojure.lang.Var/setMeta :clojure.lang.IPersistentMap] :void])))
     ~@(when init
         (into
          [[:dup]]
          (conj
           (emit init frame)
-          [:invoke-virtual [:bindRoot :java.lang.Object] :void])))])
+          [:invoke-virtual [:clojure.lang.Var/bindRoot :java.lang.Object] :void])))])
 
 (defmethod -emit :set!
   [{:keys [target val]} frame]
