@@ -16,7 +16,7 @@
   (if (not (or (primitive? tag)
              (primitive? cast)))
     [[:check-cast cast]]
-    []))
+    (emit-box tag cast)))
 
 (defn emit
   ([ast]
