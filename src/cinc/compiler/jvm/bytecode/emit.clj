@@ -237,3 +237,12 @@
 
       ~@(for [{:keys [local start-label end-label c-local] :as c} catches]
           [:local-variable (:name local) :objects nil start-label end-label c-local])]))
+
+(defmethod -emit :static-field
+  [{:keys [field tag class env]} frame]
+  (let [l (label)
+        line (:line env)]
+    `[~@(when line
+          [[:mark l]
+           [:line-number line l]])
+      ~[:get-static class field tag]]))
