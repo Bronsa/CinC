@@ -102,8 +102,8 @@
                        :clojure.lang.Var/getRawRoot)] :java.lang.Object]))
 
 (defmethod -emit-set! :var
-  [{:keys [var val]} frame]
-  `[~@(emit-var var frame)
+  [{:keys [target val]} frame]
+  `[~@(emit-var (:var target) frame)
     ~@(emit val frame)
     [:invoke-virtual [:clojure.lang.Var/set :java.lang.Object] :java.lang.Object]])
 
@@ -132,8 +132,8 @@
           [:invoke-virtual [:clojure.lang.Var/bindRoot :java.lang.Object] :void])))])
 
 (defmethod -emit :set!
-  [{:keys [target val]} frame]
-  (-emit-set! target val frame))
+  [ast frame]
+  (-emit-set! ast frame))
 
 (defn emit-as-array [list frame]
   (into
