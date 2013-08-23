@@ -249,8 +249,9 @@
 
 (defmethod -emit :static-field
   [{:keys [field tag class env]} frame]
-  `[~@(emit-line-number env)
-    ~[:get-static class field tag]])
+  `^:const
+  [~@(emit-line-number env)
+   ~[:get-static class field tag]])
 
 (defmethod -emit-set! :static-field
   [{:keys [target val env]} frame]
