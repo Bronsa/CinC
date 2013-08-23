@@ -73,19 +73,19 @@
               m (meta v)
               local? (-> env :locals (get op))
               macro? (and (not local?) (:macro m))
-              inline? (and (not local?) (:inline m))]
+              inline-arities-f (:inline-arities m)
+              args (rest form)
+              inline? (and (not local?)
+                           (or (not inline-arities-f)
+                               (inline-arities-f (count args)))
+                           (:inline m))]
           (cond
 
            macro?
            (apply @v env form (rest form)) ; (m &env &form & args)
 
            inline?
-           (let [f inline?
-                 inline-arities-f (:inline-arities m)
-                 args (rest form)]
-             (vary-meta
-              (apply ((or inline-arities-f (constantly f)) (count args)) args)
-              merge m))
+           (vary-meta (apply inline? args) merge m)
 
            :else
            (desugar-host-expr form)))))
