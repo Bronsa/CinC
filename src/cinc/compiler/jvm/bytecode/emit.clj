@@ -240,11 +240,22 @@
       ~@(for [{:keys [local start-label end-label c-local] :as c} catches]
           [:local-variable (:name local) :objects nil start-label end-label c-local])]))
 
+(defn emit-line-number
+  [{:keys [line]}]
+  (when line
+    (let [l (label)]
+      [[:mark l]
+       [:line-number line l]])))
+
 (defmethod -emit :static-field
   [{:keys [field tag class env]} frame]
-  (let [l (label)
-        line (:line env)]
-    `[~@(when line
-          [[:mark l]
-           [:line-number line l]])
-      ~[:get-static class field tag]]))
+  `[~@(emit-line-number env)
+    ~[:get-static class field tag]])
+
+(defmethod -emit-set! :static-field
+  [{:keys [target val env]} frame]
+  `[~@(emit-line-number env)
+    ~@(emit val frame)
+    [:dup]
+    ~@(emit-cast (:tag val) (:tag target))
+    ~[:put-static (:class target) (:field target) (:tag target)]])
