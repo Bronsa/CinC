@@ -45,7 +45,7 @@
 (defmethod box :def
   [{:keys [init] :as ast}]
   (if init
-    (assoc-in ast [:init :box] true)
+    (update-in ast [:init] -box)
     ast))
 
 (defmethod box :vector
@@ -67,7 +67,7 @@
 (defmethod box :do
   [{:keys [box] :as ast}]
   (if box
-    (assoc-in ast [:ret :box] true)
+    (update-in ast [:ret] -box)
     ast))
 
 (defmethod box :default [ast] ast)
