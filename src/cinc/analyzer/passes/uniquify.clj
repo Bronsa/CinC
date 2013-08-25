@@ -28,31 +28,6 @@
 
 (declare uniquify-locals*)
 
-(defn uniquify-bindings
-  [{:keys [bindings] :as ast}]
-  (let [bindings (for [{:keys [init name] :as b} bindings]
-                   (let [init (binding [*locals-frame* *locals-frame*]
-                                (uniquify-locals* init))]
-                     (uniquify name)
-                     (let [name (normalize name)]
-                       (update! *locals-init* assoc name init)
-                       (assoc b
-                         :name name
-                         :init init))))]
-    (assoc ast :bindings (vec bindings))))
-
-(defmethod -uniquify-locals :let
-  [ast]
-  (uniquify-bindings ast))
-
-(defmethod -uniquify-locals :loop
-  [ast]
-  (uniquify-bindings ast))
-
-(defmethod -uniquify-locals :letfn
-  [ast]
-  (uniquify-bindings ast))
-
 (defmethod -uniquify-locals :local
   [{:keys [name local init] :as ast}]
   (if (not= :field local)
@@ -63,26 +38,33 @@
                {:init init})))
     ast))
 
+(defn uniquify-binding
+  [{:keys [init name] :as b}]
+  (let [init (binding [*locals-frame* *locals-frame*]
+               (uniquify-locals* init))]
+    (uniquify name)
+    (let [name (normalize name)]
+      (update! *locals-init* assoc name init)
+      (assoc b
+        :name name
+        :init init))))
+
 (defmethod -uniquify-locals :binding
   [{:keys [name local] :as ast}]
-  (if (not (#{:field :let :letfn :loop} local))
+  (case local
+    (:let :letfn :loop)
+    (uniquify-binding ast)
+
+    :field
+    ast
+
+    :fn
     (assoc ast :name (normalize name))
-    ast))
+
+    (do (uniquify name)
+        (assoc ast :name (normalize name)))))
 
 (defmethod -uniquify-locals :default [ast] ast)
-
-(defmethod -uniquify-locals :fn-method
-  [{:keys [params] :as ast}]
-  (doseq [{:keys [name]} params]
-    (uniquify name))
-  ast)
-
-(defmethod -uniquify-locals :method
-  [{:keys [params this] :as ast}]
-  (doseq [{:keys [name]} params]
-    (uniquify name))
-  (uniquify (:name this))
-  (assoc-in ast [:this :name] (normalize (:name this))))
 
 (defmethod -uniquify-locals :fn
   [{:keys [name] :as ast}]
@@ -90,11 +72,6 @@
     (do (uniquify name)
         (assoc ast :name (normalize name)))
     ast))
-
-(defmethod -uniquify-locals :catch
-  [{:keys [local] :as ast}]
-  (uniquify (:name local))
-  ast)
 
 (defn uniquify-locals* [ast]
   (prewalk ast -uniquify-locals))

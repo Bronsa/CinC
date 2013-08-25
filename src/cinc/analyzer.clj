@@ -508,7 +508,7 @@
             :methods         methods-exprs}
            (when n
              {:local name-expr})
-           {:children `[~@(when n [:locals]) :methods]})))
+           {:children `[~@(when n [:local]) :methods]})))
 
 (defmethod parse 'def
   [[_ sym & expr :as form] env]
