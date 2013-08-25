@@ -4,7 +4,8 @@
              :as ana
              :refer [analyze parse analyze-in-env wrapping-meta analyze-fn-method]
              :rename {analyze -analyze}]
-            [cinc.analyzer.utils :refer [ctx maybe-var walk prewalk cycling]]
+            [cinc.analyzer.utils :refer [ctx maybe-var]]
+            [cinc.analyzer.passes :refer [walk prewalk cycling]]
             [cinc.analyzer.jvm.utils :refer :all :exclude [box]]
             [cinc.analyzer.passes.source-info :refer [source-info]]
             [cinc.analyzer.passes.elide-meta :refer [elide-meta]]

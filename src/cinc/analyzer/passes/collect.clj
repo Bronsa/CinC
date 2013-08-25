@@ -1,5 +1,6 @@
 (ns cinc.analyzer.passes.collect
-  (:require [cinc.analyzer.utils :refer [postwalk protocol-node? update!]]))
+  (:require [cinc.analyzer.utils :refer [protocol-node? update!]]
+            [cinc.analyzer.passes :refer [postwalk]]))
 
 (def ^:private ^:dynamic *collects*
   {:constants           {}

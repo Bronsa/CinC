@@ -1,5 +1,6 @@
 (ns cinc.analyzer.passes.uniquify
-  (:require [cinc.analyzer.utils :refer [prewalk update!]]))
+  (:require [cinc.analyzer.utils :refer [update!]]
+            [cinc.analyzer.passes :refer [prewalk]]))
 
 (def ^:dynamic *locals* {})
 (def ^:dynamic *locals-frame* {})

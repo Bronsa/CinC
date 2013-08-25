@@ -4,7 +4,7 @@
             [clojure.set :as set]
             [cinc.analyzer :refer [analyze macroexpand-1]]
             [cinc.analyzer.jvm :as jvm]
-            [cinc.analyzer.utils :refer [walk prewalk postwalk cycling]]
+            [cinc.analyzer.passes :refer :all]
             [cinc.analyzer.passes.source-info :refer [source-info]]
             [cinc.analyzer.passes.elide-meta :refer [elide-meta]]
             [cinc.analyzer.passes.constant-lifter :refer [constant-lift]]
