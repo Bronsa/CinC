@@ -1,5 +1,6 @@
 (ns cinc.analyzer.passes.jvm.clear-locals
-  (:require [cinc.analyzer.utils :refer [update! walk]]))
+  (:require [cinc.analyzer.utils :refer [update!]]
+            [cinc.analyzer.passes :refer [walk]]))
 
 (defmulti annotate-branch :op)
 

@@ -24,7 +24,8 @@
        :tag      return-type
        :instance target-expr
        :class    class
-       :method   sym}))
+       :method   sym
+       :children [:instance]}))
 
 (defn maybe-instance-field [target-expr class sym]
   (when-let [{:keys [flags type]} (instance-field class sym)]
@@ -33,7 +34,8 @@
      :class       class
      :instance    target-expr
      :field       sym
-     :tag         type}))
+     :tag         type
+     :children    [:instance]}))
 
 (defn analyze-host-call
   [target-type method args target-expr class env]
@@ -45,9 +47,11 @@
       :method method
       :args   args}
      (case target-type
-       :static   {:class    class}
+       :static   {:class    class
+                  :children [:args]}
        :instance {:instance target-expr
-                  :class    (:tag target-expr)}))))
+                  :class    (:tag target-expr)
+                  :children [:instance :args]}))))
 
 (defn analyze-host-field
   [target-type field target-expr class env]
@@ -63,9 +67,10 @@
                                          field " for class " class)
                                     {:instance target-expr
                                      :field    field}))))
-    {:op     :host-interop
-     :target target-expr
-     :m-or-f field}))
+    {:op       :host-interop
+     :target   target-expr
+     :m-or-f   field
+     :children [:target]}))
 
 (defn -analyze-host-expr
   [target-type m-or-f target-expr class env]
@@ -83,9 +88,10 @@
                                m-or-f " for class " class)
                           {:instance target-expr
                            :m-or-f   m-or-f})))
-      {:op     :host-interop
-       :target target-expr
-       :m-or-f m-or-f})))
+      {:op       :host-interop
+       :target   target-expr
+       :m-or-f   m-or-f
+       :children [:target]})))
 
 (defn analyze-host-expr
   [{:keys [op form env] :as ast}]

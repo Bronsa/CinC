@@ -6,51 +6,6 @@
 (defmacro update! [target f & args]
   (list 'set! target (list* f target args)))
 
-(defn cycling [& fns]
-  (fn [ast]
-    (let [new-ast (reduce #(%2 %) ast fns)]
-      (if (= new-ast ast)
-        ast
-        (recur new-ast)))))
-
-(defn walk
-  ([ast pre post]
-     (walk ast pre post false))
-  ([ast pre post reversed?]
-     (let [ast (pre ast)
-           f (fn [ast k node]
-               (cond
-                (:op node)
-                (assoc-in ast [k] (walk node pre post reversed?))
-
-                (and (vector? node)
-                     (seq node)
-                     (every? :op node))
-                (assoc-in ast [k] (if reversed?
-                                    (vec (rseq (mapv #(walk % identity post reversed?)
-                                                     (rseq (if (= identity pre)
-                                                             node
-                                                             (mapv #(walk % pre identity reversed?)
-                                                                   node))))))
-                                    (mapv #(walk % pre post) node)))
-                :else ast))]
-       (post
-        (if (= :do (:op ast))
-          (let [{:keys [ret statements] :as ast} ast]
-            (if reversed?
-              (f (f ast :ret ret) :statements statements)
-              (f (f ast :statements statements) :ret ret)))
-          (reduce-kv f ast ast))))))
-
-(defn prewalk [ast f]
-  (walk ast f identity))
-
-(defn postwalk
-  ([ast f]
-     (walk ast identity f false))
-  ([ast f reversed?]
-     (walk ast identity f reversed?)))
-
 (defn ctx
   "Returns a copy of the passe environment with :context set to ctx"
   [env ctx]
