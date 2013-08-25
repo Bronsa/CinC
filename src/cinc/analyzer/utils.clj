@@ -13,34 +13,25 @@
         ast
         (recur new-ast)))))
 
+(defn children [{:keys [children] :as ast}]
+  (when children
+    (mapv (partial ast) children)))
+
 (defn walk
   ([ast pre post]
      (walk ast pre post false))
   ([ast pre post reversed?]
      (let [ast (pre ast)
-           f (fn [ast k node]
-               (cond
-                (:op node)
-                (assoc-in ast [k] (walk node pre post reversed?))
-
-                (and (vector? node)
-                     (seq node)
-                     (every? :op node))
-                (assoc-in ast [k] (if reversed?
-                                    (vec (rseq (mapv #(walk % identity post reversed?)
-                                                     (rseq (if (= identity pre)
-                                                             node
-                                                             (mapv #(walk % pre identity reversed?)
-                                                                   node))))))
-                                    (mapv #(walk % pre post) node)))
-                :else ast))]
-       (post
-        (if (= :do (:op ast))
-          (let [{:keys [ret statements] :as ast} ast]
-            (if reversed?
-              (f (f ast :ret ret) :statements statements)
-              (f (f ast :statements statements) :ret ret)))
-          (reduce-kv f ast ast))))))
+           fix (if reversed? (comp vec rseq) identity)
+           w #(walk % pre post reversed?)
+           ast (if-let [c (children ast)]
+                 (reduce (fn [ast [k v]]
+                           (assoc ast k (if (vector? v)
+                                          (fix (mapv w (fix v)))
+                                          (w v))))
+                         ast (map list (fix (:children ast)) (fix c)))
+                 ast)]
+       (post ast))))
 
 (defn prewalk [ast f]
   (walk ast f identity))
