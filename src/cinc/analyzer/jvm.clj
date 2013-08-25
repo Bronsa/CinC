@@ -30,7 +30,7 @@
      (if (and (namespace form) target)
        (with-meta (list '. target field)
          (merge (meta form)
-                {:field true}))
+                {:field true})) ;; should use this
        form))
 
    (seq? form)
@@ -93,17 +93,19 @@
 
 (defmethod parse 'monitor-enter
   [[_ target :as form] env]
-  {:op     :monitor-enter
-   :env    env
-   :form   form
-   :target (-analyze target (ctx env :expr))})
+  {:op       :monitor-enter
+   :env      env
+   :form     form
+   :target   (-analyze target (ctx env :expr))
+   :children [:target]})
 
 (defmethod parse 'monitor-exit
   [[_ target :as form] env]
-  {:op     :monitor-exit
-   :env    env
-   :form   form
-   :target (-analyze target (ctx env :expr))})
+  {:op       :monitor-exit
+   :env      env
+   :form     form
+   :target   (-analyze target (ctx env :expr))
+   :children [:target]})
 
 (defmethod parse 'clojure.core/import*
   [[_ class :as form] env]
@@ -127,10 +129,11 @@
         env (assoc-in (dissoc env :this) [:locals this] this-expr)
         method (analyze-fn-method meth env)]
     (assoc (dissoc method :variadic?)
-      :op   :method
-      :form form
-      :this this-expr
-      :name name)))
+      :op       :method
+      :form     form
+      :this     this-expr
+      :name     name
+      :children (into [:this] (:children method)))))
 
 (defn -deftype [name class-name args interfaces]
   (let [interfaces (mapv #(symbol (.getName ^Class %)) interfaces)]
@@ -155,7 +158,8 @@
       :form       form
       :class-name class-name
       :methods    methods
-      :interfaces interfaces})))
+      :interfaces interfaces
+      :children   [:methods]})))
 
 (defmethod parse 'deftype*
   [[_ name class-name fields _ interfaces & methods :as form] env]
@@ -185,7 +189,8 @@
      :class-name class-name
      :fields     fields-expr
      :methods    methods
-     :interfaces interfaces}))
+     :interfaces interfaces
+     :children   [:fields :methods]}))
 
 (defmethod parse 'case*
   [[_ expr shift mask default case-map switch-type test-type & [skip-check?] :as form] env]
@@ -215,7 +220,8 @@
      :high        high
      :switch-type switch-type
      :test-type   test-type
-     :skip-check? skip-check?}))
+     :skip-check? skip-check?
+     :children [:test :tests :thens :default]}))
 
 (defn cleanup [ast]
   (let [ast (-> ast
