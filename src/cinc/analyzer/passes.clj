@@ -9,7 +9,7 @@
 
 (defn children [{:keys [children] :as ast}]
   (when children
-    (mapv (partial ast) children)))
+    (mapv ast children)))
 
 (defn walk
   ([ast pre post]
