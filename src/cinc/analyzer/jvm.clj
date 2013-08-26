@@ -246,7 +246,7 @@
       (walk (fn [ast]
               (-> ast
                 warn-earmuff
-                fold-host-into-branch
+                (fold-host-into-branch analyze)
                 source-info
                 elide-meta))
             (comp (cycling infer-tag analyze-host-expr validate box)

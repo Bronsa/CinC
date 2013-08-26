@@ -2,30 +2,42 @@
   (:require [cinc.analyzer :refer [analyze]]
             [cinc.analyzer.passes :refer [update-children]]))
 
-;; form is invalidated
-(defmulti fold-host-into-branch :op)
+; form is invalidated
+(defmulti fold-host-into-branch (fn [ast _] (:op ast)))
 
-(defn- transform-path [x env]
+(defn- transform-path [x env analyze]
   #(if (:path? %)
-     (assoc (analyze (list '. (:form %) x) env) :path? true)
+     (analyze (list '. (:form %) x) env)
      %))
 
 (defmethod fold-host-into-branch :host-call
-  [{:keys [target method args env] :as ast}]
+  [{:keys [target method args env] :as ast} analyze]
   (if (:branch? target)
-    (update-children target (transform-path (list* method (map :form args)) env))
-    ast))
+    (update-children target (transform-path (list* method (map :form args)) env analyze))
+    (if (some :branch? args)
+      (loop [args args processed []]
+        (let [a (first args)]
+          (if (:branch? a)
+            (update-children a (fn [c]
+                                 (if (:path? c)
+                                   (analyze (list '. (:form target)
+                                                  (seq (into (into [method]
+                                                                   (map :form processed))
+                                                             (list* (:form c) (map :form (rest args)))))) env)
+                                   c)))
+            (recur (next args) (conj processed a)))))
+      ast)))
 
 (defmethod fold-host-into-branch :host-field
-  [{:keys [target field env] :as ast}]
+  [{:keys [target field env] :as ast} analyze]
   (if (:branch? target)
-    (update-children target (transform-path field env))
+    (update-children target (transform-path field env analyze))
     ast))
 
 (defmethod fold-host-into-branch :host-interop
-  [{:keys [target m-or-f env] :as ast}]
+  [{:keys [target m-or-f env] :as ast} analyze]
   (if (:branch? target)
-    (update-children target (transform-path m-or-f env))
+    (update-children target (transform-path m-or-f env analyze))
     ast))
 
-(defmethod fold-host-into-branch :default [ast] ast)
+(defmethod fold-host-into-branch :default [ast _] ast)
