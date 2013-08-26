@@ -12,8 +12,9 @@
             [cinc.analyzer.passes.constant-lifter :refer [constant-lift]]
             [cinc.analyzer.passes.warn-earmuff :refer [warn-earmuff]]
             [cinc.analyzer.passes.collect :refer [collect]]
-            [cinc.analyzer.passes.jvm.box :refer [box]]
             [cinc.analyzer.passes.uniquify :refer [uniquify-locals]]
+            [cinc.analyzer.passes.fold-host-into-branch :refer [fold-host-into-branch]]
+            [cinc.analyzer.passes.jvm.box :refer [box]]
             [cinc.analyzer.passes.jvm.clear-locals :refer [annotate-branch clear-locals]]
             [cinc.analyzer.passes.jvm.validate :refer [validate]]
             [cinc.analyzer.passes.jvm.infer-tag :refer [infer-tag infer-constant-tag]]
@@ -241,10 +242,11 @@
   (binding [ana/macroexpand-1 macroexpand-1]
     (-> (-analyze form env)
       uniquify-locals
+      (prewalk annotate-branch)
       (walk (fn [ast]
               (-> ast
                 warn-earmuff
-                annotate-branch
+                fold-host-into-branch
                 source-info
                 elide-meta))
             (comp (cycling infer-tag analyze-host-expr validate box)
