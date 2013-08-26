@@ -80,6 +80,13 @@
       :op op)
     (assoc ast :tag (class form))))
 
+(defmethod infer-constant-tag :quote
+  [{:keys [expr] :as ast}]
+  (let [{:keys [tag] :as expr} (infer-constant-tag expr)]
+    (assoc ast
+      :expr expr
+      :tag  tag)))
+
 (defmethod -infer-tag :binding
   [{:keys [init] :as ast}]
   (if init

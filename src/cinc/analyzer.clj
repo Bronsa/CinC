@@ -261,13 +261,16 @@
      :var  var}
     (throw (ex-info (str "var not found: " var) {:var var}))))
 
-;; form is lost, we cannot assoc it back because we rely on :form for e.g. numbers
 (defmethod parse 'quote
   [[_ expr :as form] env]
   (let [expr (if-let [m (meta expr)]
                (with-meta expr (assoc m ::quoted true))
-               expr)]
-    (-analyze :const expr env)))
+               expr)
+        const (-analyze :const expr env)]
+    {:op   :quote
+     :expr const
+     :form form
+     :env  env}))
 
 (defmethod parse 'set!
   [[_ target val :as form] env]

@@ -39,7 +39,7 @@
   (is (= '(. bar foo) (mexpand (.foo bar))))
   (is (= 1 (mexpand (cinc.test.analyzer.core/foo))))
 
-  (let [s-ast (ast '+)]
+  (let [s-ast (:expr (ast '+))]
     (is (= :symbol (:type s-ast)))
     (is (= '+ (:form s-ast))))
 
@@ -82,10 +82,10 @@
     (is (= :the-var (:op v-ast)))
     (is (= #'+ (:var v-ast))))
 
-  (let [q-ast (ast '^{a b} [c d])]
-    (is (= :const (-> q-ast :meta :op)))
+  (let [q-ast (:expr (ast '^{a b} [c d]))]
+    (is (= :const (-> q-ast :meta :expr :op)))
     (is (= :const (-> q-ast :expr :op)))
-    (is (= '{a b} (-> q-ast :meta :form)))
+    (is (= '{a b} (-> q-ast :meta :expr :form)))
     (is (= '[c d] (-> q-ast :expr :form))))
 
   (let [s-ast (ast (set! *warn-on-reflection* true))]
