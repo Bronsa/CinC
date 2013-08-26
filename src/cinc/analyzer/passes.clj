@@ -9,7 +9,18 @@
 
 (defn children [{:keys [children] :as ast}]
   (when children
-    (mapv (partial ast) children)))
+    (mapv ast children)))
+
+(defn update-children
+  ([ast f] (update-children ast f identity))
+  ([ast f fix]
+     (if-let [c (children ast)]
+       (reduce (fn [ast [k v]]
+                 (assoc ast k (if (vector? v)
+                                (fix (mapv f (fix v)))
+                                (f v))))
+               ast (map list (fix (:children ast)) (fix c)))
+       ast)))
 
 (defn walk
   ([ast pre post]
@@ -18,13 +29,7 @@
      (let [ast (pre ast)
            fix (if reversed? (comp vec rseq) identity)
            w #(walk % pre post reversed?)
-           ast (if-let [c (children ast)]
-                 (reduce (fn [ast [k v]]
-                           (assoc ast k (if (vector? v)
-                                          (fix (mapv w (fix v)))
-                                          (w v))))
-                         ast (map list (fix (:children ast)) (fix c)))
-                 ast)]
+           ast (update-children ast w fix)]
        (post ast))))
 
 (defn prewalk [ast f]
