@@ -264,3 +264,21 @@
     [:dup]
     ~@(emit-cast (:tag val) (:tag target))
     ~[:put-static (:class target) (:field target) (:tag target)]])
+
+(defmethod -emit :instance-field
+  [{:keys [instance class field env tag]}]
+  `^:const
+  [~@(emit-line-number env)
+   ~@(emit instance frame)
+   ~[:check-cast class]
+   ~[:get-field class field tag]])
+
+(defmethod -emit-set! :instance-field
+  [{:keys [target val env]} frame]
+  `[~@(emit-line-number env)
+    ~@(emit target)
+    ~[:check-cast (:class target)]
+    ~@(emit val frame)
+    [:dup-x1]
+    ~@(emit-cast (:tag val) (:tag target))
+    ~[:put-field (:class target) (:field target) (:tag target)]])
