@@ -90,6 +90,10 @@
   [{:keys [id tag]} frame]
   (emit-constant id tag frame))
 
+(defmethod -emit :quote
+  [{:keys [const] frame}]
+  (-emit const frame))
+
 (defn emit-var [var frame]
   (emit-constant (get-in frame [:vars var]) frame))
 
