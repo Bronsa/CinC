@@ -54,7 +54,7 @@
 (defmethod -emit :throw
   [{:keys [exception]} frame]
   (into
-   (emit exception)
+   (emit exception frame)
    [:check-cast :java.lang.Throwable]
    [:throw-exception]))
 
