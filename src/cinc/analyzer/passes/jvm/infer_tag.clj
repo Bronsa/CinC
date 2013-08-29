@@ -93,6 +93,8 @@
     (merge ast
            (when-let [tag (:tag init)]
              {:tag tag})
+           (when-let [return-tag (:return-tag init)]
+             {:return-tag return-tag})
            (when-let [arglists (:arglists init)]
              {:arglists arglists}))
     ast))
@@ -103,18 +105,21 @@
     (merge ast
            (when-let [tag (:tag init)]
              {:tag tag})
+           (when-let [return-tag (:return-tag init)]
+             {:return-tag return-tag})
            (when-let [arglists (:arglists init)]
              {:arglists arglists}))
-    (if (= :fn local)
-      (assoc ast :tag AFunction)
-      ast)))
+    ast))
 
 (defmethod -infer-tag :var
   [{:keys [var] :as ast}]
   (let [{:keys [dynamic tag arg-lists]} (meta var)]
     (if (not dynamic)
       (merge ast
-             (when tag {:tag tag})
+             (when tag
+               (if (fn? @var)
+                 {:tag AFunction :return-tag tag}
+                 {:tag tag}))
              (when arg-lists {:arglists arg-lists}))
       ast)))
 
@@ -190,7 +195,7 @@
     (let [argc (count args)
           arglist (arglist-for-arity fn argc)]
       (if-let [tag (or (:tag (meta arglist)) ;; ideally we would select the fn-method
-                       (:tag fn))]
+                       (:return-tag fn))]
         (assoc ast :tag tag)
         ast))
     ast))
