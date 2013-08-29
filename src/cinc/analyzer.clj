@@ -354,7 +354,8 @@
                         :env   env
                         :name  name
                         :form  name
-                        :local :letfn})
+                        :local :letfn
+                        :children [:init]})
                      fns)
           e (update-in env [:locals] merge (zipmap fns binds))
           binds (mapv (fn [{:keys [name] :as b}]
