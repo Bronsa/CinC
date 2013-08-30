@@ -8,6 +8,7 @@
             [cinc.analyzer.passes :refer [walk prewalk cycling]]
             [cinc.analyzer.jvm.utils :refer :all :exclude [box]]
             [cinc.analyzer.passes.source-info :refer [source-info]]
+            [cinc.analyzer.passes.cleanup :refer [cleanup]]
             [cinc.analyzer.passes.elide-meta :refer [elide-meta]]
             [cinc.analyzer.passes.constant-lifter :refer [constant-lift]]
             [cinc.analyzer.passes.warn-earmuff :refer [warn-earmuff]]
@@ -223,14 +224,6 @@
      :test-type   test-type
      :skip-check? skip-check?
      :children [:test :tests :thens :default]}))
-
-(defn cleanup [ast]
-  (let [ast (-> ast
-              (update-in [:env] dissoc :locals)
-              (update-in [:env] dissoc :loop-locals))]
-    (if (= :local (:op ast))
-      (dissoc ast :init)
-      ast)))
 
 (defn analyze
   "Given an environment, a map containing
