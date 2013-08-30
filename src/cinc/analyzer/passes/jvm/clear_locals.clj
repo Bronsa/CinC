@@ -10,7 +10,7 @@
     (assoc :branch? true)
     (assoc-in [:test :should-not-clear] true)
     (assoc-in [:then :path?] true)
-    (assoc-in [:else :path?] true)))
+    (update-in [:else] #(when % (assoc % :path? true)))))
 
 (defmethod annotate-branch :local
   [{:keys [local] :as ast}]
