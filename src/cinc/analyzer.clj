@@ -551,8 +551,7 @@
 
 (defmethod parse '.
   [[_ target & [m-or-f] :as form] env]
-  {:pre [(>= (count form) 3)
-         (not (namespace (if (symbol? m-or-f) m-or-f (first m-or-f))))]}
+  {:pre [(>= (count form) 3)]}
   (let [[m-or-f field?] (if (and (symbol? m-or-f)
                                  (= \- (first (name m-or-f))))
                           [(-> m-or-f name (subs 1) symbol) true]
@@ -563,7 +562,7 @@
               call?
               {:op       :host-call
                :target   target-expr
-               :method   (first m-or-f)
+               :method   (symbol (name (first m-or-f)))
                :args     (mapv (analyze-in-env (ctx env :expr)) (next m-or-f))
                :children [:target :args]}
 
