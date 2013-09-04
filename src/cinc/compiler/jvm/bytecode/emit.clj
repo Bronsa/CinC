@@ -91,7 +91,7 @@
   (emit-constant id tag frame))
 
 (defmethod -emit :quote
-  [{:keys [const] frame}]
+  [{:keys [const]} frame]
   (-emit const frame))
 
 (defn emit-var [var frame]
@@ -266,7 +266,7 @@
     ~[:put-static (:class target) (:field target) (:tag target)]])
 
 (defmethod -emit :instance-field
-  [{:keys [instance class field env tag]}]
+  [{:keys [instance class field env tag]} frame]
   `^:const
   [~@(emit-line-number env)
    ~@(emit instance frame)
@@ -276,9 +276,38 @@
 (defmethod -emit-set! :instance-field
   [{:keys [target val env]} frame]
   `[~@(emit-line-number env)
-    ~@(emit target)
+    ~@(emit target frame)
     ~[:check-cast (:class target)]
     ~@(emit val frame)
     [:dup-x1]
     ~@(emit-cast (:tag val) (:tag target))
     ~[:put-field (:class target) (:field target) (:tag target)]])
+
+(defmethod -emit :keyword-invoke
+  [{:keys [env fn args] :as ast} frame]
+  (let [id (:id fn)
+        [end-label fault-label] (constantly label)]
+    `[~@(emit-line-number env)
+      [:get-static ~(keyword (name (frame :class)) (str "thunk__" id)) :clojure.lang.ILookupThunk]
+      [:dup]
+      ~@(emit fn frame)
+      [:dup-x2]
+      [:invoke-interface [:clojure.lang.ILookupThunk/get :Object] :Object]
+      [:dup-x2]
+      [:jump-inst :org.objectweb.asm.Opcodes/IF_ACMPEQ ~fault-label]
+      [:pop]
+      [:go-to ~end-label]
+
+      [:mark ~fault-label]
+      [:swap]
+      [:pop]
+      [:dup]
+      [:get-static ~(keyword (name (frame :class)) (str "site__" id)) :clojure.lang.KeywordLookupSite]
+      [:swap]
+      [:invoke-interface [:clojure.lang.ILookupThunk/fault :Object] :Object]
+      [:dup]
+      [:put-static ~(keyword (name (frame :class)) (str "thunk__" id)) :clojure.lang.ILookupThunk]
+      [:swap]
+      [:invoke-interface [:clojure.lang.ILookupThunk/get :Object] :Object]
+      [:mark ~end-label]]))
+
