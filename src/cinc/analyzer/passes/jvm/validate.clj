@@ -115,8 +115,9 @@
                                               (assoc arg :cast tag)
                                               arg)) args arg-tags)]
             (assoc ast
-              :tag  ret-tag
-              :args args))
+              :validated? true
+              :tag        ret-tag
+              :args       args))
           (if (apply = (mapv (comp u/maybe-class :return-type) matching))
             (assoc ast :tag (:return-type m))
             ast))
@@ -130,14 +131,14 @@
                        :argc   argc})))))
 
 (defmethod -validate :static-call
-  [{:keys [class method args tag] :as ast}]
-  (if tag
+  [{:keys [class method validated? tag args] :as ast}]
+  (if validated?
     ast
     (validate-call class method args tag ast :static)))
 
 (defmethod -validate :instance-call
-  [{:keys [class method args tag] :as ast}]
-  (if (and class (not tag))
+  [{:keys [class validated? method tag args] :as ast}]
+  (if (and class (not validated?))
     (validate-call class method args tag ast :instance)
     ast))
 
