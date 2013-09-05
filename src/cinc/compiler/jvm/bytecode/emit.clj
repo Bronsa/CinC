@@ -361,3 +361,17 @@
       [:invoke-static [:clojure.lang.Reflector/invokeInstanceMethod
                        :java.lang.Object :java.lang.String :objects]
        :java.lang.Object]]))
+
+(defmethod -emit :host-interop
+  [{:keys [m-or-f target env]} frame]
+  `[~@(emit target frame)
+    [:push ~(str m-or-f)]
+    [:invoke-static [:clojure.lang.Reflector/invokeNoArgInstanceMember :java.lang.Object :java.lang.String] :Object]])
+
+(defmethod -emit-set! :host-interop
+  [{:keys [target val env]} frame]
+  `[~@(emit-line-number env)
+    ~@(emit (:target target) frame)
+    [:push ~(str (:m-or-f target))]
+    ~@(emit val frame)
+    [:invoke-static [:clojure.lang.Reflector/setInstanceField :java.lang.Object :java.lang.String :java.lang.Object] :java.lang.Object]])
