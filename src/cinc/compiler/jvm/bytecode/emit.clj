@@ -343,3 +343,21 @@
       [:invoke-static [:clojure.lang.Reflector/invokeStaticMethod
                        :java.lang.Class :java.lang.String :objects]
        :java.lang.Object]]))
+
+(defmethod -emit :instance-call
+  [{:keys [env tag validated? args method ^Class class instance]} frame]
+  (if validated?
+    `[~@(emit-line-number env)
+      ~(emit instance frame)
+      [:check-cast ~class]
+      ~@(mapv #(emit % frame) args)
+      [(if (.isInterface class)
+         :invoke-interface
+         :invoke-virtual)
+       [~(keyword (str class) (str method)) ~@(arg-types args)] ~tag]]
+    `[~(emit instance frame)
+      [:push ~(str method)]
+      ~@(emit-as-array args frame)
+      [:invoke-static [:clojure.lang.Reflector/invokeInstanceMethod
+                       :java.lang.Object :java.lang.String :objects]
+       :java.lang.Object]]))
