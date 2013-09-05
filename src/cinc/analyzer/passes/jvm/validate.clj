@@ -80,7 +80,7 @@
   [{:keys [validated?] :as ast}]
   (if validated?
     ast
-    (let [{:keys [args class] :as ast} (validate-class ast)
+    (let [{:keys [args ^Class class] :as ast} (validate-class ast)
           c-name (symbol (.getName class))
           argc (count args)
           tags (mapv :tag args)]
