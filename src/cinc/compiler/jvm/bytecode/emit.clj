@@ -386,7 +386,7 @@
           [[:dup]
            [:if-null null-label]
            [:get-static :java.lang.Boolean/FALSE :java.lang.Boolean]
-           [:jump-insn :org.objectweb.asm.Opcodes/IF_ACMPEQ]]
+           [:jump-insn :org.objectweb.asm.Opcodes/IF_ACMPEQ false-label]]
           [[:if-z-cmp :org.objectweb.asm.commons.GeneratorAdapter/EQ false-label]])
       ~@(emit then frame)
       [:go-to ~end-label]
@@ -395,3 +395,56 @@
       [:mark ~false-label]
       ~@(emit (or else nil-expr) frame)
       [:mark ~end-label]]))
+
+(defn emit-args-and-invoke [args frame]
+  `[~@(mapv #(emit % frame) (take 20 args))
+    ~@(when-let [args (seq (drop 20 args))]
+        (emit-as-array args frame))
+    [:invoke-interface [:clojure.lang.IFn/invoke ~@(repeat (min 21 (count args)) :java.lang.Object)] :java.lang.Object]])
+
+(defmethod -emit :invoke
+  [{:keys [fn args env]} frame]
+  (if (and (= :var (:op fn))
+           (u/protocol-node? (:var fn)))
+
+    (let [[on-label call-label end-label] (repeatedly label)
+          v (:var fn)
+          [target & args] args
+          id (:id fn)
+          ^Class pinterface (:on-interface @(:protocol v))]
+      `[~@(emit target frame)
+        [:dup]
+
+        [:load-this]
+        [:get-field ~(keyword (name (frame :class)) (str "cached__class__" id)) :java.lang.Class]
+        [:jump-insn :org.objectweb.asm.Opcodes/IF_ACMPEQ ~call-label]
+
+        [:dup]
+        [:instance-of ~pinterface]
+        [:if-z-cmp :org.objectweb.asm.commons.GeneratorAdapter/EQ ~on-label]
+
+        [:dup]
+        [:invoke-static [:clojure.lang.Util/classOf :java.lang.Object] :java.lang.Class]
+        [:load-this]
+        [:swap]
+        [:put-field ~(keyword (name (frame :class)) (str "cached__class__" id)) :java.lang.Class]
+
+        [:mark ~call-label]
+        ~@(emit-var v frame)
+        [:invoke-virtual [:clojure.lang.Var/getRawRoot] :java.lang.Object]
+        [:swap]
+        ~@(emit-args-and-invoke args frame)
+        [:go-to ~end-label]
+
+        [:mark ~on-label]
+
+        ~@(mapv #(emit % frame) args)
+        [:invoke-interface [~(keyword (.getName pinterface)
+                                      (munge (str (:name fn))))
+                            ~@(repeat (count args) :java.lang.Object)] :java.lang.Object]
+
+        [:mark ~end-label]])
+
+    `[~@(emit fn frame)
+      [:check-cast :clojure.lang.IFn]
+      ~@(emit-args-and-invoke args frame)]))
