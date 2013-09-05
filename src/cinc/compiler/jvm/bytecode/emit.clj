@@ -84,7 +84,9 @@
           nil
           [:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
 
-          [:get-static (keyword (name (frame :class)) (str "const__" id)) tag])])))
+          (if (string? c)
+            [:push c]
+            [:get-static (keyword (name (frame :class)) (str "const__" id)) tag]))])))
 
 (defmethod -emit :const
   [{:keys [id tag]} frame]
