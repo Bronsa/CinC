@@ -315,14 +315,31 @@
       [:invoke-interface [:clojure.lang.ILookupThunk/get :Object] :Object]
       [:mark ~end-label]]))
 
+(defn arg-types [args]
+  (mapv #(or (:cast %) (:tag %)) args))
+
 (defmethod -emit :new
-  [{:keys [env class args validated? tag]} frame]
+  [{:keys [env ^Class class args validated? tag]} frame]
   (if validated?
     `[[:new-instance ~class]
       [:dup]
       ~@(mapv #(emit % frame) args)
-      [:invoke-constructor ~class [:<init> ~@(mapv #(or (:cast %) (:tag %)) args)] ~tag]]
+      [:invoke-constructor ~class [:<init> ~@(arg-types args)] ~tag]]
     `[[:push ~(.getName class)]
       [:invoke-static [:java.lang.Class/forName :java.lang.String] :java.lang.Class]
       ~@(emit-as-array args frame)
       [:invoke-static [:clojure.lang.Reflector/invokeCostructor :objects] :java.lang.Object]]))
+
+(defmethod -emit :static-call
+  [{:keys [env tag validated? args method ^Class class]} frame]
+  (if validated?
+    `[~@(emit-line-number env)
+      ~@(mapv #(emit % frame) args)
+      [:invoke-static [~(keyword (str class) (str method)) ~@(arg-types args)] ~tag]]
+    `[[:push ~(.getName class)]
+      [:invoke-static [:java.lang.Class/forName :java.lang.String] :java.lang.Class]
+      [:push ~(str method)]
+      ~@(emit-as-array args frame)
+      [:invoke-static [:clojure.lang.Reflector/invokeStaticMethod
+                       :java.lang.Class :java.lang.String :objects]
+       :java.lang.Object]]))
