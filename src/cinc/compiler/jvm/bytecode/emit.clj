@@ -209,7 +209,8 @@
       ~@(when (not= :statement context) ;; do this automatically on emit?
           [[:var-insn :istore :java.lang.Object ret-local]]) ;; specialize type?
       [:mark ~end-label]
-      ~@(emit finally frame) ;; check for null?
+      ~@(when finally
+          (emit finally frame))
       [:go-to ~ret-label]
 
       ~@(mapcat
@@ -223,12 +224,12 @@
              ~@(emit finally frame)
              [:go-to ~ret-label]])
          catches)
-
-      [:mark ~finally-label]
-      [:var-insn :istore :java.lang.Object ~finally-local]
-      ~@(emit finally frame)
-      [:var-insn :iload :java.lang.Object ~finally-local]
-      [:throw-exception]
+      ~@(when finally
+          `[[:mark ~finally-label]
+            [:var-insn :istore :java.lang.Object ~finally-local]
+            ~@(emit finally frame)
+            [:var-insn :iload :java.lang.Object ~finally-local]
+            [:throw-exception]])
 
       [:mark ~ret-label]
       ~@(when (not= :statement context)
@@ -239,9 +240,10 @@
           [:try-catch-block start-label end-label (:start-label c)
            (-> class .getName (.replace \. \/))])
 
-      [:try-catch-block start-label end-label finally-label nil]
-      ~@(for [{:keys [start-label end-label] :as c} catches]
-          [:try-catch-block start-label end-label finally-label nil])
+      ~@(when finally
+          `[~[:try-catch-block start-label end-label finally-label nil]
+            ~@(for [{:keys [start-label end-label] :as c} catches]
+                [:try-catch-block start-label end-label finally-label nil])])
 
       ~@(for [{:keys [local start-label end-label c-local] :as c} catches]
           [:local-variable (:name local) :objects nil start-label end-label c-local])]))
