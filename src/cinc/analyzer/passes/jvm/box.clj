@@ -37,11 +37,12 @@
     (let [test (if (and (not (:box test))
                         (= Boolean/TYPE (:tag test)))
                  test (assoc test :box true))
-          [then else] (if box (mapv -box [then else]) [then else])]
-      (assoc ast
-        :test test
-        :then then
-        :else else))))
+          [then else-] (if box (mapv -box [then else]) [then else])]
+      (merge ast
+             {:test test
+              :then then}
+             (when else
+               {:else else-})))))
 
 (defmethod box :def
   [{:keys [init] :as ast}]
