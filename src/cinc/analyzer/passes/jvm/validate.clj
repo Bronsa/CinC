@@ -67,32 +67,40 @@
                        true methods) methods))
      methods)))
 
-(defmethod -validate :new
+(defn validate-class
   [{:keys [maybe-class args] :as ast}]
   (if maybe-class
     (if-let [the-class (u/maybe-class maybe-class)]
-      (let [c-name (symbol (.getName the-class))
-            argc (count args)
-            tags (mapv :tag args)]
-        (if-let [[ctor & rest] (->> (filter #(= (count (:parameter-types %)) argc)
-                                            (u/members the-class c-name))
-                                    (filter (partial tag-match? tags))
-                                    (try-best-match tags))]
-          (if (empty? rest)
-            (let [arg-tags (mapv u/maybe-class (:parameter-types ctor))
-                  args (mapv (fn [arg tag] (if (not= tag (:tag args))
-                                            (assoc arg :cast tag)
-                                            arg)) args arg-tags)]
-              (assoc (dissoc ast :maybe-class)
-                :class the-class
-                :args  args))
-            (assoc ast :class the-class))
-          (throw (ex-info (str "no ctor found for ctor of class: " the-class " and give signature")
-                          {:class the-class
-                           :args  args}))))
+      (assoc (dissoc ast :maybe-class) :class the-class)
       (throw (ex-info (str "class not found: " maybe-class)
                       {:class maybe-class})))
     ast))
+
+(defmethod -validate :new
+  [{:keys [validated?] :as ast}]
+  (if validated?
+    ast
+    (let [{:keys [args class] :as ast} (validate-class ast)
+          c-name (symbol (.getName class))
+          argc (count args)
+          tags (mapv :tag args)]
+      (if-let [[ctor & rest] (->> (filter #(= (count (:parameter-types %)) argc)
+                                          (u/members class c-name))
+                                  (filter (partial tag-match? tags))
+                                  (try-best-match tags))]
+        (if (empty? rest)
+          (let [arg-tags (mapv u/maybe-class (:parameter-types ctor))
+                args (mapv (fn [arg tag] (if (not= tag (:tag arg))
+                                          (assoc arg :cast tag)
+                                          arg))
+                           args arg-tags)]
+            (assoc ast
+              :args       args
+              :validated? true))
+          ast)
+        (throw (ex-info (str "no ctor found for ctor of class: " class " and give signature")
+                        {:class class
+                         :args  args}))))))
 
 (defn validate-call [class method args tag ast type]
   (let [argc (count args)
@@ -103,7 +111,7 @@
         (if (empty? rest)
           (let [ret-tag  (u/maybe-class (:return-type m))
                 arg-tags (mapv u/maybe-class (:parameter-types m))
-                args     (mapv (fn [arg tag] (if (not= tag (:tag args))
+                args     (mapv (fn [arg tag] (if (not= tag (:tag arg))
                                               (assoc arg :cast tag)
                                               arg)) args arg-tags)]
             (assoc ast
