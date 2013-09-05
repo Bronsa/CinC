@@ -36,7 +36,7 @@
                      [[:pop]]))))
          (into bytecode
                (when (= :untyped m)
-                 (emit nil-expr))
+                 (emit nil-expr frame))
                (when cast
                  (emit-cast tag cast))
                (when box
@@ -375,3 +375,23 @@
     [:push ~(str (:m-or-f target))]
     ~@(emit val frame)
     [:invoke-static [:clojure.lang.Reflector/setInstanceField :java.lang.Object :java.lang.String :java.lang.Object] :java.lang.Object]])
+
+;; todo: intrinsics
+(defmethod -emit :if
+  [{:keys [test then else env]} frame]
+  (let [[null-label false-label end-label] (repeatedly label)]
+    `[~@(emit-line-number env)
+      ~@(emit test frame)
+      ~@(if (:box test)
+          [[:dup]
+           [:if-null null-label]
+           [:get-static :java.lang.Boolean/FALSE :java.lang.Boolean]
+           [:jump-insn :org.objectweb.asm.Opcodes/IF_ACMPEQ]]
+          [[:if-z-cmp :org.objectweb.asm.commons.GeneratorAdapter/EQ false-label]])
+      ~@(emit then frame)
+      [:go-to ~end-label]
+      [:mark ~null-label]
+      [:pop]
+      [:mark ~false-label]
+      ~@(emit (or else nil-expr) frame)
+      [:mark ~end-label]]))
