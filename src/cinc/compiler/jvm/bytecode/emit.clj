@@ -280,7 +280,7 @@
 (defmethod -emit-set! :instance-field
   [{:keys [target val env]} frame]
   `[~@(emit-line-number env)
-    ~@(emit target frame)
+    ~@(emit (:instance target) frame)
     ~[:check-cast (:class target)]
     ~@(emit val frame)
     [:dup-x1]
