@@ -88,10 +88,11 @@
                                m-or-f " for class " class)
                           {:instance target-expr
                            :m-or-f   m-or-f})))
-      {:op       :host-interop
-       :target   target-expr
-       :m-or-f   m-or-f
-       :children [:target]})))
+      {:op          :host-interop
+       :target      target-expr
+       :m-or-f      m-or-f
+       :assignable? true
+       :children    [:target]})))
 
 (defn analyze-host-expr
   [{:keys [op form env] :as ast}]
