@@ -124,12 +124,12 @@
         [[:push true]
          [:invoke-virtual [:clojure.lang.Var/setDynamic :boolean] :clojure.lang.Var]])
     ~@(when meta
-      (into
-       [[:dup]]
-       (conj
-        (emit meta frame)
-        [:check-cast :clojure.lang.IPersistentMap]
-        [:invoke-virtual [:clojure.lang.Var/setMeta :clojure.lang.IPersistentMap] :void])))
+        (into
+         [[:dup]]
+         (conj
+          (emit meta frame)
+          [:check-cast :clojure.lang.IPersistentMap]
+          [:invoke-virtual [:clojure.lang.Var/setMeta :clojure.lang.IPersistentMap] :void])))
     ~@(when init
         (into
          [[:dup]]
@@ -191,7 +191,7 @@
 (defn label []
   (keyword (gensym "label__")))
 
-(defn local [] ;; use :local :name?
+(defn local []
   (keyword (gensym "local__")))
 
 (defmethod -emit :try
@@ -199,41 +199,40 @@
   (let [[start-label end-label ret-label finally-label] (repeatedly label)
         catches (mapv #(assoc %
                          :start-label (label)
-                         :end-label (label)
-                         :c-local (local)) catches)
+                         :end-label (label)) catches)
         context (:context env)
         [ret-local finally-local] (repeatedly local)]
 
     `[[:mark ~start-label]
       ~@(emit body frame)
       ~@(when (not= :statement context) ;; do this automatically on emit?
-          [[:var-insn :istore :java.lang.Object ret-local]]) ;; specialize type?
+          [[:var-insn :java.lang.Object/ISTORE ret-local]]) ;; specialize type?
       [:mark ~end-label]
       ~@(when finally
           (emit finally frame))
       [:go-to ~ret-label]
 
       ~@(mapcat
-         (fn [{:keys [body start-label end-label c-local]}]
+         (fn [{:keys [body start-label end-label local]}]
            `[[:mark ~start-label]
-             [:var-insn :istore :java.lang.Object c-local]
+             [:var-insn :java.lang.Object/ISTORE (:name local)]
              ~@(emit body frame)
              ~@(when (not= :statement context)
-                 [[:var-insn :istore :java.lang.Object ret-local]])
+                 [[:var-insn :java.lang.Object/ISTORE ret-local]])
              [:mark ~end-label]
              ~@(emit finally frame)
              [:go-to ~ret-label]])
          catches)
       ~@(when finally
           `[[:mark ~finally-label]
-            [:var-insn :istore :java.lang.Object ~finally-local]
+            [:var-insn :java.lang.Object/ISTORE ~finally-local]
             ~@(emit finally frame)
-            [:var-insn :iload :java.lang.Object ~finally-local]
+            [:var-insn :java.lang.Object/ILOAD ~finally-local]
             [:throw-exception]])
 
       [:mark ~ret-label]
       ~@(when (not= :statement context)
-          [[:var-insn [:iload :java.lang.Object ret-local]]])
+          [[:var-insn [:java.lang.Object/ILOAD ret-local]]])
       [:mark ~(label)]
 
       ~@(for [{:keys [^Class class] :as c} catches]
@@ -245,8 +244,9 @@
             ~@(for [{:keys [start-label end-label] :as c} catches]
                 [:try-catch-block start-label end-label finally-label nil])])
 
-      ~@(for [{:keys [local start-label end-label c-local] :as c} catches]
-          [:local-variable (:name local) :objects nil start-label end-label c-local])]))
+      ~@(for [{:keys [local start-label end-label] :as c} catches]
+          [:local-variable (str (:name local)) ; or :form?
+           :objects nil start-label end-label (:name local)])])) ;; generate idx based on name
 
 (defn emit-line-number
   [{:keys [line]}]
@@ -551,7 +551,7 @@
              `[~@(emit init frame)
                [:var-insn ~(keyword (if tag (.getName ^Class tag)
                                         "java.lang.Object") "ISTORE") ;; .getOpcode
-                ~(:id init)]
+                ~(:name binding)] ;; generate idx
                [:mark ~label]])
            bindings labels)])
 
@@ -562,8 +562,8 @@
     `[~@(emit-bindings bindings labels frame)
       ~@(emit body (merge frame (when loop? {:loop-label loop-label})))
       [:mark ~end-label]
-      ~@(mapv (fn [{:keys [name init tag]} label]
-                [:local-variable name (or tag :java.lang.Object) nil label end-label (:id init)])
+      ~@(mapv (fn [{:keys [name tag]} label]
+                [:local-variable (str name) (or tag :java.lang.Object) nil label end-label name])
               bindings labels)]))
 (defmethod -emit :let
   [ast frame]
