@@ -88,10 +88,12 @@
       :tag  tag)))
 
 (defmethod -infer-tag :binding
-  [{:keys [init] :as ast}]
+  [{:keys [init local] :as ast}]
   (if init
     (merge ast
-           (when-let [tag (:tag init)]
+           (when-let [tag (if (not= :loop local)
+                            (:tag init)
+                            Object)]
              {:tag tag})
            (when-let [return-tag (:return-tag init)]
              {:return-tag return-tag})
@@ -103,7 +105,9 @@
   [{:keys [init local] :as ast}]
   (if init
     (merge ast
-           (when-let [tag (:tag init)]
+           (when-let [tag (if (not= :loop local)
+                            (:tag init)
+                            Object)]
              {:tag tag})
            (when-let [return-tag (:return-tag init)]
              {:return-tag return-tag})
