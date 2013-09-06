@@ -545,3 +545,30 @@
                        (emit-then-hashes test (tests i) (thens i) test-type default-label frame))
                     [:go-to ~end-label]])
                 labels)]))
+
+(defn emit-bindings [bindings labels frame]
+  [(mapcat (fn [{:keys [init tag] :as binding} label]
+             `[~@(emit init frame)
+               [:var-insn ~(keyword (if tag (.getName ^Class tag)
+                                        "java.lang.Object") "ISTORE") ;; .getOpcode
+                ~(:id init)]
+               [:mark ~label]])
+           bindings labels)])
+
+(defn emit-let
+  [{:keys [op bindings body env]} frame]
+  (let [loop? (= :loop op)
+        [end-label loop-label & labels] (repeatedly (+ 2 (count bindings)) label)]
+    `[~@(emit-bindings bindings labels frame)
+      ~@(emit body (merge frame (when loop? {:loop-label loop-label})))
+      [:mark ~end-label]
+      ~@(mapv (fn [{:keys [name init tag]} label]
+                [:local-variable name (or tag :java.lang.Object) nil label end-label (:id init)])
+              bindings labels)]))
+(defmethod -emit :let
+  [ast frame]
+  (emit-let ast frame))
+
+(defmethod -emit :loop
+  [ast frame]
+  (emit-let ast frame))
