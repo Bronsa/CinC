@@ -522,6 +522,8 @@
 (defmethod -emit :case
   [{:keys [test default tests thens shift mask low high switch-type test-type skip-check? env] :as ast} frame]
   (let [testc (count tests)
+        tests (zipmap (mapv :hash tests) (mapv :test))
+        thens (apply sorted-map (mapcat (juxt :hash :then) thens))
         [default-label end-label] (repeatedly label)
         labels (zipmap (keys tests) (repeatedly label))]
     `[~@(emit-line-number env)
