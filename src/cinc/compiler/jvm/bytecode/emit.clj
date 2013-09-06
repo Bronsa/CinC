@@ -448,3 +448,100 @@
     `[~@(emit fn frame)
       [:check-cast :clojure.lang.IFn]
       ~@(emit-args-and-invoke args frame)]))
+
+(defn emit-shift-mask
+  [{:keys [shift mask]}]
+  (when (not (zero? mask))
+    [[:push shift]
+     [:insn :org.objectweb.asm.Opcodes/ISHR]
+     [:push mask]
+     [:insn :org.objectweb.asm.Opcodes/IAND]]))
+
+(defn emit-test-ints
+  [{:keys [test test-type] :as ast} frame default-label]
+  (cond
+   (nil? (:tag test))
+   ;; reflection warning
+   `[~@(emit test frame)
+     [:instance-of :java.lang.Number]
+     [:if-z-cmp :org.objectweb.asm.commons.GeneratorAdapter/EQ ~default-label]
+     ~@(emit test frame) ;; can we avoid emitting this twice?
+     [:check-cast :java.lang.Number]
+     [:invoke-virtual [:java.lang.Number/intValue] :int]
+     ~@(emit-shift-mask ast)]
+
+   (#{Long/TYPE Integer/TYPE Short/TYPE Byte/TYPE} (:tag test))
+   `[~@(emit (assoc test :cast Integer/TYPE) frame)
+     ~@(emit-shift-mask ast)]
+
+   :else
+   [[:go-to default-label]]))
+
+(defn emit-test-hashes
+  [{:keys [test] :as ast} frame]
+  `[~@(emit test frame)
+    [:invoke-static [:clojure.lang.Util/hash :java.lang.Object] :int]
+    ~@(emit-shift-mask ast)])
+
+(defn emit-then-ints
+  [tag comp test then default-label mask frame]
+  (cond
+   (nil? tag)
+   `[~@(emit comp frame)
+     ~@(emit test frame)
+     [:invoke-static [:clojure.lang.Util/equiv :java.lang.Object :java.lang.Object] :boolean]
+     [:if-z-cmp :org.objectweb.asm.commons.GeneratorAdapter/EQ ~default-label]
+     ~@(emit then frame)]
+
+   (= tag Long/TYPE)
+   `[~@(emit test frame)
+     ~@(emit comp frame)
+     [:if-cmp :long :org.objectweb.asm.commons.GeneratorAdapter/NE ~default-label]
+     ~@(emit then frame)]
+
+   (#{Integer/TYPE Short/TYPE Byte/TYPE} tag)
+   `[~@(when (not (zero? mask))
+         `[~@(emit test frame)
+           ~@(emit (assoc comp :cast Long/TYPE) frame)
+           [:if-cmp :long :org.objectweb.asm.commons.GeneratorAdapter/NE ~default-label]])
+     ~@(emit then frame)]
+
+   :else
+   [[:go-to default-label]]))
+
+(defn emit-then-hashes
+  [comp test then test-type default-label frame]
+  `[~@(emit comp frame)
+    ~@(emit test frame)
+    ~@(if (= :hash-identity test-type)
+        [[:jump-insn :org.objectweb.asm.Opcodes/IF_ACMPEQ default-label]]
+        [[:invoke-static [:clojure.lang.Util/equiv :java.lang.Object :java.lang.Object] :boolean]
+         [:if-z-cmp :org.objectweb.asm.commons.GeneratorAdapter/EQ ~default-label]])
+    ~@(emit then frame)])
+
+(defmethod -emit :case
+  [{:keys [test default tests thens shift mask low high switch-type test-type skip-check? env] :as ast} frame]
+  (let [testc (count tests)
+        [default-label end-label] (repeatedly label)
+        labels (zipmap (keys tests) (repeatedly label))]
+    `[~@(emit-line-number env)
+      ~@(if (= :int test-type)
+          (emit-test-ints ast frame default-label)
+          (emit-test-hashes ast frame))
+      ~(if (= :sparse switch-type)
+         [:lookup-switch-insn default-label (keys tests) (vals labels)] ; to array
+         [:table-switch-insn low high default-label
+          (mapv (fn [i] (if (contains? labels i) (labels i) default-label)) (range low high))])
+      ~@(mapcat (fn [[i label]]
+                  `[[:mark ~label]
+                    ~@(cond
+                       (= :int test-type)
+                       (emit-then-ints (:tag test) test (tests i) (thens i) default-label mask frame)
+
+                       (contains? skip-check? i)
+                       [(emit (thens i) frame)]
+
+                       :else
+                       (emit-then-hashes test (tests i) (thens i) test-type default-label frame))
+                    [:go-to ~end-label]])
+                labels)]))
