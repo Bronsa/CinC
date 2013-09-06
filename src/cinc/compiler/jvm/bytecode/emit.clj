@@ -572,3 +572,12 @@
 (defmethod -emit :loop
   [ast frame]
   (emit-let ast frame))
+
+(defmethod -emit :recur
+  [{:keys [loop-locals args]} {:keys [loop-label] :as frame}]
+  `[~@(mapcat (fn [arg binding]
+                `[~@(emit arg frame)
+                  ~(if (= :arg (:local binding))
+                     [:store-arg (:name binding)]
+                     [:var-insn :java.lang.Object/ISTORE (:name binding)])]) args loop-locals)
+    [:go-to ~loop-label]])
