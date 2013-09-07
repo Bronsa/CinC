@@ -1,6 +1,6 @@
 (ns cinc.compiler.jvm.bytecode.emit
   (:require [cinc.analyzer.utils :as u]
-            [cinc.analyzer.jvm.utils :refer [asm-type primitive?]]))
+            [cinc.analyzer.jvm.utils :refer [asm-type primitive? numeric?] :as j.u]))
 
 (defmulti -emit (fn [{:keys [op]} _] op))
 (defmulti -emit-set! (fn [{:keys [op]} _] op))
@@ -8,9 +8,18 @@
 (def nil-expr
   {:op :const :type :nil :form nil})
 
-;; TODO: emit box/unbox
 (defn emit-box [tag box]
-  [])
+  (if (and (primitive? tag)
+           (not (primitive? box)))
+    (cond
+     (numeric? tag)
+     [[:invoke-static [:clojure.lang.RT/box tag] :java.lang.Number] ; or bool/char
+      [:check-cast box]]
+     (= Character box)
+     [[:invoke-static [:clojure.lang.RT/box tag] :java.lang.Character]]
+     (= Boolean box)
+     [[:invoke-static [:clojure.lang.RT/box tag] :java.lang.Boolean]])
+    [])) ;; TODO: emit unbox
 
 (defn emit-cast [tag cast]
   (if (not (or (primitive? tag)
@@ -37,10 +46,10 @@
          (into bytecode
                (when (= :untyped m)
                  (emit nil-expr frame))
-               (when cast
-                 (emit-cast tag cast))
                (when box
-                 (emit-box tag box)))))))
+                 (emit-box tag (j.u/box tag)))
+               (when cast
+                 (emit-cast tag cast)))))))
 
 (defmethod -emit :import
   [{:keys [class]} frame]
