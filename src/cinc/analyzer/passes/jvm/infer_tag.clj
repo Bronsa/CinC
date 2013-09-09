@@ -150,6 +150,16 @@
      :else
      ast)))
 
+(defmethod -infer-tag :case
+  [{:keys [thens] :as ast}]
+  (let [thens (mapv :then thens)
+        tag (first (keep :tag thens))]
+    (if (and tag
+             (every? (fn [x] (or (= (:tag x) tag)
+                           (:loop-tag x))) thens))
+      (assoc ast :tag tag)
+      ast)))
+
 (defmethod -infer-tag :new
   [{:keys [maybe-class class] :as ast}]
   (assoc ast :tag (or class maybe-class)))
