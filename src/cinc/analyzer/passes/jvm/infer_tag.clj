@@ -137,20 +137,34 @@
 (defmethod -infer-tag :if
   [{:keys [then else] :as ast}]
   (let [[then-tag else-tag] (mapv :tag [then else])]
-    (if (or (not else)
-            (= then-tag else-tag))
-      (assoc ast :tag then-tag)
-      ast)))
+    (cond
+     (and then-tag
+          (or (not else)
+              (:loop-tag else)
+              (= then-tag else-tag)))
+     (assoc ast :tag then-tag)
+
+     (and else-tag (:loop-tag then))
+     (assoc ast :tag else-tag)
+
+     :else
+     ast)))
 
 (defmethod -infer-tag :new
   [{:keys [maybe-class class] :as ast}]
   (assoc ast :tag (or class maybe-class)))
 
+(defmethod -infer-tag :recur
+  [ast]
+  (assoc ast :loop-tag true))
+
 (defmethod -infer-tag :do
   [{:keys [ret] :as ast}]
   (if-let [tag (:tag ret)]
     (assoc ast :tag tag)
-    ast))
+    (if (:loop-tag ret)
+      (assoc ast :loop-tag true)
+      ast)))
 
 (defmethod -infer-tag :let
   [{:keys [body] :as ast}]
