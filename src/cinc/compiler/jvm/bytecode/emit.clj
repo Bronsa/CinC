@@ -204,7 +204,7 @@
   (keyword (gensym "local__")))
 
 (defmethod -emit :try
-  [{:keys [body catches finally env]} frame]
+  [{:keys [body catches finally env tag]} frame]
   (let [[start-label end-label ret-label finally-label] (repeatedly label)
         catches (mapv #(assoc %
                          :start-label (label)
@@ -215,7 +215,7 @@
     `[[:mark ~start-label]
       ~@(emit body frame)
       ~@(when (not= :statement context) ;; do this automatically on emit?
-          [[:var-insn :java.lang.Object/ISTORE ret-local]]) ;; specialize type?
+          [[:var-insn :java.lang.Object/ISTORE ret-local]])
       [:mark ~end-label]
       ~@(when finally
           (emit finally frame))
@@ -241,7 +241,9 @@
 
       [:mark ~ret-label]
       ~@(when (not= :statement context)
-          [[:var-insn [:java.lang.Object/ILOAD ret-local]]])
+          `[[:var-insn [:java.lang.Object/ILOAD ~ret-local]]
+            ~@(when tag
+                [:check-cast tag])])
       [:mark ~(label)]
 
       ~@(for [{:keys [^Class class] :as c} catches]
