@@ -305,7 +305,7 @@
       [:dup]
       ~@(emit fn frame)
       [:dup-x2]
-      [:invoke-interface [:clojure.lang.ILookupThunk/get :Object] :Object]
+      [:invoke-interface [:clojure.lang.ILookupThunk/get :java.lang.Object] :java.lang.Object]
       [:dup-x2]
       [:jump-inst :org.objectweb.asm.Opcodes/IF_ACMPEQ ~fault-label]
       [:pop]
@@ -317,11 +317,11 @@
       [:dup]
       [:get-static ~(keyword (name (frame :class)) (str "site__" id)) :clojure.lang.KeywordLookupSite]
       [:swap]
-      [:invoke-interface [:clojure.lang.ILookupThunk/fault :Object] :Object]
+      [:invoke-interface [:clojure.lang.ILookupThunk/fault :java.lang.Object] :java.lang.Object]
       [:dup]
       [:put-static ~(keyword (name (frame :class)) (str "thunk__" id)) :clojure.lang.ILookupThunk]
       [:swap]
-      [:invoke-interface [:clojure.lang.ILookupThunk/get :Object] :Object]
+      [:invoke-interface [:clojure.lang.ILookupThunk/get :java.lang.Object] :java.lang.Object]
       [:mark ~end-label]]))
 
 (defn arg-types [args]
