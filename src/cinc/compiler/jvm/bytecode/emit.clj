@@ -13,7 +13,7 @@
            (not (primitive? box)))
     (cond
      (numeric? tag)
-     [[:invoke-static [:clojure.lang.RT/box tag] :java.lang.Number] ; or bool/char
+     [[:invoke-static [:clojure.lang.RT/box tag] :java.lang.Number]
       [:check-cast box]]
      (= Character box)
      [[:invoke-static [:clojure.lang.RT/box tag] :java.lang.Character]]
@@ -53,7 +53,7 @@
 
 (defmethod -emit :import
   [{:keys [class]} frame]
-  [[:get-static :clojure.lang.RT/CURRENT_NS :var]
+  [[:get-static :clojure.lang.RT/CURRENT_NS :clojure.lang.Var]
    [:invoke-virtual [:clojure.lang.Var/deref] :java.lang.Object]
    [:check-cast :clojure.lang.Namespace]
    [:push class]
@@ -93,7 +93,7 @@
           nil
           [:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
 
-          (if (string? c)
+          (if (string? c) ;; or primitive number
             [:push c]
             [:get-static (keyword (name (frame :class)) (str "const__" id)) tag]))])))
 
@@ -133,18 +133,14 @@
         [[:push true]
          [:invoke-virtual [:clojure.lang.Var/setDynamic :boolean] :clojure.lang.Var]])
     ~@(when meta
-        (into
-         [[:dup]]
-         (conj
-          (emit meta frame)
+        `[[:dup]
+          ~@(emit meta frame)
           [:check-cast :clojure.lang.IPersistentMap]
-          [:invoke-virtual [:clojure.lang.Var/setMeta :clojure.lang.IPersistentMap] :void])))
+          [:invoke-virtual [:clojure.lang.Var/setMeta :clojure.lang.IPersistentMap] :void]])
     ~@(when init
-        (into
-         [[:dup]]
-         (conj
-          (emit init frame)
-          [:invoke-virtual [:clojure.lang.Var/bindRoot :java.lang.Object] :void])))])
+        `[[:dup]
+          ~@(emit init frame)
+          [:invoke-virtual [:clojure.lang.Var/bindRoot :java.lang.Object] :void]])])
 
 (defmethod -emit :set!
   [ast frame]
@@ -155,12 +151,10 @@
    [[:push (int (count list))]
     [:new-array :java.lang.Object]]
    (mapcat (fn [i item]
-             (into
-              [[:dup]
-               [:push (int i)]]
-              (conj
-               (emit item frame)
-               [:array-store :java.lang.Object])))
+             `[[:dup]
+               [:push ~(int i)]
+               ~@(emit item frame)
+               [:array-store :java.lang.Object]])
            (range) list)))
 
 (defmethod -emit :map
@@ -185,13 +179,11 @@
   [{:keys [meta expr]} frame]
   (into
    (emit expr frame)
-   (into
-    [[:check-cast :clojure.lang.IObj]]
-    (conj
-     (emit meta frame)
+   `[[:check-cast :clojure.lang.IObj]
+     ~@(emit meta frame)
      [:check-cast :clojure.lang.IPersistentMap]
      [:invoke-interface [:clojure.lang.IObj/withMeta :clojure.lang.IPersistentMap]
-      :clojure.lang.IObj]))))
+      :clojure.lang.IObj]]))
 
 (defmethod -emit :do
   [{:keys [statements ret]} frame]
@@ -565,7 +557,8 @@
                [:var-insn ~(keyword (if tag (.getName ^Class tag)
                                         "java.lang.Object") "ISTORE") ;; .getOpcode
                 ~(:name binding)] ;; generate idx
-               [:mark ~label]])
+               ~@(when label
+                   [[:mark label]])])
            bindings labels)])
 
 (defn emit-let
