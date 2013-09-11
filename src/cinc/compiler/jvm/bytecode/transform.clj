@@ -4,7 +4,7 @@
   (:require [clojure.string :as s]
             [cinc.analyzer.jvm.utils :refer [maybe-class]]
             [cinc.analyzer.utils :refer [update!]])
-  (:import (org.objectweb.asm Type)
+  (:import (org.objectweb.asm Type Label)
            (org.objectweb.asm.commons Method)))
 
 (def rename {:insn               :visit-insn
@@ -75,17 +75,14 @@
 
 (defn fix [inst]
   (case inst
-    (:invoke-static :invoke-virtual)
+    (:invoke-static :invoke-virtual :invoke-interface :invoke-constructor)
     (fn [[[m & args] ret]]
       (let [class (class-type (namespace m))
             method (method-desc ret (name m) args)]
         (list class method)))
 
-    (:check-cast :new-array :array-store)
+    (:check-cast :new-array :array-store :new-instance :instance-of)
     (fn [[class]] (list (class-type class)))
-
-    (:insn)
-    (fn [[f]] (list (symbol f)))
 
     (:get-static :put-static :get-field :put-field)
     (fn [args]
@@ -93,11 +90,10 @@
                         [(namespace (first args)) (name (first args)) (second args)])]
        (list (class-type c) (name f) (class-type (name t)))))
 
-    (:mark :go-to)
+    (:mark)
     (fn [[label]]
       (let [label (symbol label)]
-        (when-not (contains? *labels* label)
-          (update! *labels* conj label))
+        (update! *labels* conj label)
         (list label)))
 
     (:var-insn)
@@ -112,22 +108,29 @@
     (:local-variable)
     (fn [[desc tag _ l1 l2 local]]
       (let [local (symbol local)]
-        (when-not (contains? *locals* local)
-          (update! *locals* conj local))
+        (update! *locals* conj local)
         (list (name desc) (class-type tag) nil (symbol l1) (symbol l2) local)))
 
     (:line-number)
     (fn [[line label]]
       (list (int line) (symbol label)))
 
-    identity))
+    (:lookup-switch-insn)
+    (fn [[l t lbs]]
+      (list (symbol l) (int-array t) (into-array Label lbs)))
 
-(defn transform [bc]
+    (:table-switch-insn)
+    (fn [[l h l lbs]]
+      (list (int l) (int h) (symbol l) (into-array Label lbs)))
+    ;;default
+    (fn [args] (seq (map symbol args)))))
+
+(defn transform [gen bc]
   (binding [*labels* *labels*
             *locals* *locals*]
     (let [calls (seq (map (fn [[inst & args]]
                             (list* (normalize inst) ((fix inst) args))) bc))]
-      `(let [*gen*# nil ;; TODO
+      `(let [*gen*# ~gen
              [~@*labels*] (repeatedly #(.newLabel *gen*#))
              [~@*locals*] (range)]
          (doto *gen*

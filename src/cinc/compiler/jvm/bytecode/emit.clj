@@ -326,7 +326,7 @@
     `[[:new-instance ~class]
       [:dup]
       ~@(mapv #(emit % frame) args)
-      [:invoke-constructor ~class [:<init> ~@(arg-types args)] ~tag]]
+      [:invoke-constructor [(keyword (.getName class) "<init>") ~@(arg-types args)] ~tag]]
     `[[:push ~(.getName class)]
       [:invoke-static [:java.lang.Class/forName :java.lang.String] :java.lang.Class]
       ~@(emit-as-array args frame)
