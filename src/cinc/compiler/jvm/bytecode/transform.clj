@@ -87,9 +87,11 @@
     (:insn)
     (fn [[f]] (list (symbol f)))
 
-    (:get-static)
-    (fn [[f t]]
-      (list (class-type (namespace f)) (name f) (class-type (name t))))
+    (:get-static :put-static :get-field :put-field)
+    (fn [args]
+      (let [[c f t] (if (= 3 (count args)) args
+                        [(namespace (first args)) (name (first args)) (second args)])]
+       (list (class-type c) (name f) (class-type (name t)))))
 
     (:mark :go-to)
     (fn [[label]]
@@ -113,6 +115,10 @@
         (when-not (contains? *locals* local)
           (update! *locals* conj local))
         (list (name desc) (class-type tag) nil (symbol l1) (symbol l2) local)))
+
+    (:line-number)
+    (fn [[line label]]
+      (list (int line) (symbol label)))
 
     identity))
 

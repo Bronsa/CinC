@@ -95,7 +95,7 @@
 
           (if (string? c) ;; or primitive number
             [:push c]
-            [:get-static (keyword (name (frame :class)) (str "const__" id)) tag]))])))
+            [:get-static (frame :class) (str "const__" id) tag]))])))
 
 (defmethod -emit :const
   [{:keys [id tag]} frame]
@@ -294,7 +294,7 @@
   (let [id (:id fn)
         [end-label fault-label] (constantly label)]
     `[~@(emit-line-number env)
-      [:get-static ~(keyword (name (frame :class)) (str "thunk__" id)) :clojure.lang.ILookupThunk]
+      [:get-static ~(name (frame :class)) ~(str "thunk__" id) :clojure.lang.ILookupThunk]
       [:dup]
       ~@(emit fn frame)
       [:dup-x2]
@@ -308,11 +308,11 @@
       [:swap]
       [:pop]
       [:dup]
-      [:get-static ~(keyword (name (frame :class)) (str "site__" id)) :clojure.lang.KeywordLookupSite]
+      [:get-static ~(name (frame :class)) ~(str "site__" id) :clojure.lang.KeywordLookupSite]
       [:swap]
       [:invoke-interface [:clojure.lang.ILookupThunk/fault :java.lang.Object] :java.lang.Object]
       [:dup]
-      [:put-static ~(keyword (name (frame :class)) (str "thunk__" id)) :clojure.lang.ILookupThunk]
+      [:put-static ~(name (frame :class)) ~(str "thunk__" id) :clojure.lang.ILookupThunk]
       [:swap]
       [:invoke-interface [:clojure.lang.ILookupThunk/get :java.lang.Object] :java.lang.Object]
       [:mark ~end-label]]))
@@ -418,7 +418,7 @@
         [:dup]
 
         [:load-this]
-        [:get-field ~(keyword (name (frame :class)) (str "cached__class__" id)) :java.lang.Class]
+        [:get-field ~(name (frame :class)) ~(str "cached__class__" id) :java.lang.Class]
         [:jump-insn :org.objectweb.asm.Opcodes/IF_ACMPEQ ~call-label]
 
         [:dup]
@@ -429,7 +429,7 @@
         [:invoke-static [:clojure.lang.Util/classOf :java.lang.Object] :java.lang.Class]
         [:load-this]
         [:swap]
-        [:put-field ~(keyword (name (frame :class)) (str "cached__class__" id)) :java.lang.Class]
+        [:put-field ~(name (frame :class)) ~(str "cached__class__" id) :java.lang.Class]
 
         [:mark ~call-label]
         ~@(emit-var v frame)
