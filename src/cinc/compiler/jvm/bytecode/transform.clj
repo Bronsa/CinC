@@ -2,7 +2,8 @@
   (:refer-clojure :exclude [name])
   (:alias c.c clojure.core)
   (:require [clojure.string :as s]
-            [cinc.analyzer.jvm.utils :refer [maybe-class]])
+            [cinc.analyzer.jvm.utils :refer [maybe-class]]
+            [cinc.analyzer.utils :refer [update!]])
   (:import (org.objectweb.asm Type)
            (org.objectweb.asm.commons Method)))
 
@@ -56,6 +57,8 @@
 (defn method-desc [ret method args]
   (Method/getMethod (str (name ret) " " method \( (s/join ", " (map name args)) \))))
 
+(def ^:dynamic *labels* #{})
+
 (defn fix [inst]
   (case inst
     (:invoke-static :invoke-virtual)
@@ -73,9 +76,20 @@
     (:get-static)
     (fn [[f t]]
       (list (class-desc (namespace f)) (name f) (class-desc (name t))))
+
+    (:mark)
+    (fn [[label]]
+      (let [label (symbol (name label))]
+        (update! *labels* conj label)
+        (list label)))
+
     identity))
 
 (defn transform [bc]
-  (concat '(doto *gen*)
-          (seq (map (fn [[inst & args]]
-                      (list* (normalize inst) ((fix inst) args))) bc))))
+  (binding [*labels* *labels*]
+    (let [calls (seq (map (fn [[inst & args]]
+                            (list* (normalize inst) ((fix inst) args))) bc))]
+      `(let [*gen*# nil ;; TODO
+             [~@*labels*] (repeatedly #(.newLabel *gen*#))]
+         (doto *gen*
+           ~@calls)))))
