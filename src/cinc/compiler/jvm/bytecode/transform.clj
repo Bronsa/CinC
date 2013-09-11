@@ -16,8 +16,6 @@
              :table-switch-insn  :visit-table-switch-insn
              :local-variable     :visit-local-variable})
 
-(def special {})
-
 (defn capitalize [[h & t]]
   (apply str (cons (s/upper-case h) t)))
 
@@ -37,7 +35,7 @@
 
 (defn normalize [inst]
   (let [inst (rename inst inst)]
-    (symbol (str "." (special inst (camel-case (name inst)))))))
+    (symbol (str "." (camel-case (name inst))))))
 
 (def prim {"int"     "I"
            "float"   "F"
