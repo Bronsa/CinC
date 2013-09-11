@@ -46,9 +46,6 @@
            "char"    "C"
            "void"    "V"})
 
-(defn maybe-prim [x]
-  (prim x x))
-
 (defn class-desc
   ([c] (class-desc c false))
   ([c arr?]
