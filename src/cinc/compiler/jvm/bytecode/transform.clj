@@ -27,15 +27,9 @@
 
 (defn name [x]
   (when x
-    (cond
-     (class? x)
-     (.getName ^Class x)
-
-     (string? x)
-     x
-
-     :else
-     (c.c/name x))))
+    (if (class? x)
+      (.getName ^Class x)
+      (c.c/name x))))
 
 (defn symbol
   ([x] (c.c/symbol (name x)))
