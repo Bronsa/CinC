@@ -65,12 +65,13 @@
              (str (when arr? \[) \L (s/replace c \. \/) \;)))))
 
 (defn class-type [c-desc]
-  (Type/getType ^String c-desc))
+  (Type/getType ^String (class-desc c-desc)))
 
 (defn method-desc [ret method args]
   (Method/getMethod (str (name ret) " " method \( (s/join ", " (map name args)) \))))
 
 (def ^:dynamic *labels* #{})
+(def ^:dynamic *locals* #{})
 
 (defn fix [inst]
   (case inst
@@ -81,7 +82,7 @@
         (list class method)))
 
     (:check-cast :new-array :array-store)
-    (fn [[class]] (list (class-type (name class))))
+    (fn [[class]] (list (class-type class)))
 
     (:insn)
     (fn [[f]] (list (symbol f)))
@@ -106,13 +107,22 @@
     (fn [[l1 l2 l3 t]]
       (list (symbol l1) (symbol l2) (symbol l3) (class-desc t)))
 
+    (:local-variable)
+    (fn [[desc tag _ l1 l2 local]]
+      (let [local (symbol local)]
+        (when-not (contains? *locals* local)
+          (update! *locals* conj local))
+        (list (name desc) (class-type tag) nil (symbol l1) (symbol l2) local)))
+
     identity))
 
 (defn transform [bc]
-  (binding [*labels* *labels*]
+  (binding [*labels* *labels*
+            *locals* *locals*]
     (let [calls (seq (map (fn [[inst & args]]
                             (list* (normalize inst) ((fix inst) args))) bc))]
       `(let [*gen*# nil ;; TODO
-             [~@*labels*] (repeatedly #(.newLabel *gen*#))]
+             [~@*labels*] (repeatedly #(.newLabel *gen*#))
+             [~@*locals*] (range)]
          (doto *gen*
            ~@calls)))))
