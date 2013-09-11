@@ -1,5 +1,5 @@
 (ns cinc.compiler.jvm.bytecode.transform
-  (:refer-clojure :exclude [name])
+  (:refer-clojure :exclude [name symbol])
   (:alias c.c clojure.core)
   (:require [clojure.string :as s]
             [cinc.analyzer.jvm.utils :refer [maybe-class]]
@@ -26,9 +26,20 @@
     (s/join (cons head (map capitalize rest)))))
 
 (defn name [x]
-  (if (class? x)
-    (.getName ^Class x)
-    (c.c/name x)))
+  (when x
+    (cond
+     (class? x)
+     (.getName ^Class x)
+
+     (string? x)
+     x
+
+     :else
+     (c.c/name x))))
+
+(defn symbol
+  ([x] (c.c/symbol (name x)))
+  ([ns n] (c.c/symbol (name ns) (name n))))
 
 (defn normalize [inst]
   (let [inst (rename inst inst)]
@@ -49,10 +60,12 @@
 (defn class-desc
   ([c] (class-desc c false))
   ([c arr?]
-     (let [c-desc (if (class? c)
-                    (maybe-prim (.getName ^Class c))
-                    (str (when arr? \[) (prim c (str \L (s/replace c \. \/) \;))))]
-      (Type/getType ^String c-desc))))
+     (when-let [c (name c)]
+       (prim c
+             (str (when arr? \[) \L (s/replace c \. \/) \;)))))
+
+(defn class-type [c-desc]
+  (Type/getType ^String c-desc))
 
 (defn method-desc [ret method args]
   (Method/getMethod (str (name ret) " " method \( (s/join ", " (map name args)) \))))
@@ -63,25 +76,35 @@
   (case inst
     (:invoke-static :invoke-virtual)
     (fn [[[m & args] ret]]
-      (let [class (class-desc (namespace m))
+      (let [class (class-type (namespace m))
             method (method-desc ret (name m) args)]
         (list class method)))
 
     (:check-cast :new-array :array-store)
-    (fn [[class]] (list (class-desc (name class))))
+    (fn [[class]] (list (class-type (name class))))
 
     (:insn)
-    (fn [[f]] (list (symbol (name f))))
+    (fn [[f]] (list (symbol f)))
 
     (:get-static)
     (fn [[f t]]
-      (list (class-desc (namespace f)) (name f) (class-desc (name t))))
+      (list (class-type (namespace f)) (name f) (class-type (name t))))
 
-    (:mark)
+    (:mark :go-to)
     (fn [[label]]
-      (let [label (symbol (name label))]
-        (update! *labels* conj label)
+      (let [label (symbol label)]
+        (when-not (contains? *labels* label)
+          (update! *labels* conj label))
         (list label)))
+
+    (:var-insn)
+    (fn [[insn label]]
+      (list (list '.getOpcode (class-type (namespace insn))
+                  (symbol "org.objectweb.asm.Opcodes" insn)) (symbol label)))
+
+    (:try-catch-block)
+    (fn [[l1 l2 l3 t]]
+      (list (symbol l1) (symbol l2) (symbol l3) (class-desc t)))
 
     identity))
 
