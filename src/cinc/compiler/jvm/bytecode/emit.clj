@@ -239,8 +239,7 @@
       [:mark ~(label)]
 
       ~@(for [{:keys [^Class class] :as c} catches]
-          [:try-catch-block start-label end-label (:start-label c)
-           (-> class .getName (.replace \. \/))])
+          [:try-catch-block start-label end-label (:start-label c) class])
 
       ~@(when finally
           `[~[:try-catch-block start-label end-label finally-label nil]
@@ -248,7 +247,7 @@
                 [:try-catch-block start-label end-label finally-label nil])])
 
       ~@(for [{:keys [local start-label end-label] :as c} catches]
-          [:local-variable (str (:name local)) ; or :form?
+          [:local-variable (:name local) ; or :form?
            :objects nil start-label end-label (:name local)])])) ;; generate idx based on name
 
 (defn emit-line-number
@@ -569,7 +568,7 @@
       ~@(emit body (merge frame (when loop? {:loop-label loop-label})))
       [:mark ~end-label]
       ~@(mapv (fn [{:keys [name tag]} label]
-                [:local-variable (str name) (or tag :java.lang.Object) nil label end-label name])
+                [:local-variable name (or tag :java.lang.Object) nil label end-label name])
               bindings labels)]))
 (defmethod -emit :let
   [ast frame]
