@@ -301,7 +301,7 @@
       [:dup-x2]
       [:invoke-interface [:clojure.lang.ILookupThunk/get :java.lang.Object] :java.lang.Object]
       [:dup-x2]
-      [:jump-inst :org.objectweb.asm.Opcodes/IF_ACMPEQ ~fault-label]
+      [:jump-insn :org.objectweb.asm.Opcodes/IF_ACMPEQ ~fault-label]
       [:pop]
       [:go-to ~end-label]
 
@@ -455,9 +455,9 @@
 (defn emit-shift-mask
   [{:keys [shift mask]}]
   (when (not (zero? mask))
-    [[:push shift]
+    [[:push (int shift)]
      [:insn :org.objectweb.asm.Opcodes/ISHR]
-     [:push mask]
+     [:push (int mask)]
      [:insn :org.objectweb.asm.Opcodes/IAND]]))
 
 (defn emit-test-ints
