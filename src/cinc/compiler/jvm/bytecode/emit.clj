@@ -1,6 +1,6 @@
 (ns cinc.compiler.jvm.bytecode.emit
   (:require [cinc.analyzer.utils :as u]
-            [cinc.analyzer.jvm.utils :refer [asm-type primitive? numeric?] :as j.u]))
+            [cinc.analyzer.jvm.utils :refer [primitive? numeric?] :as j.u]))
 
 (defmulti -emit (fn [{:keys [op]} _] op))
 (defmulti -emit-set! (fn [{:keys [op]} _] op))
@@ -597,8 +597,7 @@
   [{:keys [params tag fixed-arity variadic? body env]} frame]
   (let [method-name (if variadic? :do-invoke :invoke)
         return-type (prim-or-obj tag)
-        arg-types (into (mapv (comp prim-or-obj :tag) (take fixed-arity params))
-                        (when variadic? [:java.lang.Object]))
+        arg-types (repeat (count params) :java.lang.Object)
         [loop-label end-label] (repeatedly label)
 
         code
@@ -609,7 +608,7 @@
           [:mark ~end-label]
           [:local-variable :this :java.lang.Object nil ~loop-label ~end-label :this] ;; does it need to be 0 idx?
           ~@(mapv (fn [{:keys [tag name]}]
-                    [:local-variable name (prim-or-obj tag) nil loop-label end-label name]) params) ;; cast when emitting locals?
+                    [:local-variable name :java.lang.Object nil loop-label end-label name]) params) ;; cast when emitting locals?
           [:return-value]
           [:end-method]]]
     {:attr   #{:public}
