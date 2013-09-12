@@ -170,7 +170,7 @@
   ast)
 
 (defmethod -validate :invoke
-  [{:keys [args fn form] :as ast}]
+  [{:keys [args tag fn form] :as ast}]
   (let [argc (count args)]
     (if (and (= :const (:op fn))
              (= :keyword (:type fn)))
@@ -188,7 +188,9 @@
                    (not (instance? IFn (:form fn))))
           (throw (ex-info (str (class (:form fn)) " is not a function, but it's used as such")
                           {:form form})))
-        ast))))
+        (if (and tag (not (u/primitive? tag)))
+          (assoc ast :cast tag)
+          ast)))))
 
 (defn validate-interfaces [interfaces]
   (when-not (every? #(.isInterface ^Class %) (disj interfaces Object))
