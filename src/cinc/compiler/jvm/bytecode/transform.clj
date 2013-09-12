@@ -111,6 +111,7 @@
     (:table-switch-insn)
     (fn [[l h l lbs]]
       (list (int l) (int h) (symbol l) (into-array Label lbs)))
+
     ;;default
     (fn [args] (seq (map symbol args)))))
 
@@ -119,8 +120,9 @@
             *locals* *locals*]
     (let [calls (seq (map (fn [[inst & args]]
                             (list* (normalize inst) ((fix inst) args))) bc))]
-      `(let [*gen*# ~gen
-             [~@*labels*] (repeatedly #(.newLabel *gen*#))
-             [~@*locals*] (range)]
-         (doto *gen*
-           ~@calls)))))
+      (eval ;; ugh
+       `(let [*gen*# ~gen
+              [~@*labels*] (repeatedly #(.newLabel *gen*#))
+              [~@*locals*] (range)]
+          (doto *gen*
+            ~@calls))))))
