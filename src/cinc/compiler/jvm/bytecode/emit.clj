@@ -601,7 +601,7 @@
         [loop-label end-label] (repeatedly label)
 
         code
-        `[[:code]
+        `[[:start-method]
           [:mark ~loop-label]
           ~@(emit-line-number env loop-label)
           ~@(emit body (assoc frame :loop-label loop-label))
@@ -655,7 +655,7 @@
         class-methods [{:op     :method
                         :attr   #{:public :static}
                         :method [[:<clinit>] :void]
-                        :code   `[[:code]
+                        :code   `[[:start-method]
                                   ~@(emit-line-number env)
                                   ~@(when (seq constants)
                                       (emit-constants constants))

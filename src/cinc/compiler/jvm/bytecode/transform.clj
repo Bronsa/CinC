@@ -8,7 +8,7 @@
            (org.objectweb.asm.commons Method)))
 
 (def rename {:insn               :visit-insn
-             :code               :visit-code
+             :start-method       :visit-code
              :var-insn           :visit-var-insn
              :try-catch-block    :visit-try-catch-block
              :line-number        :visit-line-number
