@@ -617,11 +617,14 @@
      :code   code}))
 
 (defmulti -compile :op)
+
 (defn emit-local [local])
+(defn emit-constants [constants])
+(defn emit-keyword-callsites [kw-callsites])
 
 (defmethod -emit :fn
   [{:keys [local meta methods variadic? constants closes-overs keyword-callsites
-           protocol-callsites] :as ast}
+           protocol-callsites env] :as ast}
    {:keys [enclosing] :as frame}]
   (let [class-name (str (or enclosing (munge (ns-name *ns*)))
                         "$"
@@ -649,14 +652,25 @@
                                         :tag  :clojure.lang.ILookupThunk}]))
                                   keyword-callsites)
 
+        class-methods [{:op     :method
+                        :attr   #{:public :static}
+                        :method [[:<clinit>] :void]
+                        :code   `[[:code]
+                                  ~@(emit-line-number env)
+                                  ~@(when (seq constants)
+                                      (emit-constants constants))
+                                  ~@(when (seq keyword-callsites)
+                                      (emit-keyword-callsites keyword-callsites))
+                                  [:end-method]]}]
+
         jvm-ast
         {:op        :class
          :attr      #{:public  :final}
          :name      class-name
          :super     super
          :fields    `[~@consts ~@ keyword-callsites]
-
-         :methods   (mapv #(emit % frame) methods)}]
+         :methods   (into [class-methods]
+                          (mapv #(emit % frame) methods))}]
 
     (-compile jvm-ast)
 
