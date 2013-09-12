@@ -251,9 +251,9 @@
            :objects nil start-label end-label (:name local)])])) ;; generate idx based on name
 
 (defn emit-line-number
-  [{:keys [line]}]
+  [{:keys [line]} & [l]]
   (when line
-    (let [l (label)]
+    (let [l (or l (label))]
       [[:mark l]
        [:line-number line l]])))
 
@@ -586,3 +586,32 @@
                      [:store-arg (:name binding)]
                      [:var-insn :java.lang.Object/ISTORE (:name binding)])]) args loop-locals)
     [:go-to ~loop-label]])
+
+(defn prim-or-obj [tag]
+  (if (and tag (primitive? tag)) ;; should be only long/double
+    tag
+    :java.lang.Object))
+
+;; handle invokePrim
+(defmethod -emit :fn-method
+  [{:keys [params tag fixed-arity variadic? body env]} frame]
+  (let [method-name (if variadic? :do-invoke :invoke)
+        return-type (prim-or-obj tag)
+        arg-types (into (mapv (comp prim-or-obj :tag) (take fixed-arity params))
+                        (when variadic? [:java.lang.Object]))
+        [loop-label end-label] (repeatedly label)
+
+        code
+        `[[:code]
+          [:mark ~loop-label]
+          ~@(emit-line-number env loop-label)
+          ~@(emit body (assoc frame :loop-label loop-label))
+          [:mark ~end-label]
+          [:local-variable :this :java.lang.Object nil ~loop-label ~end-label :this] ;; does it need to be 0 idx?
+          ~@(mapv (fn [{:keys [tag name]}]
+                    [:local-variable name (prim-or-obj tag) nil loop-label end-label name]) params) ;; cast when emitting locals?
+          [:return-value]
+          [:end-method]]]
+    {:attr   #{:public}
+     :method [(into [method-name] arg-types) return-type]
+     :code   code }))
