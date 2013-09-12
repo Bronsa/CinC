@@ -489,12 +489,12 @@
         methods-exprs (mapv #(analyze-fn-method % menv) meths)
         variadic (seq (filter :variadic? methods-exprs))
         variadic? (boolean variadic)
-        fixed-arities (map :fixed-arity (remove :variadic? methods-exprs))
-        max-fixed-arity (apply max fixed-arities)]
+        fixed-arities (seq (map :fixed-arity (remove :variadic? methods-exprs)))
+        max-fixed-arity (when fixed-arities (apply max fixed-arities))]
     (when (>= (count variadic) 2)
       (throw (ex-info "can't have more than 1 variadic overload"
                       {:variadics (mapv :form variadic)})))
-    (when (not= (distinct fixed-arities) fixed-arities)
+    (when (not= (seq (distinct fixed-arities)) fixed-arities)
       (throw (ex-info "can't have 2 overloads with the same arity"
                       {:form form})))
     (when (and variadic?
