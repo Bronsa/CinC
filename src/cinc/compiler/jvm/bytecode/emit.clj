@@ -640,6 +640,12 @@
                            :tag  tag})
                         (vals constants))
 
+        meta-field (when meta
+                     [{:op   :field
+                       :attr #{:public :final :static}
+                       :name "__meta"
+                       :tag  :clojure.lang.IPersistentMap}])
+
         keyword-callsites (mapcat (fn [k]
                                     (let [[id _] (k constants)]
                                       [{:op   :field
@@ -668,7 +674,7 @@
          :attr      #{:public  :final}
          :name      class-name
          :super     super
-         :fields    `[~@consts ~@ keyword-callsites]
+         :fields    `[~@consts ~@ keyword-callsites ~@meta-field]
          :methods   (into [class-methods]
                           (mapv #(emit % frame) methods))}]
 
