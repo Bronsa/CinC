@@ -620,7 +620,8 @@
 (defn emit-local [local])
 
 (defmethod -emit :fn
-  [{:keys [local meta methods variadic? constants closes-overs] :as ast}
+  [{:keys [local meta methods variadic? constants closes-overs keyword-callsites
+           protocol-callsites] :as ast}
    {:keys [enclosing] :as frame}]
   (let [class-name (str (or enclosing (munge (ns-name *ns*)))
                         "$"
@@ -629,16 +630,32 @@
         frame (assoc frame :enclosing class-name)
         super (if variadic? :clojure.lang.RestFn :clojure.lang.AFn)
 
+        consts (mapv (fn [[id tag]]
+                          {:op   :field
+                           :attr #{:public :final :static}
+                           :name (str "const__" id)
+                           :tag  tag})
+                        (vals constants))
+
+        keyword-callsites (mapcat (fn [k]
+                                    (let [[id _] (k constants)]
+                                      [{:op   :field
+                                        :attr #{:public :final :static}
+                                        :name (str "site__" id)
+                                        :tag  :clojure.lang.KeywordLookupSite}
+                                       {:op   :field
+                                        :attr #{:public :final :static}
+                                        :name (str "thunk__" id)
+                                        :tag  :clojure.lang.ILookupThunk}]))
+                                  keyword-callsites)
+
         jvm-ast
         {:op        :class
          :attr      #{:public  :final}
          :name      class-name
          :super     super
-         :constants (mapv (fn [[id tag]]
-                            {:attr #{:public :final :static}
-                             :name (str "const__" id)
-                             :tag  tag})
-                          (vals constants))
+         :fields    `[~@consts ~@ keyword-callsites]
+
          :methods   (mapv #(emit % frame) methods)}]
 
     (-compile jvm-ast)
