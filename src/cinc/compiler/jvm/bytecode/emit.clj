@@ -1,6 +1,7 @@
 (ns cinc.compiler.jvm.bytecode.emit
   (:require [cinc.analyzer.utils :as u]
-            [cinc.analyzer.jvm.utils :refer [primitive? numeric?] :as j.u]))
+            [cinc.analyzer.jvm.utils :refer [primitive? numeric?] :as j.u]
+            [clojure.string :as s]))
 
 (defmulti -emit (fn [{:keys [op]} _] op))
 (defmulti -emit-set! (fn [{:keys [op]} _] op))
@@ -147,15 +148,14 @@
   (-emit-set! ast frame))
 
 (defn emit-as-array [list frame]
-  (into
-   [[:push (int (count list))]
-    [:new-array :java.lang.Object]]
-   (mapcat (fn [i item]
-             `[[:dup]
-               [:push ~(int i)]
-               ~@(emit item frame)
-               [:array-store :java.lang.Object]])
-           (range) list)))
+  `[[:push ~(int (count list))]
+    [:new-array :java.lang.Object]
+    ~@(mapv (fn [i item]
+              `[[:dup]
+                [:push ~(int i)]
+                ~@(emit item frame)
+                [:array-store :java.lang.Object]])
+            (range) list)])
 
 (defmethod -emit :map
   [{:keys [keys vals]} frame]
@@ -611,6 +611,43 @@
                     [:local-variable name :java.lang.Object nil loop-label end-label name]) params) ;; cast when emitting locals?
           [:return-value]
           [:end-method]]]
-    {:attr   #{:public}
+    {:op     :method
+     :attr   #{:public}
      :method [(into [method-name] arg-types) return-type]
-     :code   code }))
+     :code   code}))
+
+(defmulti -compile :op)
+(defn emit-local [local])
+
+(defmethod -emit :fn
+  [{:keys [local meta methods variadic? constants closes-overs] :as ast}
+   {:keys [enclosing] :as frame}]
+  (let [class-name (str (or enclosing (munge (ns-name *ns*)))
+                        "$"
+                        (gensym (str (or (s/replace (:form local) "." "_DOT_")
+                                         "fn") "__")))
+        frame (assoc frame :enclosing class-name)
+        super (if variadic? :clojure.lang.RestFn :clojure.lang.AFn)
+
+        jvm-ast
+        {:op        :class
+         :attr      #{:public  :final}
+         :name      class-name
+         :super     super
+         :constants (mapv (fn [[id tag]]
+                            {:attr #{:public :final :static}
+                             :name (str "const__" id)
+                             :tag  tag})
+                          (vals constants))
+         :methods   (mapv #(emit % frame) methods)}]
+
+    (-compile jvm-ast)
+
+    `[[:new-instance ~class-name]
+      [:dup]
+      ~@(when meta
+          [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]])
+      ~@(mapv emit-local closes-overs)
+      [:invoke-constructor [~(keyword class-name "<init>")
+                            ~@(when meta [:clojure.lang.IPersistentMap])
+                            ~@(repeat (count closes-overs) :java.lang.Object)] :void]]))
