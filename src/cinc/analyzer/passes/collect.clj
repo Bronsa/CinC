@@ -5,7 +5,7 @@
 (def ^:private ^:dynamic *collects*
   {:constants           {}
    :vars                {} ;; is this actually needed?
-   :closed-overs       #{}
+   :closed-overs        {}
    :protocol-callsites #{}
    :keyword-callsites  #{}})
 
@@ -56,36 +56,36 @@
 
 (defmethod -collect-closed-overs :local
   [{:keys [op name] :as ast}]
-  (update! *collects* update-in [:closed-overs] conj name)
+  (update! *collects* update-in [:closed-overs] assoc name ast)
   ast)
 
 (defmethod -collect-closed-overs :binding
-  [{:keys [init name] :as ast}]
-  (update! *collects* update-in [:closed-overs] disj name)
+  [{:keys [init name tag] :as ast}]
+  (update! *collects* update-in [:closed-overs] dissoc name)
   (when init
     (-collect-closed-overs init)) ;; since we're in a postwalk, a bit of trickery is necessary
   ast)
 
 (defmethod -collect-closed-overs :deftype
   [{:keys [fields] :as ast}]
-  (update! *collects* assoc :closed-overs (set fields))
+  (update! *collects* assoc :closed-overs (zipmap (mapv :name fields) fields))
   ast)
 
 (defmethod -collect-closed-overs :fn-method
   [{:keys [params] :as ast}]
   (update! *collects* update-in [:closed-overs]
-           #(apply disj % (mapv :name params)))
+           #(apply dissoc % (mapv :name params)))
   ast)
 
 (defmethod -collect-closed-overs :method
   [{:keys [params] :as ast}]
   (update! *collects* update-in [:closed-overs]
-           #(apply disj % (mapv :name params)))
+           #(apply dissoc % (mapv :name params)))
   ast)
 
 (defmethod -collect-closed-overs :fn
   [{:keys [name] :as ast}]
-  (update! *collects* update-in [:closed-overs] disj name)
+  (update! *collects* update-in [:closed-overs] dissoc name)
   ast)
 
 (defn collect-fns [what]
