@@ -120,11 +120,11 @@
                                    :closed-overs
                                    :vars))
                  :body :ret)]
-    (is (= '#{a} (-> c-test :closed-overs)))
+    (is (= '#{a} (-> c-test :closed-overs keys set)))
     (is (set/subset? #{:foo #' + {}}
                      (-> c-test :constants keys set))) ;; it registers metadata too (line+col info)
     (is (= #{#'+} (-> c-test :vars keys set)))
-    (is (= '#{a x} (-> c-test :methods first :body :ret :closed-overs)))
+    (is (= '#{a x} (-> c-test :methods first :body :ret :closed-overs keys set)))
 
     (is (= #{:foo} (-> c-test :keyword-callsites)))))
 
@@ -151,7 +151,7 @@
                           (fn [y] x)))]
     (is (= 'x__#2 (-> f-expr :body :ret :methods first :body :ret :name)))
     (is (= 'y__#1 (-> f-expr :body :ret :methods first :params first :name)))
-    (is (set/subset? '#{x__#2} (-> f-expr :body :ret :closed-overs)))))
+    (is (set/subset? '#{x__#2} (-> f-expr :body :ret :closed-overs keys set)))))
 
 
 (deftest all-tests-all-pass
@@ -211,11 +211,11 @@
 
   (let [c-test (-> (jvm-ast (let [a 1 b 2] (fn [x] (fn [] [+ (:foo {}) x a]))))
                  :body :ret)]
-    (is (= '#{a__#0} (-> c-test :closed-overs)))
+    (is (= '#{a__#0} (-> c-test :closed-overs keys set)))
     (is (set/subset? #{:foo #' + {}}
                      (-> c-test :constants keys set))) ;; it registers metadata too (line+col info)
     (is (= #{#'+} (-> c-test :vars keys set)))
-    (is (= '#{a__#0 x__#0} (-> c-test :methods first :body :ret :closed-overs)))
+    (is (= '#{a__#0 x__#0} (-> c-test :methods first :body :ret :closed-overs keys set)))
 
     (is (= #{:foo} (-> c-test :keyword-callsites))))
 
