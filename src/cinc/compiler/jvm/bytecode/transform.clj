@@ -12,6 +12,7 @@
              :var-insn           :visit-var-insn
              :try-catch-block    :visit-try-catch-block
              :line-number        :visit-line-number
+             :label              :visit-label
              :jump-insn          :visit-jump-insn
              :lookup-switch-insn :visit-lookup-switch-insn
              :table-switch-insn  :visit-table-switch-insn

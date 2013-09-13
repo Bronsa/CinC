@@ -428,7 +428,7 @@
         [:invoke-static [:clojure.lang.Util/classOf :java.lang.Object] :java.lang.Class]
         [:load-this]
         [:swap]
-        [:put-field ~(name (frame :class)) ~(str "cached__class__" id) :java.lang.Class]
+        [:put-field ~(frame :class) ~(str "cached__class__" id) :java.lang.Class]
 
         [:mark ~call-label]
         ~@(emit-var v frame)
@@ -650,7 +650,7 @@
                         (gensym (str (or (s/replace (:form local) "." "_DOT_")
                                          "fn") "__")))
         frame (merge frame
-                     {:class              class
+                     {:class              class-name
                       :constants          constants
                       :closes-overs       closes-overs
                       :keyword-callsites  keyword-callsites
@@ -704,6 +704,9 @@
                               :name name
                               :tag  :clojure.lang.IPersistentMap}) closes-overs)
 
+        ctor-types (into (if meta [:clojure.lang.IPersistentMap] [])
+                         (repeat (count closes-overs) :java.lang.Object))
+
         class-methods [{:op     :method
                         :attr   #{:public :static}
                         :method [[:<clinit>] :void]
@@ -713,7 +716,21 @@
                                       (emit-constants frame))
                                   ~@(when (seq keyword-callsites)
                                       (emit-keyword-callsites frame))
-                                  [:end-method]]}]
+                                  [:end-method]]}
+                       (let [[start-label end-label] (repeatedly label)]
+                         {:op     :method
+                          :attr   #{:public}
+                          :method `[[:<init> ~@ctor-types] :void]
+                          :code   `[[:start-method]
+                                    ~@(emit-line-number env)
+                                    [:label ~start-label]
+                                    [:load-this]
+                                    [:invoke-constructor [~(keyword (name super) "<init>")] :void]
+                                    ~@(when meta
+                                        [[:load-this]
+                                         [:var-insn :clojure.lang.IPersistentMap/ILOAD :__meta]
+                                         [:put-field ~class-name :__meta :clojure.lang.IPersistentMap]])
+                                    [:end-method]]})]
 
         jvm-ast
         {:op        :class
@@ -733,5 +750,4 @@
           [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]])
       ~@(mapv emit-local closes-overs)
       [:invoke-constructor [~(keyword class-name "<init>")
-                            ~@(when meta [:clojure.lang.IPersistentMap])
-                            ~@(repeat (count closes-overs) :java.lang.Object)] :void]]))
+                            ~@ctor-types] :void]]))
