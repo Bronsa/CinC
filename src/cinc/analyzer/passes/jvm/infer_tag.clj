@@ -180,13 +180,17 @@
   [{:keys [body] :as ast}]
   (if-let [tag (:tag body)]
     (assoc ast :tag tag)
-    ast))
+    (if (:loop-tag body)
+      (assoc ast :loop-tag true)
+      ast)))
 
 (defmethod -infer-tag :letfn
   [{:keys [body] :as ast}]
   (if-let [tag (:tag body)]
     (assoc ast :tag tag)
-    ast))
+    (if (:loop-tag body)
+      (assoc ast :loop-tag true)
+      ast)))
 
 (defmethod -infer-tag :loop
   [{:keys [body] :as ast}]
@@ -212,10 +216,12 @@
 (defmethod -infer-tag :try
   [{:keys [body catches] :as ast}]
   (if-let [body-tag (:tag body)]
-    (if (every? = (conj (seq (filter identity (map (comp :tag :body) catches))) body-tag))
+    (if (every? = (conj (filter identity (map (comp :tag :body) catches)) body-tag))
       (assoc ast :tag body-tag)
       ast)
-    ast))
+    (if (:loop-tag body)
+      (assoc ast :loop-tag true)
+      ast)))
 
 (defmethod -infer-tag :invoke
   [{:keys [fn args] :as ast}]
