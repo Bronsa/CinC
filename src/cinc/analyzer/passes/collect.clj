@@ -4,16 +4,19 @@
 
 (def ^:private ^:dynamic *collects*
   {:constants           {}
-   :vars                {}
+   :vars                {} ;; is this actually needed?
    :closed-overs       #{}
    :protocol-callsites #{}
    :keyword-callsites  #{}})
 
 (defn -register-constant
-  [form tag]
+  [form tag type]
   (or ((:constants *collects*) form)
       (let [id (count (:constants *collects*))]
-        (update! *collects* assoc-in [:constants form] [id tag])
+        (update! *collects* assoc-in [:constants form] {:id   id
+                                                        :tag  tag
+                                                        :val  form
+                                                        :type type})
         id)))
 
 (defn -collect-constants
@@ -21,7 +24,7 @@
   (if (and (= op :const)
            (not= type :nil)
            (not= type :boolean))
-    (let [id (-register-constant form tag)]
+    (let [id (-register-constant form tag type)]
       (assoc ast :id id))
     ast))
 
@@ -29,7 +32,7 @@
   [{:keys [op var] :as ast}]
   (if (#{:def :var :the-var} op)
     (let [id (or ((:vars *collects*) var)
-                 (let [id (-register-constant var clojure.lang.Var)]
+                 (let [id (-register-constant var clojure.lang.Var :var)]
                    (update! *collects* assoc-in [:vars var] id)
                    id))]
       (assoc ast :id id))
