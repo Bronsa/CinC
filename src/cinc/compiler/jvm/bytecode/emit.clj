@@ -745,21 +745,31 @@
         kw-callsite-method (when-let [kw-cs (seq (frame :keyword-callsites))]
                              (let [cs-count (count kw-cs)
                                    [end-label & labels] (repeatedly (inc cs-count) label)]
-                              {:op     :method
-                               :attr   #{:public}
-                               :method [[:swapThunk :int :clojure.lang.ILookupThunk] :void]
-                               :code   `[[:start-method]
-                                         [:load-arg 0]
-                                         ~[:table-switch-insn 0 (dec cs-count) end-label labels]
-                                         ~@(mapcat (fn [i l]
-                                                     [[:mark l]
-                                                      [:load-arg 1]
-                                                      [:put-static class-name (str "thunk__" i) :clojure.lang.ILookupThunk]
-                                                       [:go-to end-label]])
-                                                   (range) labels)
-                                         [:mark ~end-label]
-                                         [:return-value]
-                                         [:end-method]]}))
+                               [{:op     :method
+                                 :attr   #{:public}
+                                 :method [[:swapThunk :int :clojure.lang.ILookupThunk] :void]
+                                 :code   `[[:start-method]
+                                           [:load-arg 0]
+                                           ~[:table-switch-insn 0 (dec cs-count) end-label labels]
+                                           ~@(mapcat (fn [i l]
+                                                       [[:mark l]
+                                                        [:load-arg 1]
+                                                        [:put-static class-name (str "thunk__" i) :clojure.lang.ILookupThunk]
+                                                        [:go-to end-label]])
+                                                     (range) labels)
+                                           [:mark ~end-label]
+                                           [:return-value]
+                                           [:end-method]]}]))
+
+        variadic-method (when variadic?
+                          (let [required-arity (->> methods (filter :variadic?) first :fixed-arity)]
+                           [{:op     :method
+                             :attr   #{:public}
+                             :method [[:getRequiredArity] :int]
+                             :code   `[[:start-method]
+                                       [:push (int required-arity)]
+                                       [:return-value]
+                                       [:end-method]]}]))
 
         jvm-ast
         {:op        :class
@@ -768,7 +778,7 @@
          :super     super
          :fields    `[~@consts ~@ keyword-callsites
                       ~@meta-field ~@closes-overs ~@protocol-callsites]
-         :methods   `[~@class-ctors ~@kw-callsite-method
+         :methods   `[~@class-ctors ~@kw-callsite-method ~@variadic-method
                       ~@(mapv #(emit % frame) methods)]}]
 
     (-compile jvm-ast)
