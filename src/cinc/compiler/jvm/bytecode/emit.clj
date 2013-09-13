@@ -682,6 +682,22 @@
                                         :tag  :clojure.lang.ILookupThunk}]))
                                   keyword-callsites)
 
+        protocol-callsites  (mapcat (fn [p]
+                                      (let [{:keys [id]} (p constants)]
+                                        [{:op   :field
+                                          :attr #{:private}
+                                          :name (str "cached__class__" id)
+                                          :tag  :java.lang.Class}
+                                         {:op   :field
+                                          :attr #{:private}
+                                          :name (str "cached__proto__fn__" id)
+                                          :tag  :clojure.lang.AFunction}
+                                         {:op   :field
+                                          :attr #{:private}
+                                          :name (str "cached__proto__impl__" id)
+                                          :tag  :clojure.lang.IFn}]))
+                                    protocol-callsites)
+
         closes-overs (mapv (fn [{:keys [name tag]}]
                              {:op   :field
                               :attr #{}
@@ -704,7 +720,8 @@
          :attr      #{:public  :final}
          :name      class-name
          :super     super
-         :fields    `[~@consts ~@ keyword-callsites ~@meta-field ~@closes-overs]
+         :fields    `[~@consts ~@ keyword-callsites
+                      ~@meta-field ~@closes-overs ~@protocol-callsites]
          :methods   (into [class-methods]
                           (mapv #(emit % frame) methods))}]
 
