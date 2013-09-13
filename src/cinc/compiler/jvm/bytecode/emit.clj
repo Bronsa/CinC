@@ -641,6 +641,9 @@
                ~[:put-static class (str "thunk__" id) :clojure.lang.ILookupThunk]]))
           keyword-callsites))
 
+
+;; TODO: generalize this for deftype/reify: needs  mutable field handling + altCtor + annotations
+
 (defmethod -emit :fn
   [{:keys [local meta methods variadic? constants closes-overs keyword-callsites
            protocol-callsites env] :as ast}
@@ -707,37 +710,56 @@
         ctor-types (into (if meta [:clojure.lang.IPersistentMap] [])
                          (repeat (count closes-overs) :java.lang.Object))
 
-        class-methods [{:op     :method
-                        :attr   #{:public :static}
-                        :method [[:<clinit>] :void]
+        class-ctors [{:op     :method
+                      :attr   #{:public :static}
+                      :method [[:<clinit>] :void]
+                      :code   `[[:start-method]
+                                ~@(emit-line-number env)
+                                ~@(when (seq constants)
+                                    (emit-constants frame))
+                                ~@(when (seq keyword-callsites)
+                                    (emit-keyword-callsites frame))
+                                [:end-method]]}
+                     (let [[start-label end-label] (repeatedly label)]
+                       {:op     :method
+                        :attr   #{:public}
+                        :method `[[:<init> ~@ctor-types] :void]
                         :code   `[[:start-method]
                                   ~@(emit-line-number env)
-                                  ~@(when (seq constants)
-                                      (emit-constants frame))
-                                  ~@(when (seq keyword-callsites)
-                                      (emit-keyword-callsites frame))
-                                  [:end-method]]}
-                       (let [[start-label end-label] (repeatedly label)]
-                         {:op     :method
-                          :attr   #{:public}
-                          :method `[[:<init> ~@ctor-types] :void]
-                          :code   `[[:start-method]
-                                    ~@(emit-line-number env)
-                                    [:label ~start-label]
-                                    [:load-this]
-                                    [:invoke-constructor [~(keyword (name super) "<init>")] :void]
-                                    ~@(when meta
-                                        [[:load-this]
-                                         [:var-insn :clojure.lang.IPersistentMap/ILOAD :__meta]
-                                         [:put-field ~class-name :__meta :clojure.lang.IPersistentMap]])
-                                    ~@(mapcat
-                                       (fn [{:keys [name tag]}]
-                                         [[:var-insn (keyword (.getName ^Class tag) "ILOAD") name]
-                                          [:put-field class-name name tag]])
-                                       closes-overs)
-                                    [:label ~end-label]
-                                    [:return-value]
-                                    [:end-method]]})]
+                                  [:label ~start-label]
+                                  [:load-this]
+                                  [:invoke-constructor [~(keyword (name super) "<init>")] :void]
+                                  ~@(when meta
+                                      [[:load-this]
+                                       [:var-insn :clojure.lang.IPersistentMap/ILOAD :__meta]
+                                       [:put-field ~class-name :__meta :clojure.lang.IPersistentMap]])
+                                  ~@(mapcat
+                                     (fn [{:keys [name tag]}]
+                                       [[:var-insn (keyword (.getName ^Class tag) "ILOAD") name]
+                                        [:put-field class-name name tag]])
+                                     closes-overs)
+                                  [:label ~end-label]
+                                  [:return-value]
+                                  [:end-method]]})]
+
+        kw-callsite-method (when-let [kw-cs (seq (frame :keyword-callsites))]
+                             (let [cs-count (count kw-cs)
+                                   [end-label & labels] (repeatedly (inc cs-count) label)]
+                              {:op     :method
+                               :attr   #{:public}
+                               :method [[:swapThunk :int :clojure.lang.ILookupThunk] :void]
+                               :code   `[[:start-method]
+                                         [:load-arg 0]
+                                         ~[:table-switch-insn 0 (dec cs-count) end-label labels]
+                                         ~@(mapcat (fn [i l]
+                                                     [[:mark l]
+                                                      [:load-arg 1]
+                                                      [:put-static class-name (str "thunk__" i) :clojure.lang.ILookupThunk]
+                                                       [:go-to end-label]])
+                                                   (range) labels)
+                                         [:mark ~end-label]
+                                         [:return-value]
+                                         [:end-method]]}))
 
         jvm-ast
         {:op        :class
@@ -746,8 +768,8 @@
          :super     super
          :fields    `[~@consts ~@ keyword-callsites
                       ~@meta-field ~@closes-overs ~@protocol-callsites]
-         :methods   (into [class-methods]
-                          (mapv #(emit % frame) methods))}]
+         :methods   `[~@class-ctors ~@kw-callsite-method
+                      ~@(mapv #(emit % frame) methods)]}]
 
     (-compile jvm-ast)
 
