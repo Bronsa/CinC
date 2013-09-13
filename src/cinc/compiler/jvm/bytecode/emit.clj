@@ -771,6 +771,43 @@
                                        [:return-value]
                                        [:end-method]]}]))
 
+        meta-methods (when meta
+                       [{:op     :method
+                         :attr   #{:public}
+                         :method `[[:<init> ~@(rest ctor-types)] :void]
+                         :code   `[[:start-method]
+                                   [:load-this]
+                                   [:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
+                                   [:load-args]
+                                   [:invoke-constructor [~(keyword class-name "<init>")
+                                                         ~@ctor-types] :void]
+                                   [:return-value]
+                                   [:end-method]]}
+                        {:op     :method
+                         :attr   #{:public}
+                         :method`[[:meta] :clojure.lang.IPersistentMap]
+                         :code   [[:start-method]
+                                  [:load-this]
+                                  [:get-field class-name :__meta :clojure.lang.IPersistentMap]
+                                  [:return-value]
+                                  [:end-method]]}
+                        {:op     :method
+                         :attr   #{:public}
+                         :method`[[:withMeta :clojure.lang.IPersistentMap] :clojure.lang.IObj]
+                         :code   `[[:start-method]
+                                   [:new-instance ~class-name]
+                                   [:dup]
+                                   [:load-arg 0]
+                                   ~@(mapcat
+                                      (fn [{:keys [name tag]}]
+                                        [[:load-this]
+                                         [:get-field class-name name tag]])
+                                      closes-overs)
+                                   [:invoke-constructor [~(keyword class-name "<init>")
+                                                         ~@ctor-types] :void]
+                                   [:return-value]
+                                   [:end-method]]}])
+
         jvm-ast
         {:op        :class
          :attr      #{:public  :final}
@@ -779,7 +816,7 @@
          :fields    `[~@consts ~@ keyword-callsites
                       ~@meta-field ~@closes-overs ~@protocol-callsites]
          :methods   `[~@class-ctors ~@kw-callsite-method ~@variadic-method
-                      ~@(mapv #(emit % frame) methods)]}]
+                      ~@meta-methods ~@(mapv #(emit % frame) methods)]}]
 
     (-compile jvm-ast)
 
