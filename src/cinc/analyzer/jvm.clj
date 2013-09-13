@@ -242,14 +242,14 @@
                 annotate-branch
                 source-info
                 elide-meta))
-            (comp (cycling infer-tag analyze-host-expr validate box)
+            (comp cleanup
+               (cycling infer-tag analyze-host-expr validate box)
                infer-constant-tag
                constant-lift))
-      (prewalk (comp (collect :constants
-                           :callsites
-                           :closed-overs
-                           :vars)
-                  cleanup))
+      (prewalk (collect :constants
+                        :callsites
+                        :closed-overs
+                        :vars))
       clear-locals)))
 
 (defn analyze-file
