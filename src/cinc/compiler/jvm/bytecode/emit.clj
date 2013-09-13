@@ -618,21 +618,35 @@
 (defmulti -compile :op)
 
 (defn emit-local [local])
-(defn emit-constants [constants])
+
+(defmulti emit-value (fn [type _] type))
+
+(defn emit-constants [constants]
+  (mapcat (fn [{:keys [val id tag type]}]
+            `[~@(emit-value type val)
+              [:check-cast ~tag]
+              ~[:put-static class (str "const__" id) tag]])
+          (vals constants)))
+
 (defn emit-keyword-callsites [kw-callsites])
 
 (defmethod -emit :fn
   [{:keys [local meta methods variadic? constants closes-overs keyword-callsites
            protocol-callsites env] :as ast}
-   {:keys [enclosing] :as frame}]
-  (let [class-name (str (or enclosing (munge (ns-name *ns*)))
+   {:keys [class] :as frame}]
+  (let [class-name (str (or class (munge (ns-name *ns*)))
                         "$"
                         (gensym (str (or (s/replace (:form local) "." "_DOT_")
                                          "fn") "__")))
-        frame (assoc frame :enclosing class-name)
+        frame (merge frame
+                     {:class              class
+                      :constants          constants
+                      :closes-overs       closes-overs
+                      :keyword-callsites  keyword-callsites
+                      :protocol-callsites protocol-callsites})
         super (if variadic? :clojure.lang.RestFn :clojure.lang.AFn)
 
-        consts (mapv (fn [[id tag]]
+        consts (mapv (fn [{:keys [id tag]}]
                           {:op   :field
                            :attr #{:public :final :static}
                            :name (str "const__" id)
@@ -646,7 +660,7 @@
                        :tag  :clojure.lang.IPersistentMap}])
 
         keyword-callsites (mapcat (fn [k]
-                                    (let [[id _] (k constants)]
+                                    (let [{:keys [id]} (k constants)]
                                       [{:op   :field
                                         :attr #{:public :final :static}
                                         :name (str "site__" id)
