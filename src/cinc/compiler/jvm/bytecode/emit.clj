@@ -81,33 +81,32 @@
    [:monitor-exit]])
 
 (defn emit-constant
-  ([id frame] (emit-constant id nil frame))
-  ([id tag frame]
-     (let [c (get-in frame [:constants id])
-           tag (or tag (class c))]
-       ^:const
-       [(case c
-          (true false)
-          [:get-static (if c :java.lang.Boolean/TRUE :java.lang.Boolean/FALSE)
-           :java.lang.Boolean]
+  [const frame]
+  (let [{:keys [id tag]} (get-in frame [:constants const])
+        tag (or tag (class val))]
+    ^:const
+    [(case const
+       (true false)
+       [:get-static (if const :java.lang.Boolean/TRUE :java.lang.Boolean/FALSE)
+        :java.lang.Boolean]
 
-          nil
-          [:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
+       nil
+       [:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
 
-          (if (string? c) ;; or primitive number
-            [:push c]
-            [:get-static (frame :class) (str "const__" id) tag]))])))
+       (if (string? const) ;; or primitive number
+         [:push const]
+         [:get-static (frame :class) (str "const__" id) tag]))]))
 
 (defmethod -emit :const
-  [{:keys [id tag]} frame]
-  (emit-constant id tag frame))
+  [{:keys [form]} frame]
+  (emit-constant form frame))
 
 (defmethod -emit :quote
   [{:keys [const]} frame]
   (-emit const frame))
 
 (defn emit-var [var frame]
-  (emit-constant (get-in frame [:vars var]) frame))
+  (emit-constant var frame))
 
 (defmethod -emit :var
   [{:keys [var]} frame]
