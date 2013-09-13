@@ -553,8 +553,8 @@
   [(mapcat (fn [{:keys [init tag] :as binding} label]
              `[~@(emit init frame)
                [:var-insn ~(keyword (if tag (.getName ^Class tag)
-                                        "java.lang.Object") "ISTORE") ;; .getOpcode
-                ~(:name binding)] ;; generate idx
+                                        "java.lang.Object") "ISTORE")
+                ~(:name binding)]
                ~@(when label
                    [[:mark label]])])
            bindings labels)])
@@ -682,6 +682,12 @@
                                         :tag  :clojure.lang.ILookupThunk}]))
                                   keyword-callsites)
 
+        closes-overs (mapv (fn [{:keys [name tag]}]
+                             {:op   :field
+                              :attr #{}
+                              :name name
+                              :tag  :clojure.lang.IPersistentMap}) closes-overs)
+
         class-methods [{:op     :method
                         :attr   #{:public :static}
                         :method [[:<clinit>] :void]
@@ -698,7 +704,7 @@
          :attr      #{:public  :final}
          :name      class-name
          :super     super
-         :fields    `[~@consts ~@ keyword-callsites ~@meta-field]
+         :fields    `[~@consts ~@ keyword-callsites ~@meta-field ~@closes-overs]
          :methods   (into [class-methods]
                           (mapv #(emit % frame) methods))}]
 
