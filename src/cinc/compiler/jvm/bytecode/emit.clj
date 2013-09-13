@@ -702,7 +702,7 @@
                              {:op   :field
                               :attr #{}
                               :name name
-                              :tag  :clojure.lang.IPersistentMap}) closes-overs)
+                              :tag  tag}) closes-overs)
 
         ctor-types (into (if meta [:clojure.lang.IPersistentMap] [])
                          (repeat (count closes-overs) :java.lang.Object))
@@ -730,6 +730,13 @@
                                         [[:load-this]
                                          [:var-insn :clojure.lang.IPersistentMap/ILOAD :__meta]
                                          [:put-field ~class-name :__meta :clojure.lang.IPersistentMap]])
+                                    ~@(mapcat
+                                       (fn [{:keys [name tag]}]
+                                         [[:var-insn (keyword (.getName ^Class tag) "ILOAD") name]
+                                          [:put-field class-name name tag]])
+                                       closes-overs)
+                                    [:label ~end-label]
+                                    [:return-value]
                                     [:end-method]]})]
 
         jvm-ast
