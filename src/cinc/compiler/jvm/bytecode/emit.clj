@@ -621,14 +621,25 @@
 
 (defmulti emit-value (fn [type _] type))
 
-(defn emit-constants [constants]
+(defn emit-constants [{:keys [class constants]}]
   (mapcat (fn [{:keys [val id tag type]}]
             `[~@(emit-value type val)
               [:check-cast ~tag]
               ~[:put-static class (str "const__" id) tag]])
           (vals constants)))
 
-(defn emit-keyword-callsites [kw-callsites])
+(defn emit-keyword-callsites
+  [{:keys [keyword-callsites constants class]}]
+  (mapcat (fn [k]
+            (let [{:keys [id]} (k constants)]
+             `[[:new-instance :clojure.lang.KeywordLookupSite]
+               [:dup]
+               ~@(emit-value :keyword k)
+               [:invoke-constructor [:clojure.lang.KeywordLookupSite/<init> :clojure.lang.Keyword] :void]
+               [:dup]
+               ~[:put-static class (str "site__" id) :clojure.lang.KeywordLookupSite]
+               ~[:put-static class (str "thunk__" id) :clojure.lang.ILookupThunk]]))
+          keyword-callsites))
 
 (defmethod -emit :fn
   [{:keys [local meta methods variadic? constants closes-overs keyword-callsites
@@ -677,9 +688,9 @@
                         :code   `[[:start-method]
                                   ~@(emit-line-number env)
                                   ~@(when (seq constants)
-                                      (emit-constants constants))
+                                      (emit-constants frame))
                                   ~@(when (seq keyword-callsites)
-                                      (emit-keyword-callsites keyword-callsites))
+                                      (emit-keyword-callsites frame))
                                   [:end-method]]}]
 
         jvm-ast
