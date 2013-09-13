@@ -617,7 +617,29 @@
 
 (defmulti -compile :op)
 
-(defn emit-local [local])
+(defmethod -emit :local
+  [{:keys [to-clear? local name tag]} {:keys [closes-overs class] :as frame}]
+  (cond
+
+   (closes-overs name)
+   `[[:load-this]
+     ~[:get-field class name tag]
+     ~@(when to-clear?
+         [[:load-this]
+          [:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
+          [:put-field class name tag]])]
+
+   (= :arg local)
+   [[:load-arg ~name] ;; why -1?
+    ~@(when to-clear?
+        [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
+         [:store-arg name]])]
+
+   :else
+   [[:var-insn (keyword (.getName ^Class tag) "ILOAD") name]
+    ~@(when to-clear?
+        [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
+         [:var-insn (keyword (.getName ^Class tag) "ISTORE") name]])]))
 
 (defmulti emit-value (fn [type _] type))
 
@@ -824,6 +846,6 @@
       [:dup]
       ~@(when meta
           [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]])
-      ~@(mapv emit-local closes-overs)
+      ~@(mapv #(emit (assoc % :op :local) frame) closes-overs) ;; need to clear?
       [:invoke-constructor [~(keyword class-name "<init>")
                             ~@ctor-types] :void]]))
