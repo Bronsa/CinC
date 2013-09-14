@@ -688,16 +688,22 @@
      [:invoke-static [:java.lang.Class/forName :java.lang.String] :java.lang.Class]]))
 
 (defmethod -emit-value :symbol [_ s]
-  [[:push (str (namespace s))]
-   [:push (name s)]
-   [:invoke-static [:clojure.lang.Symbol/intern :java.lang.String :java.lang.String]
-    :clojure.lang.Symbol]])
+  `[~@(if-let [ns (namespace s)]
+        [[:push (namespace s)]]
+        [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
+         [:check-cast :java.lang.String]])
+    [:push ~(name s)]
+    [:invoke-static [:clojure.lang.Symbol/intern :java.lang.String :java.lang.String]
+     :clojure.lang.Symbol]])
 
 (defmethod -emit-value :keyword [_ k]
-  [[:push (str (namespace k))]
-   [:push (name k)]
-   [:invoke-static [:clojure.lang.Keyword/intern :java.lang.String :java.lang.String]
-    :clojure.lang.Keyword]])
+  `[~@(if-let [ns (namespace k)]
+        [[:push (namespace k)]]
+        [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
+         [:check-cast :java.lang.String]])
+    [:push ~(name k)]
+    [:invoke-static [:clojure.lang.Keyword/intern :java.lang.String :java.lang.String]
+     :clojure.lang.Keyword]])
 
 (defmethod -emit-value :var [_ v]
   (let [sym (.sym ^clojure.lang.Var v)]
@@ -748,7 +754,7 @@
 
 (defn emit-constants [{:keys [class constants]}]
   (mapcat (fn [{:keys [val id tag type]}]
-            (let [v (emit-value type val)]
+            (let [v (emit-value (or type (u/classify val)) val)]
               `[~@(if (primitive? tag)
                     (butlast v)
                     (conj v [:check-cast tag]))
@@ -960,5 +966,4 @@
         ~@(mapv #(emit (assoc % :op :local) frame) closed-overs) ;; need to clear?
         [:invoke-constructor [~(keyword class-name "<init>")
                               ~@ctor-types] :void]]
-      {:bc bc
-       :name class-name})))
+      {:class (.defineClass (clojure.lang.RT/baseLoader) class-name bc nil)})))
