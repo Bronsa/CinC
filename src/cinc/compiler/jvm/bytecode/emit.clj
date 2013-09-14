@@ -44,13 +44,13 @@
                    (if (#{Double/TYPE Long/TYPE} tag)
                      [[:pop2]]
                      [[:pop]]))))
-         (into bytecode
-               (when (= :untyped m)
-                 (emit nil-expr frame))
-               (when box
-                 (emit-box tag (j.u/box tag)))
-               (when cast
-                 (emit-cast tag cast)))))))
+         `[~@bytecode
+           ~@(when (= :untyped m)
+               (emit nil-expr frame))
+           ~@(when box
+               (emit-box tag (j.u/box tag)))
+           ~@(when cast
+               (emit-cast tag cast))]))))
 
 (defmethod -emit :import
   [{:keys [class]} frame]
@@ -83,7 +83,7 @@
 (defn emit-constant
   [const frame]
   (let [{:keys [id tag]} (get-in frame [:constants const])
-        tag (or tag (class val))]
+        tag (or tag (class const))]
     ^:const
     [(case const
        (true false)
@@ -550,14 +550,14 @@
                 labels)]))
 
 (defn emit-bindings [bindings labels frame]
-  [(mapcat (fn [{:keys [init tag] :as binding} label]
-             `[~@(emit init frame)
-               [:var-insn ~(keyword (if tag (.getName ^Class tag)
-                                        "java.lang.Object") "ISTORE")
-                ~(:name binding)]
-               ~@(when label
-                   [[:mark label]])])
-           bindings labels)])
+  (mapcat (fn [{:keys [init tag] :as binding} label]
+            `[~@(emit init frame)
+              [:var-insn ~(keyword (if tag (.getName ^Class tag)
+                                       "java.lang.Object") "ISTORE")
+               ~(:name binding)]
+              ~@(when label
+                  [[:mark label]])])
+          bindings labels))
 
 (defn emit-let
   [{:keys [op bindings body env]} frame]
@@ -610,18 +610,19 @@
                     [:local-variable name :java.lang.Object nil loop-label end-label name]) params) ;; cast when emitting locals?
           [:return-value]
           [:end-method]]]
-    {:op     :method
-     :attr   #{:public}
-     :method [(into [method-name] arg-types) return-type]
-     :code   code}))
+
+    [{:op     :method
+      :attr   #{:public}
+      :method [(into [method-name] arg-types) return-type]
+      :code   code}]))
 
 (defmulti -compile :op)
 
 (defmethod -emit :local
-  [{:keys [to-clear? local name tag]} {:keys [closes-overs class] :as frame}]
+  [{:keys [to-clear? local name tag]} {:keys [closed-overs class] :as frame}]
   (cond
 
-   (closes-overs name)
+   (closed-overs name)
    `[[:load-this]
      ~[:get-field class name tag]
      ~@(when to-clear?
@@ -667,17 +668,18 @@
 ;; TODO: generalize this for deftype/reify: needs  mutable field handling + altCtor + annotations
 
 (defmethod -emit :fn
-  [{:keys [local meta methods variadic? constants closes-overs keyword-callsites
+  [{:keys [local meta methods variadic? constants closed-overs keyword-callsites
            protocol-callsites env] :as ast}
    {:keys [class] :as frame}]
   (let [class-name (str (or class (munge (ns-name *ns*)))
                         "$"
-                        (gensym (str (or (s/replace (:form local) "." "_DOT_")
+                        (gensym (str (or (and (:form local)
+                                              (s/replace (:form local) "." "_DOT_"))
                                          "fn") "__")))
         frame (merge frame
                      {:class              class-name
                       :constants          constants
-                      :closes-overs       closes-overs
+                      :closed-overs       closed-overs
                       :keyword-callsites  keyword-callsites
                       :protocol-callsites protocol-callsites})
         super (if variadic? :clojure.lang.RestFn :clojure.lang.AFn)
@@ -723,14 +725,14 @@
                                           :tag  :clojure.lang.IFn}]))
                                     protocol-callsites)
 
-        closes-overs (mapv (fn [{:keys [name tag]}]
+        closed-overs (mapv (fn [{:keys [name tag]}]
                              {:op   :field
                               :attr #{}
                               :name name
-                              :tag  tag}) closes-overs)
+                              :tag  tag}) (vals closed-overs))
 
         ctor-types (into (if meta [:clojure.lang.IPersistentMap] [])
-                         (repeat (count closes-overs) :java.lang.Object))
+                         (repeat (count closed-overs) :java.lang.Object))
 
         class-ctors [{:op     :method
                       :attr   #{:public :static}
@@ -755,11 +757,13 @@
                                       [[:load-this]
                                        [:var-insn :clojure.lang.IPersistentMap/ILOAD :__meta]
                                        [:put-field ~class-name :__meta :clojure.lang.IPersistentMap]])
+
                                   ~@(mapcat
                                      (fn [{:keys [name tag]}]
                                        [[:var-insn (keyword (.getName ^Class tag) "ILOAD") name]
                                         [:put-field class-name name tag]])
-                                     closes-overs)
+                                     closed-overs)
+
                                   [:label ~end-label]
                                   [:return-value]
                                   [:end-method]]})]
@@ -824,11 +828,12 @@
                                       (fn [{:keys [name tag]}]
                                         [[:load-this]
                                          [:get-field class-name name tag]])
-                                      closes-overs)
+                                      closed-overs)
                                    [:invoke-constructor [~(keyword class-name "<init>")
                                                          ~@ctor-types] :void]
                                    [:return-value]
                                    [:end-method]]}])
+
 
         jvm-ast
         {:op        :class
@@ -836,9 +841,9 @@
          :name      class-name
          :super     super
          :fields    `[~@consts ~@ keyword-callsites
-                      ~@meta-field ~@closes-overs ~@protocol-callsites]
+                      ~@meta-field ~@closed-overs ~@protocol-callsites]
          :methods   `[~@class-ctors ~@kw-callsite-method ~@variadic-method
-                      ~@meta-methods ~@(mapv #(emit % frame) methods)]}]
+                      ~@meta-methods ~@(mapcat #(emit % frame) methods)]}]
 
     (-compile jvm-ast)
 
@@ -846,6 +851,6 @@
       [:dup]
       ~@(when meta
           [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]])
-      ~@(mapv #(emit (assoc % :op :local) frame) closes-overs) ;; need to clear?
+      ~@(mapv #(emit (assoc % :op :local) frame) closed-overs) ;; need to clear?
       [:invoke-constructor [~(keyword class-name "<init>")
                             ~@ctor-types] :void]]))
