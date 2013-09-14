@@ -101,6 +101,6 @@
     (if (#{:fn :deftype :reify} op)
       (binding [*collects* *collects*]
         (let [f (apply comp (filter identity (mapv collect-fns what)))]
-          (into (postwalk ast f)
+          (into (postwalk ast f :reversed)
                 *collects*)))
       ast)))
