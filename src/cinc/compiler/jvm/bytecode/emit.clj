@@ -666,10 +666,20 @@
   [[:get-static (if b :java.lang.Boolean/TRUE :java.lang.Boolean/FALSE)
     :java.lang.Boolean]])
 
-;; replace with calls to valueOf
 (defmethod -emit-value :number [_ n]
   [[:push n]
-   [:box (class n)]])
+   (cond
+    (instance? Long n)
+    [:invoke-static [:java.lang.Long/valueOf :long] :java.lang.Long]
+
+    (instance? Integer n)
+    [:invoke-static [:java.lang.Integer/valueOf :int] :java.lang.Integer]
+
+    (instance? Double n)
+    [:invoke-static [:java.lang.Double/valueOf :double] :java.lang.Double]
+
+    (instance? Float n)
+    [:invoke-static [:java.lang.Float/valueOf :float] :java.lang.Float])])
 
 (defmethod -emit-value :class [_ c]
   (if (primitive? c)

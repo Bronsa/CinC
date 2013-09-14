@@ -87,14 +87,16 @@
 (def ^:dynamic *locals* #{})
 
 (defn fix [inst]
-    (case inst
+
+  (case inst
+
     (:invoke-static :invoke-virtual :invoke-interface :invoke-constructor)
     (fn [[[m & args] ret]]
       (let [class (class-type (namespace m))
             method (method-desc ret (name m) args)]
         (list class method)))
 
-    (:check-cast :new-array :array-store :new-instance :instance-of)
+    (:check-cast :new-array :array-store :new-instance :instance-of :box)
     (fn [[class]]
       (list (class-type class)))
 
@@ -185,7 +187,8 @@
   [{:keys [attr super  fields methods] :as c}]
   (let [cv (gensym)]
     (eval
-     `(let [~cv (org.objectweb.asm.ClassWriter. ClassWriter/COMPUTE_MAXS)]
+     `(let [~cv (org.objectweb.asm.ClassWriter.
+                 org.objectweb.asm.ClassWriter/COMPUTE_MAXS)]
         (.visit ~cv Opcodes/V1_5 ~(compute-attr attr) ~(:name c) nil ~(name super) nil)
 
         (.visitSource ~cv ~(:name c) nil)
