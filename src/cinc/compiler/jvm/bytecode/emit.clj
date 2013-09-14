@@ -291,7 +291,7 @@
 (defmethod -emit :keyword-invoke
   [{:keys [env fn args] :as ast} frame]
   (let [id (:id fn)
-        [end-label fault-label] (constantly label)]
+        [end-label fault-label] (repeatedly label)]
     `[~@(emit-line-number env)
       [:get-static ~(name (frame :class)) ~(str "thunk__" id) :clojure.lang.ILookupThunk]
       [:dup]
