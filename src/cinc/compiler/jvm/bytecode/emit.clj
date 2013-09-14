@@ -1,6 +1,6 @@
 (ns cinc.compiler.jvm.bytecode.emit
   (:require [cinc.analyzer.utils :as u]
-            [cinc.analyzer.jvm.utils :refer [primitive? numeric?] :as j.u]
+            [cinc.analyzer.jvm.utils :refer [primitive? numeric? box] :as j.u]
             [clojure.string :as s]))
 
 (defmulti -emit (fn [{:keys [op]} _] op))
@@ -642,7 +642,98 @@
          [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
           [:var-insn (keyword (.getName ^Class tag) "ISTORE") name]])]))
 
-(defmulti emit-value (fn [type _] type))
+(defmulti -emit-value (fn [type _] type))
+
+(defn emit-value [t form]
+  `[~@(-emit-value t form)
+    ~@(when (and (u/obj? form)
+                 (seq (meta form)))
+        `[[:check-cast :clojure.lang.IObj]
+          ~@(emit-value :map (meta form))
+          [:check-cast :clojure.lang.IPersistentMap]
+          [:invoke-interface [:clojure.lang.IObj/withMeta :clojure.lang.IPersistentMap]
+           :clojure.lang.IObj]])])
+
+;; should probably never hit those
+(defmethod -emit-value :nil [_ _]
+  [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]])
+
+(defmethod -emit-value :string [_ s]
+  [[:push s]])
+
+(defmethod -emit-value :bool [_ b]
+  [[:get-static (if b :java.lang.Boolean/TRUE :java.lang.Boolean/FALSE)
+    :java.lang.Boolean]])
+
+;; replace with calls to valueOf
+(defmethod -emit-value :number [_ n]
+  [[:push n]
+   [:box (class n)]])
+
+(defmethod -emit-value :class [_ c]
+  (if (primitive? c)
+    [[:get-static (box c) "TYPE" :java.lang.Class]]
+    [[:push (.getName ^Class c)]
+     [:invoke-static [:java.lang.Class/forName :java.lang.String] :java.lang.Class]]))
+
+(defmethod -emit-value :symbol [_ s]
+  [[:push (str (namespace s))]
+   [:push (name s)]
+   [:invoke-static [:clojure.lang.Symbol/intern :java.lang.String :java.lang.String]
+    :clojure.lang.Symbol]])
+
+(defmethod -emit-value :keyword [_ k]
+  [[:push (str (namespace k))]
+   [:push (name k)]
+   [:invoke-static [:clojure.lang.Keyword/intern :java.lang.String :java.lang.String]
+    :clojure.lang.Keyword]])
+
+(defmethod -emit-value :var [_ v]
+  (let [sym (.sym ^clojure.lang.Var v)]
+    [[:push (str (namespace sym))]
+     [:push (name sym)]
+     [:invoke-static [:clojure.lang.RT/var :java.lang.String :java.lang.String]
+      :clojure.lang.Var]]))
+
+;; todo record/type
+
+(defn emit-values-as-array [list]
+  `[[:push ~(int (count list))]
+    [:new-array :java.lang.Object]
+    ~@(mapv (fn [i item]
+              `[[:dup]
+                [:push ~(int i)]
+                ~@(emit-value (u/classify item) item)
+                [:array-store :java.lang.Object]])
+            (range) list)])
+
+(defmethod -emit-value :map [_ m]
+  (let [arr (mapcat identity m)]
+    `[~@(emit-values-as-array arr)
+      [:invoke-static [:clojure.lang.RT/map :objects] :clojure.lang.IPersistentMap]]))
+
+(defmethod -emit-value :vector [_ v]
+  `[~@(emit-values-as-array v)
+    [:invoke-static [:clojure.lang.RT/vector :objects] :clojure.lang.IPersistentVector]])
+
+(defmethod -emit-value :set [_ s]
+  `[~@(emit-values-as-array s)
+    [:invoke-static [:clojure.lang.RT/set :objects] :clojure.lang.IPersistentSet]])
+
+(defmethod -emit-value :seq [_ s]
+  `[~@(emit-values-as-array s)
+    [:invoke-static [:java.util.Arrays/asList :objects] :java.util.List]
+    [:invoke-static [:clojure.lang.PersistentList/create :java.util.List]
+     :clojure.lang.IPersistentList]])
+
+(defmethod -emit-value :char [_ c]
+  [[:push c]
+   [:invoke-static [:java.lang.Character/valueOf :char] :java.lang.Character]])
+
+(defmethod -emit-value :regex [_ r]
+  `[~@(emit-value :string (str r))
+    [:invoke-static [:java.util.regex.Pattern/compile :java.lang.String]
+     :java.util.regex.Pattern]])
 
 (defn emit-constants [{:keys [class constants]}]
   (mapcat (fn [{:keys [val id tag type]}]
@@ -833,7 +924,6 @@
                                                          ~@ctor-types] :void]
                                    [:return-value]
                                    [:end-method]]}])
-
 
         jvm-ast
         {:op        :class
