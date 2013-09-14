@@ -630,16 +630,16 @@
           [:put-field class name tag]])]
 
    (= :arg local)
-   [[:load-arg ~name] ;; why -1?
-    ~@(when to-clear?
-        [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
-         [:store-arg name]])]
+   `[[:load-arg ~name] ;; why -1?
+     ~@(when to-clear?
+         [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
+          [:store-arg name]])]
 
    :else
-   [[:var-insn (keyword (.getName ^Class tag) "ILOAD") name]
-    ~@(when to-clear?
-        [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
-         [:var-insn (keyword (.getName ^Class tag) "ISTORE") name]])]))
+   `[~[:var-insn (keyword (.getName ^Class tag) "ILOAD") name]
+     ~@(when to-clear?
+         [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
+          [:var-insn (keyword (.getName ^Class tag) "ISTORE") name]])]))
 
 (defmulti emit-value (fn [type _] type))
 
