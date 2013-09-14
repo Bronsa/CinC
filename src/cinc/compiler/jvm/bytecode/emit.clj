@@ -737,9 +737,11 @@
 
 (defn emit-constants [{:keys [class constants]}]
   (mapcat (fn [{:keys [val id tag type]}]
-            `[~@(emit-value type val)
-              [:check-cast ~tag]
-              ~[:put-static class (str "const__" id) tag]])
+            (let [v (emit-value type val)]
+              `[~@(if (primitive? tag)
+                    (butlast v)
+                    (conj v [:check-cast ~tag]))
+                ~[:put-static class (str "const__" id) tag]]))
           (vals constants)))
 
 (defn emit-keyword-callsites
