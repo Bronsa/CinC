@@ -1,7 +1,8 @@
 (ns cinc.compiler.jvm.bytecode.emit
   (:require [cinc.analyzer.utils :as u]
             [cinc.analyzer.jvm.utils :refer [primitive? numeric? box] :as j.u]
-            [clojure.string :as s]))
+            [clojure.string :as s]
+            [cinc.compiler.jvm.bytecode.transform :as t]))
 
 (defmulti -emit (fn [{:keys [op]} _] op))
 (defmulti -emit-set! (fn [{:keys [op]} _] op))
@@ -44,13 +45,13 @@
                    (if (#{Double/TYPE Long/TYPE} tag)
                      [[:pop2]]
                      [[:pop]]))))
-         `[~@bytecode
-           ~@(when (= :untyped m)
-               (emit nil-expr frame))
-           ~@(when box
-               (emit-box tag (j.u/box tag)))
-           ~@(when cast
-               (emit-cast tag cast))]))))
+         (into bytecode
+               `[~@(when (= :untyped m)
+                     (emit nil-expr frame))
+                 ~@(when box
+                     (emit-box tag (j.u/box tag)))
+                 ~@(when cast
+                     (emit-cast tag cast))])))))
 
 (defmethod -emit :import
   [{:keys [class]} frame]
@@ -149,12 +150,12 @@
 (defn emit-as-array [list frame]
   `[[:push ~(int (count list))]
     [:new-array :java.lang.Object]
-    ~@(mapv (fn [i item]
-              `[[:dup]
-                [:push ~(int i)]
-                ~@(emit item frame)
-                [:array-store :java.lang.Object]])
-            (range) list)])
+    ~@(mapcat (fn [i item]
+                `[[:dup]
+                  [:push ~(int i)]
+                  ~@(emit item frame)
+                  [:array-store :java.lang.Object]])
+              (range) list)])
 
 (defmethod -emit :map
   [{:keys [keys vals]} frame]
@@ -605,7 +606,7 @@
           ~@(emit-line-number env loop-label)
           ~@(emit body (assoc frame :loop-label loop-label))
           [:mark ~end-label]
-          [:local-variable :this :java.lang.Object nil ~loop-label ~end-label :this] ;; does it need to be 0 idx?
+          [:local-variable :this :java.lang.Object nil ~loop-label ~end-label :this]
           ~@(mapv (fn [{:keys [tag name]}]
                     [:local-variable name :java.lang.Object nil loop-label end-label name]) params) ;; cast when emitting locals?
           [:return-value]
@@ -616,7 +617,7 @@
       :method [(into [method-name] arg-types) return-type]
       :code   code}]))
 
-(defmulti -compile :op)
+;; emit local, deftype/reify, letfn
 
 (defmethod -emit :local
   [{:keys [to-clear? local name tag]} {:keys [closed-overs class] :as frame}]
@@ -700,12 +701,12 @@
 (defn emit-values-as-array [list]
   `[[:push ~(int (count list))]
     [:new-array :java.lang.Object]
-    ~@(mapv (fn [i item]
-              `[[:dup]
-                [:push ~(int i)]
-                ~@(emit-value (u/classify item) item)
-                [:array-store :java.lang.Object]])
-            (range) list)])
+    ~@(mapcat (fn [i item]
+                `[[:dup]
+                  [:push ~(int i)]
+                  ~@(emit-value (u/classify item) item)
+                  [:array-store :java.lang.Object]])
+              (range) list)])
 
 (defmethod -emit-value :map [_ m]
   (let [arr (mapcat identity m)]
@@ -740,7 +741,7 @@
             (let [v (emit-value type val)]
               `[~@(if (primitive? tag)
                     (butlast v)
-                    (conj v [:check-cast ~tag]))
+                    (conj v [:check-cast tag]))
                 ~[:put-static class (str "const__" id) tag]]))
           (vals constants)))
 
@@ -748,13 +749,13 @@
   [{:keys [keyword-callsites constants class]}]
   (mapcat (fn [k]
             (let [{:keys [id]} (k constants)]
-             `[[:new-instance :clojure.lang.KeywordLookupSite]
-               [:dup]
-               ~@(emit-value :keyword k)
-               [:invoke-constructor [:clojure.lang.KeywordLookupSite/<init> :clojure.lang.Keyword] :void]
-               [:dup]
-               ~[:put-static class (str "site__" id) :clojure.lang.KeywordLookupSite]
-               ~[:put-static class (str "thunk__" id) :clojure.lang.ILookupThunk]]))
+              `[[:new-instance :clojure.lang.KeywordLookupSite]
+                [:dup]
+                ~@(emit-value :keyword k)
+                [:invoke-constructor [:clojure.lang.KeywordLookupSite/<init> :clojure.lang.Keyword] :void]
+                [:dup]
+                ~[:put-static class (str "site__" id) :clojure.lang.KeywordLookupSite]
+                ~[:put-static class (str "thunk__" id) :clojure.lang.ILookupThunk]]))
           keyword-callsites))
 
 
@@ -775,14 +776,14 @@
                       :closed-overs       closed-overs
                       :keyword-callsites  keyword-callsites
                       :protocol-callsites protocol-callsites})
-        super (if variadic? :clojure.lang.RestFn :clojure.lang.AFn)
+        super (if variadic? :clojure.lang.RestFn :clojure.lang.AFunction)
 
         consts (mapv (fn [{:keys [id tag]}]
-                          {:op   :field
-                           :attr #{:public :final :static}
-                           :name (str "const__" id)
-                           :tag  tag})
-                        (vals constants))
+                       {:op   :field
+                        :attr #{:public :final :static}
+                        :name (str "const__" id)
+                        :tag  tag})
+                     (vals constants))
 
         meta-field (when meta
                      [{:op   :field
@@ -836,6 +837,7 @@
                                     (emit-constants frame))
                                 ~@(when (seq keyword-callsites)
                                     (emit-keyword-callsites frame))
+                                [:return-value]
                                 [:end-method]]}
                      (let [[start-label end-label] (repeatedly label)]
                        {:op     :method
@@ -882,13 +884,13 @@
 
         variadic-method (when variadic?
                           (let [required-arity (->> methods (filter :variadic?) first :fixed-arity)]
-                           [{:op     :method
-                             :attr   #{:public}
-                             :method [[:getRequiredArity] :int]
-                             :code   `[[:start-method]
-                                       [:push (int required-arity)]
-                                       [:return-value]
-                                       [:end-method]]}]))
+                            [{:op     :method
+                              :attr   #{:public}
+                              :method [[:getRequiredArity] :int]
+                              :code   `[[:start-method]
+                                        [:push (int required-arity)]
+                                        [:return-value]
+                                        [:end-method]]}]))
 
         meta-methods (when meta
                        [{:op     :method
@@ -929,20 +931,24 @@
 
         jvm-ast
         {:op        :class
-         :attr      #{:public  :final}
-         :name      class-name
-         :super     super
+         :attr      #{:public :super :final}
+         :name      (s/replace class-name \. \/)
+         :super     (s/replace (name super) \. \/)
          :fields    `[~@consts ~@ keyword-callsites
                       ~@meta-field ~@closed-overs ~@protocol-callsites]
          :methods   `[~@class-ctors ~@kw-callsite-method ~@variadic-method
-                      ~@meta-methods ~@(mapcat #(emit % frame) methods)]}]
+                      ~@meta-methods ~@(mapcat #(emit % frame) methods)]}
 
-    (-compile jvm-ast)
+        bc
+        (t/-compile jvm-ast)]
 
-    `[[:new-instance ~class-name]
-      [:dup]
-      ~@(when meta
-          [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]])
-      ~@(mapv #(emit (assoc % :op :local) frame) closed-overs) ;; need to clear?
-      [:invoke-constructor [~(keyword class-name "<init>")
-                            ~@ctor-types] :void]]))
+    (with-meta
+      `[[:new-instance ~class-name]
+        [:dup]
+        ~@(when meta
+            [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]])
+        ~@(mapv #(emit (assoc % :op :local) frame) closed-overs) ;; need to clear?
+        [:invoke-constructor [~(keyword class-name "<init>")
+                              ~@ctor-types] :void]]
+      {:bc bc
+       :name class-name})))

@@ -4,8 +4,7 @@
   (:require [clojure.string :as s]
             [cinc.analyzer.jvm.utils :refer [maybe-class]]
             [cinc.analyzer.utils :refer [update!]])
-  (:import (org.objectweb.asm Type Label)
-           (org.objectweb.asm.commons Method)))
+  (:import (org.objectweb.asm Type Label Opcodes)))
 
 (def rename {:insn               :visit-insn
              :start-method       :visit-code
@@ -31,8 +30,23 @@
       (.getName ^Class x)
       (c.c/name x))))
 
+(defn to-str [x]
+  (when x
+    (cond
+     (class? x)
+     (.getName ^Class x)
+
+     (string? x)
+     x
+
+     :else
+     (let [n (c.c/name x)]
+       (if-let [ns (namespace x)]
+         (str ns "/" n)
+         n)))))
+
 (defn symbol
-  ([x] (c.c/symbol (name x)))
+  ([x] (c.c/symbol (to-str x)))
   ([ns n] (c.c/symbol (name ns) (name n))))
 
 (defn normalize [inst]
@@ -48,24 +62,32 @@
            "char"    "C"
            "void"    "V"})
 
+(defn maybe-special [x]
+  (case x
+    "objects" "java.lang.Object[]"
+    x))
+
+;; fix
 (defn class-desc
-  ([c] (class-desc c false))
+  ([c] (if (= c :objects)
+         (class-desc :java.lang.Object true)
+         (class-desc c false)))
   ([c arr?]
      (when-let [c (name c)]
        (prim c
              (str (when arr? \[) \L (s/replace c \. \/) \;)))))
 
 (defn class-type [c-desc]
-  (Type/getType ^String (class-desc c-desc)))
+  (list 'org.objectweb.asm.Type/getType (class-desc c-desc)))
 
 (defn method-desc [ret method args]
-  (Method/getMethod (str (name ret) " " method \( (s/join ", " (map name args)) \))))
+  (list 'org.objectweb.asm.commons.Method/getMethod (str (maybe-special (name ret)) " " (name method) \( (s/join ", " (map (comp maybe-special name) args)) \))))
 
 (def ^:dynamic *labels* #{})
 (def ^:dynamic *locals* #{})
 
 (defn fix [inst]
-  (case inst
+    (case inst
     (:invoke-static :invoke-virtual :invoke-interface :invoke-constructor)
     (fn [[[m & args] ret]]
       (let [class (class-type (namespace m))
@@ -73,15 +95,17 @@
         (list class method)))
 
     (:check-cast :new-array :array-store :new-instance :instance-of)
-    (fn [[class]] (list (class-type class)))
+    (fn [[class]]
+      (list (class-type class)))
 
     (:get-static :put-static :get-field :put-field)
     (fn [args]
-      (let [[c f t] (if (= 3 (count args)) args
-                        [(namespace (first args)) (name (first args)) (second args)])]
-       (list (class-type c) (name f) (class-type (name t)))))
+      (let [[c f t] (if (= 3 (count args))
+                      args
+                      [(namespace (first args)) (name (first args)) (second args)])]
+        (list (class-type c) (name f) (class-type (name t)))))
 
-    (:mark)
+    (:mark :label)
     (fn [[label]]
       (let [label (symbol label)]
         (update! *labels* conj label)
@@ -100,7 +124,7 @@
     (fn [[desc tag _ l1 l2 local]]
       (let [local (symbol local)]
         (update! *locals* conj local)
-        (list (name desc) (class-type tag) nil (symbol l1) (symbol l2) local)))
+        (list (name desc) (list '.getDescriptor (class-type tag)) nil (symbol l1) (symbol l2) local)))
 
     (:line-number)
     (fn [[line label]]
@@ -114,6 +138,9 @@
     (fn [[l h l lbs]]
       (list (int l) (int h) (symbol l) (into-array Label lbs)))
 
+    (:push)
+    identity
+
     ;;default
     (fn [args] (seq (map symbol args)))))
 
@@ -122,9 +149,52 @@
             *locals* *locals*]
     (let [calls (seq (map (fn [[inst & args]]
                             (list* (normalize inst) ((fix inst) args))) bc))]
-      (eval ;; ugh
-       `(let [*gen*# ~gen
-              [~@*labels*] (repeatedly #(.newLabel *gen*#))
-              [~@*locals*] (range)]
-          (doto *gen*
-            ~@calls))))))
+
+      `(let [*gen*# ~gen
+             [~@*labels*] (repeatedly #(.newLabel *gen*#))
+             [~@*locals*] (range)]
+         (doto *gen*#
+           ~@calls)))))
+
+
+(defmulti -compile :op)
+
+(def attrs
+  {:public  Opcodes/ACC_PUBLIC
+   :super   Opcodes/ACC_SUPER
+   :final   Opcodes/ACC_FINAL
+   :static  Opcodes/ACC_STATIC
+   :private Opcodes/ACC_PRIVATE})
+
+(defn compute-attr [attr]
+  (reduce (fn [r x] (+ r (attrs x))) 0 attr))
+
+(defmethod -compile :method
+  [{:keys [attr method code cv]}]
+  (let [[[method-name & args] ret] method
+        m (method-desc ret method-name args)
+        gen (list 'org.objectweb.asm.commons.GeneratorAdapter. (compute-attr attr) m nil nil cv)]
+    (transform gen code)))
+
+(defmethod -compile :field
+  [{:keys [attr tag cv] :as f}]
+  (list '.visitField cv (compute-attr attr) (name (:name f))
+        (.getDescriptor ^Type (Type/getType tag)) nil nil))
+
+(defmethod -compile :class
+  [{:keys [attr super  fields methods] :as c}]
+  (let [cv (gensym)]
+    (eval
+     `(let [~cv (org.objectweb.asm.ClassWriter. ClassWriter/COMPUTE_MAXS)]
+        (.visit ~cv Opcodes/V1_5 ~(compute-attr attr) ~(:name c) nil ~(name super) nil)
+
+        (.visitSource ~cv ~(:name c) nil)
+
+        ~@(for [f fields]
+            (-compile (assoc f :cv cv)))
+
+        ~@(for [m methods]
+            (-compile (assoc m :cv cv)))
+
+        (.visitEnd ~cv)
+        (.toByteArray ~cv)))))
