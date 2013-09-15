@@ -40,7 +40,8 @@
          (if (:const m)
            []
            (into bytecode
-                 (when (and (not= :untyped m)
+                 (when (and (not (:untyped m))
+                            (not (:container m))
                             (not= Void/TYPE tag))
                    (if (#{Double/TYPE Long/TYPE} tag)
                      [[:pop2]]
@@ -66,8 +67,8 @@
   [{:keys [exception]} frame]
   (into
    (emit exception frame)
-   [:check-cast :java.lang.Throwable]
-   [:throw-exception]))
+   [[:check-cast :java.lang.Throwable]
+    [:throw-exception]]))
 
 (defmethod -emit :monitor-enter
   [{:keys [target]} frame]
@@ -103,8 +104,8 @@
   (emit-constant form frame))
 
 (defmethod -emit :quote
-  [{:keys [const]} frame]
-  (-emit const frame))
+  [{:keys [expr]} frame]
+  (-emit expr frame))
 
 (defn emit-var [var frame]
   (emit-constant var frame))
@@ -187,7 +188,9 @@
 
 (defmethod -emit :do
   [{:keys [statements ret]} frame]
-  (vec (mapcat #(emit % frame) (conj statements ret))))
+  (with-meta
+    (vec (mapcat #(emit % frame) (conj statements ret)))
+    {:container true}))
 
 (defn label []
   (keyword (gensym "label__")))
@@ -204,7 +207,9 @@
         context (:context env)
         [ret-local finally-local] (repeatedly local)]
 
-    `[[:mark ~start-label]
+
+    `^:container
+    [[:mark ~start-label]
       ~@(emit body frame)
       ~@(when (not= :statement context) ;; do this automatically on emit?
           [[:var-insn :java.lang.Object/ISTORE ret-local]])
@@ -216,12 +221,13 @@
       ~@(mapcat
          (fn [{:keys [body start-label end-label local]}]
            `[[:mark ~start-label]
-             [:var-insn :java.lang.Object/ISTORE (:name local)]
+             [:var-insn :java.lang.Object/ISTORE ~(:name local)]
              ~@(emit body frame)
              ~@(when (not= :statement context)
                  [[:var-insn :java.lang.Object/ISTORE ret-local]])
              [:mark ~end-label]
-             ~@(emit finally frame)
+             ~@(when finally
+                 (emit finally frame))
              [:go-to ~ret-label]])
          catches)
       ~@(when finally
@@ -233,9 +239,9 @@
 
       [:mark ~ret-label]
       ~@(when (not= :statement context)
-          `[[:var-insn [:java.lang.Object/ILOAD ~ret-local]]
+          `[[:var-insn :java.lang.Object/ILOAD ~ret-local]
             ~@(when tag
-                [:check-cast tag])])
+                [[:check-cast tag]])])
       [:mark ~(label)]
 
       ~@(for [{:keys [^Class class] :as c} catches]
@@ -326,7 +332,7 @@
     `[[:new-instance ~class]
       [:dup]
       ~@(mapcat #(emit % frame) args)
-      [:invoke-constructor [(keyword (.getName class) "<init>") ~@(arg-types args)] ~tag]]
+      [:invoke-constructor [~(keyword (.getName class) "<init>") ~@(arg-types args)] :void]]
     `[[:push ~(.getName class)]
       [:invoke-static [:java.lang.Class/forName :java.lang.String] :java.lang.Class]
       ~@(emit-as-array args frame)
@@ -382,7 +388,8 @@
 (defmethod -emit :if
   [{:keys [test then else env]} frame]
   (let [[null-label false-label end-label] (repeatedly label)]
-    `[~@(emit-line-number env)
+    `^:container
+    [~@(emit-line-number env)
       ~@(emit test frame)
       ~@(if (:box test)
           [[:dup]
@@ -528,7 +535,8 @@
         thens (apply sorted-map (mapcat (juxt :hash :then) thens))
         [default-label end-label] (repeatedly label)
         labels (zipmap (keys tests) (repeatedly label))]
-    `[~@(emit-line-number env)
+    `^:container
+    [~@(emit-line-number env)
       ~@(if (= :int test-type)
           (emit-test-ints ast frame default-label)
           (emit-test-hashes ast frame))
@@ -564,7 +572,8 @@
   [{:keys [op bindings body env]} frame]
   (let [loop? (= :loop op)
         [end-label loop-label & labels] (repeatedly (+ 2 (count bindings)) label)]
-    `[~@(emit-bindings bindings labels frame)
+    `^:container
+    [~@(emit-bindings bindings labels frame)
       [:mark ~loop-label]
       ~@(emit body (merge frame (when loop? {:loop-label loop-label
                                              :loop-locals bindings})))

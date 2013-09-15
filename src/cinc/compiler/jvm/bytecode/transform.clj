@@ -116,13 +116,17 @@
         (list label)))
 
     (:var-insn)
-    (fn [[insn label]]
-      (list (list '.getOpcode (class-type (namespace insn))
-                  (symbol "org.objectweb.asm.Opcodes" insn)) (symbol label)))
+    (fn [[insn local]]
+      (let [local (symbol local)]
+                (update! *locals* conj local)
+        (list (list '.getOpcode (class-type (namespace insn))
+                   (symbol "org.objectweb.asm.Opcodes" insn)) local)))
 
     (:try-catch-block)
     (fn [[l1 l2 l3 t]]
-      (list (symbol l1) (symbol l2) (symbol l3) (class-desc t)))
+      (list (symbol l1) (symbol l2) (symbol l3)
+            (when t
+              (apply str (rest (butlast (class-desc t)))))))
 
     (:local-variable)
     (fn [[desc tag _ l1 l2 local]]
@@ -154,8 +158,8 @@
 (defn transform [gen bc]
   (binding [*labels* *labels*
             *locals* *locals*]
-    (let [calls (seq (map (fn [[inst & args]]
-                            (list* (normalize inst) ((fix inst) args))) bc))]
+    (let [calls (doall (map (fn [[inst & args]]
+                              (list* (normalize inst) ((fix inst) args))) bc))]
 
       `(let [*gen*# ~gen
              [~@*labels*] (repeatedly #(.newLabel *gen*#))
