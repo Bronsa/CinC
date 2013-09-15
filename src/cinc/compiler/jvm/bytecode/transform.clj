@@ -46,7 +46,9 @@
          n)))))
 
 (defn symbol
-  ([x] (c.c/symbol (to-str x)))
+  ([x] (if (number? x)
+         x
+        (c.c/symbol (to-str x))))
   ([ns n] (c.c/symbol (name ns) (name n))))
 
 (defn normalize [inst]
@@ -134,14 +136,17 @@
 
     (:lookup-switch-insn)
     (fn [[l t lbs]]
-      (list (symbol l) (int-array t) (into-array Label lbs)))
+      (list (symbol l) (list `int-array (mapv symbol t)) (list `into-array Label (mapv symbol lbs))))
 
     (:table-switch-insn)
-    (fn [[l h l lbs]]
-      (list (int l) (int h) (symbol l) (into-array Label lbs)))
+    (fn [[l h la lbs]]
+      (list (list `int (symbol l)) (list `int (symbol h)) (symbol la) (list `into-array Label (mapv symbol lbs))))
 
     (:push)
-    identity
+    (fn [[x]]
+      (if (instance? Integer x)
+        (list (list 'clojure.core/int x))
+        (list x)))
 
     ;;default
     (fn [args] (seq (map symbol args)))))
@@ -180,11 +185,12 @@
 
 (defmethod -compile :field
   [{:keys [attr tag cv] :as f}]
-  (list '.visitField cv (compute-attr attr) (name (:name f))
-        (.getDescriptor ^Type (Type/getType tag)) nil nil))
+  (let [tag (if (keyword? tag) (Class/forName (name tag)) tag)]
+   (list '.visitField cv (compute-attr attr) (name (:name f))
+         (.getDescriptor ^Type (Type/getType tag)) nil nil)))
 
 (defmethod -compile :class
-  [{:keys [attr super  fields methods] :as c}]
+  [{:keys [attr super fields methods] :as c}]
   (let [cv (gensym)]
     (eval
      `(let [~cv (org.objectweb.asm.ClassWriter.

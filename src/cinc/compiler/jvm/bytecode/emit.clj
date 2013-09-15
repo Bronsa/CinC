@@ -325,7 +325,7 @@
   (if validated?
     `[[:new-instance ~class]
       [:dup]
-      ~@(mapv #(emit % frame) args)
+      ~@(mapcat #(emit % frame) args)
       [:invoke-constructor [(keyword (.getName class) "<init>") ~@(arg-types args)] ~tag]]
     `[[:push ~(.getName class)]
       [:invoke-static [:java.lang.Class/forName :java.lang.String] :java.lang.Class]
@@ -336,8 +336,8 @@
   [{:keys [env tag validated? args method ^Class class]} frame]
   (if validated?
     `[~@(emit-line-number env)
-      ~@(mapv #(emit % frame) args)
-      [:invoke-static [~(keyword (str class) (str method)) ~@(arg-types args)] ~tag]]
+      ~@(mapcat #(emit % frame) args)
+      [:invoke-static [~(keyword (.getName class) (str method)) ~@(arg-types args)] ~tag]]
     `[[:push ~(.getName class)]
       [:invoke-static [:java.lang.Class/forName :java.lang.String] :java.lang.Class]
       [:push ~(str method)]
@@ -352,7 +352,7 @@
     `[~@(emit-line-number env)
       ~(emit instance frame)
       [:check-cast ~class]
-      ~@(mapv #(emit % frame) args)
+      ~@(mapcat #(emit % frame) args)
       [(if (.isInterface class)
          :invoke-interface
          :invoke-virtual)
@@ -440,7 +440,7 @@
 
         [:mark ~on-label]
 
-        ~@(mapv #(emit % frame) args)
+        ~@(mapcat #(emit % frame) args)
         [:invoke-interface [~(keyword (.getName pinterface)
                                       (munge (str (:name fn))))
                             ~@(repeat (count args) :java.lang.Object)] :java.lang.Object]
@@ -705,15 +705,13 @@
     [:invoke-static [:clojure.lang.Keyword/intern :java.lang.String :java.lang.String]
      :clojure.lang.Keyword]])
 
-(defmethod -emit-value :var [_ v]
-  (let [s (.sym ^clojure.lang.Var v)]
-    `[~@(if-let [ns (namespace s)]
-          [[:push (namespace s)]]
-          [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
-           [:check-cast :java.lang.String]])
-      [:push ~(name s)]
-      [:invoke-static [:clojure.lang.RT/var :java.lang.String :java.lang.String]
-       :clojure.lang.Var]]))
+(defmethod -emit-value :var [_ ^clojure.lang.Var v]
+  (let [name (str (.sym v))
+        ns (str (ns-name (.ns v)))]
+    [[:push ns]
+     [:push name]
+     [:invoke-static [:clojure.lang.RT/var :java.lang.String :java.lang.String]
+      :clojure.lang.Var]]))
 
 ;; todo record/type
 
@@ -966,7 +964,7 @@
         [:dup]
         ~@(when meta
             [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]])
-        ~@(mapv #(emit (assoc % :op :local) frame) closed-overs) ;; need to clear?
+        ~@(mapcat #(emit (assoc % :op :local) frame) closed-overs) ;; need to clear?
         [:invoke-constructor [~(keyword class-name "<init>")
                               ~@ctor-types] :void]]
       {:class (.defineClass (clojure.lang.RT/baseLoader) class-name bc nil)})))
