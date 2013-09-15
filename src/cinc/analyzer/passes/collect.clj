@@ -23,6 +23,7 @@
   [{:keys [op form tag type] :as ast}]
   (if (and (= op :const)
            (not= type :nil)
+           (not= type :string)
            (not= type :boolean))
     (let [id (-register-constant form tag type)]
       (assoc ast :id id))
