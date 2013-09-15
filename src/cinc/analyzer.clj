@@ -267,10 +267,11 @@
                (with-meta expr (assoc m ::quoted true))
                expr)
         const (-analyze :const expr env)]
-    {:op   :quote
-     :expr const
-     :form form
-     :env  env}))
+    {:op       :quote
+     :expr     const
+     :form     form
+     :env      env
+     :children [:expr]}))
 
 (defmethod parse 'set!
   [[_ target val :as form] env]
