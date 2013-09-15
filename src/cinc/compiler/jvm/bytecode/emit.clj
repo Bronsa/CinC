@@ -606,7 +606,7 @@
 ;; handle invokePrim
 (defmethod -emit :fn-method
   [{:keys [params tag fixed-arity variadic? body env]} frame]
-  (let [method-name (if variadic? :do-invoke :invoke)
+  (let [method-name (if variadic? :doInvoke :invoke)
         return-type (prim-or-obj tag)
         arg-types (repeat (count params) :java.lang.Object)
         [loop-label end-label] (repeatedly label)
@@ -919,7 +919,7 @@
                               :attr   #{:public}
                               :method [[:getRequiredArity] :int]
                               :code   `[[:start-method]
-                                        [:push (int required-arity)]
+                                        [:push ~(int required-arity)]
                                         [:return-value]
                                         [:end-method]]}]))
 
