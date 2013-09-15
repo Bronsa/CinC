@@ -565,7 +565,9 @@
   (let [loop? (= :loop op)
         [end-label loop-label & labels] (repeatedly (+ 2 (count bindings)) label)]
     `[~@(emit-bindings bindings labels frame)
-      ~@(emit body (merge frame (when loop? {:loop-label loop-label})))
+      [:mark ~loop-label]
+      ~@(emit body (merge frame (when loop? {:loop-label loop-label
+                                             :loop-locals bindings})))
       [:mark ~end-label]
       ~@(mapv (fn [{:keys [name tag]} label]
                 [:local-variable name (or tag :java.lang.Object) nil label end-label name])
@@ -579,12 +581,12 @@
   (emit-let ast frame))
 
 (defmethod -emit :recur
-  [{:keys [loop-locals args]} {:keys [loop-label] :as frame}]
+  [{:keys [exprs]} {:keys [loop-label loop-locals] :as frame}]
   `[~@(mapcat (fn [arg binding]
                 `[~@(emit arg frame)
                   ~(if (= :arg (:local binding))
                      [:store-arg (:name binding)]
-                     [:var-insn :java.lang.Object/ISTORE (:name binding)])]) args loop-locals)
+                     [:var-insn :java.lang.Object/ISTORE (:name binding)])]) exprs loop-locals)
     [:go-to ~loop-label]])
 
 (defn prim-or-obj [tag]
@@ -604,7 +606,9 @@
         `[[:start-method]
           [:mark ~loop-label]
           ~@(emit-line-number env loop-label)
-          ~@(emit body (assoc frame :loop-label loop-label))
+          ~@(emit body (assoc frame
+                         :loop-label loop-label
+                         :loop-locals params))
           [:mark ~end-label]
           [:local-variable :this :java.lang.Object nil ~loop-label ~end-label :this]
           ~@(mapv (fn [{:keys [tag name]}]

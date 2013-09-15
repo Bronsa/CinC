@@ -400,7 +400,7 @@
               body (parse (cons 'do body)
                           (if loop?
                             (assoc body-env
-                              :loop-locals binds)
+                              :loop-locals (count binds))
                             body-env))]
           {:body     body
            :bindings binds
@@ -426,15 +426,14 @@
   {:pre [(= :return context)
          loop-locals
          (not in-try)
-         (= (count exprs) (count loop-locals))]}
+         (= (count exprs) loop-locals)]}
   (let [exprs (mapv (analyze-in-env (ctx env :expr))
                     exprs)]
     {:op          :recur
      :env         env
-     :loop-locals loop-locals
      :form        form
      :exprs       exprs
-     :children    [:loop-locals :exprs]})) ;; :args?
+     :children    [:exprs]}))
 
 (defn analyze-fn-method [[params & body :as form] {:keys [locals] :as env}]
   {:pre [(every? symbol? params)
@@ -455,7 +454,7 @@
         body-env (into (update-in env [:locals]
                                   merge (zipmap params-names params-expr))
                        {:context     :return
-                        :loop-locals params-expr})
+                        :loop-locals arity})
         body (parse (cons 'do body) body-env)]
     (when variadic?
       (let [x (drop-while #(not= % '&) params)]
