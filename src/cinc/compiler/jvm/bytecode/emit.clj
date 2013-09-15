@@ -111,11 +111,11 @@
 
 (defmethod -emit :var
   [{:keys [var]} frame]
-  (into
+  (conj
    (emit-var var frame)
    [:invoke-virtual [(if (u/dynamic? var)
-                       :clojure.lang.Var/get
-                       :clojure.lang.Var/getRawRoot)] :java.lang.Object]))
+                          :clojure.lang.Var/get
+                          :clojure.lang.Var/getRawRoot)] :java.lang.Object]))
 
 (defmethod -emit-set! :var
   [{:keys [target val]} frame]
@@ -399,7 +399,7 @@
       [:mark ~end-label]]))
 
 (defn emit-args-and-invoke [args frame]
-  `[~@(mapv #(emit % frame) (take 20 args))
+  `[~@(mapcat #(emit % frame) (take 20 args))
     ~@(when-let [args (seq (drop 20 args))]
         (emit-as-array args frame))
     [:invoke-interface [:clojure.lang.IFn/invoke ~@(repeat (min 21 (count args)) :java.lang.Object)] :java.lang.Object]])
@@ -706,11 +706,14 @@
      :clojure.lang.Keyword]])
 
 (defmethod -emit-value :var [_ v]
-  (let [sym (.sym ^clojure.lang.Var v)]
-    [[:push (str (namespace sym))]
-     [:push (name sym)]
-     [:invoke-static [:clojure.lang.RT/var :java.lang.String :java.lang.String]
-      :clojure.lang.Var]]))
+  (let [s (.sym ^clojure.lang.Var v)]
+    `[~@(if-let [ns (namespace s)]
+          [[:push (namespace s)]]
+          [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
+           [:check-cast :java.lang.String]])
+      [:push ~(name s)]
+      [:invoke-static [:clojure.lang.RT/var :java.lang.String :java.lang.String]
+       :clojure.lang.Var]]))
 
 ;; todo record/type
 
