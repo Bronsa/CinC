@@ -549,12 +549,12 @@
              {:children children}))))
 
 (defmethod parse '.
-  [[_ target & [m-or-f] :as form] env]
+  [[_ target & [m-or-f & args] :as form] env]
   {:pre [(>= (count form) 3)]}
   (let [[m-or-f field?] (if (and (symbol? m-or-f)
                                  (= \- (first (name m-or-f))))
                           [(-> m-or-f name (subs 1) symbol) true]
-                          [m-or-f false])
+                          [(if args (cons m-or-f args) m-or-f) false])
         target-expr (analyze target (ctx env :expr))
         call? (and (not field?) (seq? m-or-f))
         expr (cond
