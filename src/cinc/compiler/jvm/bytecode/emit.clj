@@ -594,7 +594,7 @@
   `[~@(mapcat (fn [arg binding]
                 `[~@(emit arg frame)
                   ~(if (= :arg (:local binding))
-                     [:store-arg (:name binding)]
+                     [:store-arg (:arg-id binding)]
                      [:var-insn :java.lang.Object/ISTORE (:name binding)])]) exprs loop-locals)
     [:go-to ~loop-label]])
 
@@ -621,7 +621,8 @@
           [:mark ~end-label]
           [:local-variable :this :java.lang.Object nil ~loop-label ~end-label :this]
           ~@(mapv (fn [{:keys [tag name]}]
-                    [:local-variable name :java.lang.Object nil loop-label end-label name]) params) ;; cast when emitting locals?
+                    [:local-variable name :java.lang.Object nil loop-label end-label name])
+                  params) ;; cast when emitting locals?
           [:return-value]
           [:end-method]]]
 
@@ -633,7 +634,7 @@
 ;; emit local, deftype/reify, letfn
 
 (defmethod -emit :local
-  [{:keys [to-clear? local name tag]} {:keys [closed-overs class] :as frame}]
+  [{:keys [to-clear? local name tag arg-id]} {:keys [closed-overs class] :as frame}]
   (cond
 
    (closed-overs name)
@@ -645,10 +646,10 @@
           [:put-field class name tag]])]
 
    (= :arg local)
-   `[[:load-arg ~name] ;; why -1?
+   `[[:load-arg ~arg-id]
      ~@(when to-clear?
          [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
-          [:store-arg name]])]
+          [:store-arg arg-id]])]
 
    :else
    `[~[:var-insn (keyword (.getName ^Class tag) "ILOAD") name]

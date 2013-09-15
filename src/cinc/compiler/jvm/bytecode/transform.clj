@@ -48,7 +48,7 @@
 (defn symbol
   ([x] (if (number? x)
          x
-        (c.c/symbol (to-str x))))
+         (c.c/symbol (to-str x))))
   ([ns n] (c.c/symbol (name ns) (name n))))
 
 (defn normalize [inst]
