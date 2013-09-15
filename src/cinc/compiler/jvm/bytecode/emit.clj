@@ -525,25 +525,25 @@
     ~@(if (= :hash-identity test-type)
         [[:jump-insn :org.objectweb.asm.Opcodes/IF_ACMPEQ default-label]]
         [[:invoke-static [:clojure.lang.Util/equiv :java.lang.Object :java.lang.Object] :boolean]
-         [:if-z-cmp :org.objectweb.asm.commons.GeneratorAdapter/EQ ~default-label]])
+         [:if-z-cmp :org.objectweb.asm.commons.GeneratorAdapter/EQ default-label]])
     ~@(emit then frame)])
 
 (defmethod -emit :case
   [{:keys [test default tests thens shift mask low high switch-type test-type skip-check? env] :as ast} frame]
   (let [testc (count tests)
-        tests (zipmap (mapv :hash tests) (mapv :test))
+        tests (zipmap (mapv :hash tests) (mapv :test tests))
         thens (apply sorted-map (mapcat (juxt :hash :then) thens))
         [default-label end-label] (repeatedly label)
         labels (zipmap (keys tests) (repeatedly label))]
     `^:container
     [~@(emit-line-number env)
-      ~@(if (= :int test-type)
-          (emit-test-ints ast frame default-label)
-          (emit-test-hashes ast frame))
+     ~@(if (= :int test-type)
+         (emit-test-ints ast frame default-label)
+         (emit-test-hashes ast frame))
       ~(if (= :sparse switch-type)
          [:lookup-switch-insn default-label (keys tests) (vals labels)] ; to array
          [:table-switch-insn low high default-label
-          (mapv (fn [i] (if (contains? labels i) (labels i) default-label)) (range low high))])
+          (mapv (fn [i] (if (contains? labels i) (labels i) default-label)) (range low (inc high)))])
       ~@(mapcat (fn [[i label]]
                   `[[:mark ~label]
                     ~@(cond
@@ -556,7 +556,10 @@
                        :else
                        (emit-then-hashes test (tests i) (thens i) test-type default-label frame))
                     [:go-to ~end-label]])
-                labels)]))
+                labels)
+      [:mark ~default-label]
+      ~@(emit default frame)
+      [:mark ~end-label]]))
 
 (defn emit-bindings [bindings labels frame]
   (mapcat (fn [{:keys [init tag] :as binding} label]
