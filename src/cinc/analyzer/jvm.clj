@@ -86,8 +86,8 @@
            macro?
            (apply @v env form (rest form)) ; (m &env &form & args)
 
-           ;; inline?
-           ;; (vary-meta (apply inline? args) merge m)
+           inline?
+           (vary-meta (apply inline? args) merge m)
 
            :else
            (desugar-host-expr form)))))

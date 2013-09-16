@@ -113,10 +113,6 @@
   [_ [class] ^GeneratorAdapter gen]
   (.instanceOf gen (type class)))
 
-(defmethod -exec :box
-  [_ [class] ^GeneratorAdapter gen]
-  (.box gen (type class)))
-
 (defmethod -exec :get-static
   [_ args ^GeneratorAdapter gen]
   (let [[class field tag]
