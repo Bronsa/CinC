@@ -93,7 +93,7 @@
         :java.lang.Boolean]
 
        nil
-       [:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
+       [:insn :ACONST_NULL]
 
        (if (string? const) ;; or primitive number
          [:push const]
@@ -306,7 +306,7 @@
       [:dup-x2]
       [:invoke-interface [:clojure.lang.ILookupThunk/get :java.lang.Object] :java.lang.Object]
       [:dup-x2]
-      [:jump-insn :org.objectweb.asm.Opcodes/IF_ACMPEQ ~fault-label]
+      [:jump-insn :IF_ACMPEQ ~fault-label]
       [:pop]
       [:go-to ~end-label]
 
@@ -395,8 +395,8 @@
           [[:dup]
            [:if-null null-label]
            [:get-static :java.lang.Boolean/FALSE :java.lang.Boolean]
-           [:jump-insn :org.objectweb.asm.Opcodes/IF_ACMPEQ false-label]]
-          [[:if-z-cmp :org.objectweb.asm.commons.GeneratorAdapter/EQ false-label]])
+           [:jump-insn :IF_ACMPEQ false-label]]
+          [[:if-z-cmp :EQ false-label]])
       ~@(emit then frame)
       [:go-to ~end-label]
       [:mark ~null-label]
@@ -426,11 +426,11 @@
 
         [:load-this]
         [:get-field ~(name (frame :class)) ~(str "cached__class__" id) :java.lang.Class]
-        [:jump-insn :org.objectweb.asm.Opcodes/IF_ACMPEQ ~call-label]
+        [:jump-insn :IF_ACMPEQ ~call-label]
 
         [:dup]
         [:instance-of ~pinterface]
-        [:if-z-cmp :org.objectweb.asm.commons.GeneratorAdapter/EQ ~on-label]
+        [:if-z-cmp :EQ ~on-label]
 
         [:dup]
         [:invoke-static [:clojure.lang.Util/classOf :java.lang.Object] :java.lang.Class]
@@ -462,9 +462,9 @@
   [{:keys [shift mask]}]
   (when (not (zero? mask))
     [[:push (int shift)]
-     [:insn :org.objectweb.asm.Opcodes/ISHR]
+     [:insn :ISHR]
      [:push (int mask)]
-     [:insn :org.objectweb.asm.Opcodes/IAND]]))
+     [:insn :IAND]]))
 
 (defn emit-test-ints
   [{:keys [test test-type] :as ast} frame default-label]
@@ -473,7 +473,7 @@
    ;; reflection warning
    `[~@(emit test frame)
      [:instance-of :java.lang.Number]
-     [:if-z-cmp :org.objectweb.asm.commons.GeneratorAdapter/EQ ~default-label]
+     [:if-z-cmp :EQ ~default-label]
      ~@(emit test frame) ;; can we avoid emitting this twice?
      [:check-cast :java.lang.Number]
      [:invoke-virtual [:java.lang.Number/intValue] :int]
@@ -499,20 +499,20 @@
    `[~@(emit comp frame)
      ~@(emit test frame)
      [:invoke-static [:clojure.lang.Util/equiv :java.lang.Object :java.lang.Object] :boolean]
-     [:if-z-cmp :org.objectweb.asm.commons.GeneratorAdapter/EQ ~default-label]
+     [:if-z-cmp :EQ ~default-label]
      ~@(emit then frame)]
 
    (= tag Long/TYPE)
    `[~@(emit test frame)
      ~@(emit comp frame)
-     [:if-cmp :long :org.objectweb.asm.commons.GeneratorAdapter/NE ~default-label]
+     [:if-cmp :long :NE ~default-label]
      ~@(emit then frame)]
 
    (#{Integer/TYPE Short/TYPE Byte/TYPE} tag)
    `[~@(when (not (zero? mask))
          `[~@(emit test frame)
            ~@(emit (assoc comp :cast Long/TYPE) frame)
-           [:if-cmp :long :org.objectweb.asm.commons.GeneratorAdapter/NE ~default-label]])
+           [:if-cmp :long :NE ~default-label]])
      ~@(emit then frame)]
 
    :else
@@ -523,9 +523,9 @@
   `[~@(emit comp frame)
     ~@(emit test frame)
     ~@(if (= :hash-identity test-type)
-        [[:jump-insn :org.objectweb.asm.Opcodes/IF_ACMPEQ default-label]]
+        [[:jump-insn :IF_ACMPEQ default-label]]
         [[:invoke-static [:clojure.lang.Util/equiv :java.lang.Object :java.lang.Object] :boolean]
-         [:if-z-cmp :org.objectweb.asm.commons.GeneratorAdapter/EQ default-label]])
+         [:if-z-cmp :EQ default-label]])
     ~@(emit then frame)])
 
 (defmethod -emit :case
@@ -540,7 +540,7 @@
      ~@(if (= :int test-type)
          (emit-test-ints ast frame default-label)
          (emit-test-hashes ast frame))
-      ~(if (= :sparse switch-type)
+     ~(if (= :sparse switch-type)
          [:lookup-switch-insn default-label (keys tests) (vals labels)] ; to array
          [:table-switch-insn low high default-label
           (mapv (fn [i] (if (contains? labels i) (labels i) default-label)) (range low (inc high)))])
@@ -645,19 +645,19 @@
      ~[:get-field class name tag]
      ~@(when to-clear?
          [[:load-this]
-          [:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
+          [:insn :ACONST_NULL]
           [:put-field class name tag]])]
 
    (= :arg local)
    `[[:load-arg ~arg-id]
      ~@(when to-clear?
-         [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
+         [[:insn :ACONST_NULL]
           [:store-arg arg-id]])]
 
    :else
    `[~[:var-insn (keyword (.getName ^Class tag) "ILOAD") name]
      ~@(when to-clear?
-         [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
+         [[:insn :ACONST_NULL]
           [:var-insn (keyword (.getName ^Class tag) "ISTORE") name]])]))
 
 (defmulti -emit-value (fn [type _] type))
@@ -674,7 +674,7 @@
 
 ;; should probably never hit those
 (defmethod -emit-value :nil [_ _]
-  [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]])
+  [[:insn :ACONST_NULL]])
 
 (defmethod -emit-value :string [_ s]
   [[:push s]])
@@ -707,7 +707,7 @@
 (defmethod -emit-value :symbol [_ s]
   `[~@(if-let [ns (namespace s)]
         [[:push (namespace s)]]
-        [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
+        [[:insn :ACONST_NULL]
          [:check-cast :java.lang.String]])
     [:push ~(name s)]
     [:invoke-static [:clojure.lang.Symbol/intern :java.lang.String :java.lang.String]
@@ -716,7 +716,7 @@
 (defmethod -emit-value :keyword [_ k]
   `[~@(if-let [ns (namespace k)]
         [[:push (namespace k)]]
-        [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
+        [[:insn :ACONST_NULL]
          [:check-cast :java.lang.String]])
     [:push ~(name k)]
     [:invoke-static [:clojure.lang.Keyword/intern :java.lang.String :java.lang.String]
@@ -932,7 +932,7 @@
                          :method `[[:<init> ~@(rest ctor-types)] :void]
                          :code   `[[:start-method]
                                    [:load-this]
-                                   [:insn :org.objectweb.asm.Opcodes/ACONST_NULL]
+                                   [:insn :ACONST_NULL]
                                    [:load-args]
                                    [:invoke-constructor [~(keyword class-name "<init>")
                                                          ~@ctor-types] :void]
@@ -980,7 +980,7 @@
       `[[:new-instance ~class-name]
         [:dup]
         ~@(when meta
-            [[:insn :org.objectweb.asm.Opcodes/ACONST_NULL]])
+            [[:insn :ACONST_NULL]])
         ~@(mapcat #(emit (assoc % :op :local) frame) closed-overs) ;; need to clear?
         [:invoke-constructor [~(keyword class-name "<init>")
                               ~@ctor-types] :void]]
