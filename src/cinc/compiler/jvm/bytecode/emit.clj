@@ -564,11 +564,11 @@
       [:mark ~end-label]]))
 
 (defn emit-bindings [bindings labels frame]
-  (mapcat (fn [{:keys [init tag] :as binding} label]
+  (mapcat (fn [{:keys [init tag name] :as binding} label]
             `[~@(emit init frame)
               [:var-insn ~(keyword (if tag (.getName ^Class tag)
                                        "java.lang.Object") "ISTORE")
-               ~(:name binding)]
+               ~name]
               ~@(when label
                   [[:mark label]])])
           bindings labels))

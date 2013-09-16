@@ -1,4 +1,5 @@
 (ns cinc.compiler.jvm.bytecode
+  (:refer-clojure :exclude [eval])
   (:require [cinc.analyzer.jvm :as a]
             [cinc.compiler.jvm.bytecode.emit :as e]))
 

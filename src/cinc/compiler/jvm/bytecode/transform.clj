@@ -292,7 +292,7 @@
   (.visitLineNumber gen (int line) (get-label gen label)))
 
 (defmethod -exec :table-switch-insn
-  [_ [l h default-label labels ^GeneratorAdapter gen]]
+  [_ [l h default-label labels] ^GeneratorAdapter gen]
   (.visitTableSwitchInsn gen (int (get-local l)) (int (get-local h))
                          (get-label gen default-label)
                          (into-array Label (mapv #(get-label gen %) labels))))
