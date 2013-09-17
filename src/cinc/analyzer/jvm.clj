@@ -171,8 +171,10 @@
                              :form    name
                              :name    name
                              :mutable (let [m (meta name)]
-                                        (or (:unsynchronized-mutable m)
-                                            (:volatile-mutable m)))
+                                        (or (and (:unsynchronized-mutable m)
+                                                 :unsynchronized-mutable)
+                                            (and (:volatile-mutable m)
+                                                 :volatile-mutable)))
                              :local   :field
                              :op      :binding})
                           fields)
