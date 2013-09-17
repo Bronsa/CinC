@@ -73,9 +73,6 @@
     (catch ClassNotFoundException e
       (Type/getObjectType (s/replace type-desc \. \/)))))
 
-(defn f-name [x]
-  (munge (name x)))
-
 (defmethod -exec :invoke-static
   [_ [[method & args] ret] ^GeneratorAdapter gen]
   (let [[class method-name]
@@ -126,7 +123,7 @@
         (if (= 3 (count args))
           args
           [(namespace (first args)) (name (first args)) (second args)])]
-    (.getStatic gen (type (name class)) (f-name field) (type tag))))
+    (.getStatic gen (type (name class)) (name field) (type tag))))
 
 (defmethod -exec :put-static
   [_ args ^GeneratorAdapter gen]
@@ -134,7 +131,7 @@
         (if (= 3 (count args))
           args
           [(namespace (first args)) (name (first args)) (second args)])]
-    (.putStatic gen (type (name class)) (f-name field) (type tag))))
+    (.putStatic gen (type (name class)) (name field) (type tag))))
 
 (defmethod -exec :get-field
   [_ args ^GeneratorAdapter gen]
@@ -142,7 +139,7 @@
         (if (= 3 (count args))
           args
           [(namespace (first args)) (name (first args)) (second args)])]
-    (.getField gen (type (name class)) (f-name field) (type tag))))
+    (.getField gen (type (name class)) (name field) (type tag))))
 
 (defmethod -exec :put-field
   [_ args ^GeneratorAdapter gen]
@@ -150,7 +147,7 @@
         (if (= 3 (count args))
           args
           [(namespace (first args)) (name (first args)) (second args)])]
-    (.putField gen (type (name class)) (f-name field) (type tag))))
+    (.putField gen (type (name class)) (name field) (type tag))))
 
 (defn get-label [^GeneratorAdapter gen label]
   (or (*labels* label)
@@ -291,7 +288,7 @@
 
 (defmethod -exec :local-variable
   [_ [desc tag _ l1 l2 local] ^GeneratorAdapter gen]
-  (.visitLocalVariable gen (f-name desc) (descriptor tag) nil (get-label gen l1)
+  (.visitLocalVariable gen (name desc) (descriptor tag) nil (get-label gen l1)
                        (get-label gen l2) (get-local local)))
 
 (defmethod -exec :line-number
@@ -342,7 +339,7 @@
 (defmethod -compile :field
   [{:keys [attr tag cv] :as f}]
   (let [tag (if (keyword? tag) (Class/forName (name tag)) tag)]
-    (.visitField ^ClassWriter cv (compute-attr attr) (f-name (:name f))
+    (.visitField ^ClassWriter cv (compute-attr attr) (name (:name f))
                  (descriptor tag) nil nil)))
 
 (defmethod -compile :class
