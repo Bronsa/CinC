@@ -9,4 +9,4 @@
      (let [r (e/emit (a/analyze `(^:once fn* [] ~form) {:context :expression})
                      {:debug? debug?})
            {:keys [class]} (meta r)]
-       ((.newInstance class)))))
+       ((.newInstance ^Class class)))))
