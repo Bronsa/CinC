@@ -859,7 +859,7 @@
 (defmethod -emit :fn
   [{:keys [local meta methods variadic? constants closed-overs keyword-callsites
            protocol-callsites env] :as ast}
-   {:keys [class] :as frame}]
+   {:keys [class debug?] :as frame}]
   (let [class-name (str (or class (munge (ns-name *ns*)))
                         "$"
                         (gensym (str (or (and (:form local)
@@ -1029,6 +1029,7 @@
 
         jvm-ast
         {:op        :class
+         :debug?    debug?
          :attr      #{:public :super :final}
          :name      (s/replace class-name \. \/)
          :super     (s/replace (name super) \. \/)

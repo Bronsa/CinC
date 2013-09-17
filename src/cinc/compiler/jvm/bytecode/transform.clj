@@ -3,8 +3,9 @@
   (:require [clojure.string :as s]
             [cinc.analyzer.jvm.utils :refer [maybe-class]]
             [cinc.analyzer.utils :refer [update!]])
-  (:import (org.objectweb.asm Type Label Opcodes ClassWriter)
-           (org.objectweb.asm.commons GeneratorAdapter Method)))
+  (:import (org.objectweb.asm Type Label Opcodes ClassWriter ClassReader)
+           (org.objectweb.asm.commons GeneratorAdapter Method)
+           (org.objectweb.asm.util CheckClassAdapter TraceClassVisitor)))
 
 (defn type-str [x]
   (cond
@@ -345,7 +346,7 @@
                  (descriptor tag) nil nil)))
 
 (defmethod -compile :class
-  [{:keys [attr super fields methods] :as c}]
+  [{:keys [attr super fields methods debug?] :as c}]
   (let [cv (ClassWriter. ClassWriter/COMPUTE_MAXS)]
     (.visit cv Opcodes/V1_5 (compute-attr attr) (:name c) nil (name super) nil)
 
@@ -358,4 +359,11 @@
       (-compile (assoc m :cv cv)))
 
     (.visitEnd cv)
-    (.toByteArray cv)))
+    (let [bc (.toByteArray cv)]
+      (when debug?
+        (let [cr (ClassReader. bc)
+              w (java.io.PrintWriter. *out*)
+              v (TraceClassVisitor. w)
+              v (CheckClassAdapter. v)]
+          (.accept cr v 0)))
+      bc)))
