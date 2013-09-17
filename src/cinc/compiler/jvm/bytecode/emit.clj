@@ -352,10 +352,12 @@
     `[[:push ~(.getName class)]
       [:invoke-static [:java.lang.Class/forName :java.lang.String] :java.lang.Class]
       [:push ~(str method)]
-      ~@(emit-as-array args frame)
+      ~@(emit-as-array (mapv #(assoc % :cast Object) args) frame)
       [:invoke-static [:clojure.lang.Reflector/invokeStaticMethod
                        :java.lang.Class :java.lang.String :objects]
-       :java.lang.Object]]))
+       :java.lang.Object]
+      ~@(when tag
+          (emit-cast Object tag))]))
 
 (defmethod -emit :instance-call
   [{:keys [env tag validated? args method ^Class class instance]} frame]
@@ -370,10 +372,12 @@
        [~(keyword (.getName class) (str method)) ~@(arg-types args)] ~tag]]
     `[~(emit instance frame)
       [:push ~(str method)]
-      ~@(emit-as-array args frame)
+      ~@(emit-as-array (mapv #(assoc % :cast Object) args) frame)
       [:invoke-static [:clojure.lang.Reflector/invokeInstanceMethod
                        :java.lang.Object :java.lang.String :objects]
-       :java.lang.Object]]))
+       :java.lang.Object]
+      ~@(when tag
+          (emit-cast Object tag))]))
 
 (defmethod -emit :host-interop
   [{:keys [m-or-f target env]} frame]
@@ -616,7 +620,7 @@
             bindings class-names)))
 
 
-(defn x [bindings frame]
+(defn emit-binds [bindings frame]
   (mapv
    (fn [{:keys [init tag name] :as binding}]
      (let [init (emit init frame)
@@ -634,7 +638,7 @@
     `^:container
     [~@(emit-bindings (mapv #(assoc % :init nil-expr) bindings) (repeat nil) frame)
 
-     ~@(let [binds (x bindings frame)
+     ~@(let [binds (emit-binds bindings frame)
              bindings-emit(mapcat second binds)
              class-names (mapv first binds)]
          `[~@bindings-emit

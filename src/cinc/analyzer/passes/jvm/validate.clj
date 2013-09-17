@@ -119,7 +119,9 @@
               :tag        ret-tag
               :args       args))
           (if (apply = (mapv (comp u/maybe-class :return-type) matching))
-            (assoc ast :tag (:return-type m))
+            (let [tag (u/maybe-class (:return-type m))]
+              (assoc ast
+                :tag tag))
             ast))
         (throw (ex-info (str "No matching method: " method " for class: " class " and given signature")
                         {:method method
