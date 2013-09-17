@@ -54,6 +54,9 @@
 
 (defn ^Class get-class [type-desc]
   (cond
+   (nil? type-desc)
+   Object
+
    (class? type-desc)
    type-desc
 
@@ -69,29 +72,32 @@
     (catch ClassNotFoundException e
       (Type/getObjectType (s/replace type-desc \. \/)))))
 
+(defn f-name [x]
+  (munge (name x)))
+
 (defmethod -exec :invoke-static
   [_ [[method & args] ret] ^GeneratorAdapter gen]
   (let [[class method-name]
         [(namespace method) (name method)]]
-   (.invokeStatic gen (type class) (method-desc ret method-name args))))
+    (.invokeStatic gen (type class) (method-desc ret method-name args))))
 
 (defmethod -exec :invoke-virtual
   [_ [[method & args] ret] ^GeneratorAdapter gen]
   (let [[class method-name]
         [(namespace method) (name method)]]
-   (.invokeVirtual gen (type class) (method-desc ret method-name args))))
+    (.invokeVirtual gen (type class) (method-desc ret method-name args))))
 
 (defmethod -exec :invoke-interface
   [_ [[method & args] ret] ^GeneratorAdapter gen]
   (let [[class method-name]
         [(namespace method) (name method)]]
-   (.invokeInterface gen (type class) (method-desc ret method-name args))))
+    (.invokeInterface gen (type class) (method-desc ret method-name args))))
 
 (defmethod -exec :invoke-constructor
   [_ [[method & args] ret] ^GeneratorAdapter gen]
   (let [[class method-name]
         [(namespace method) (name method)]]
-   (.invokeConstructor gen (type class) (method-desc ret method-name args))))
+    (.invokeConstructor gen (type class) (method-desc ret method-name args))))
 
 (defmethod -exec :check-cast
   [_ [class] ^GeneratorAdapter gen]
@@ -119,7 +125,7 @@
         (if (= 3 (count args))
           args
           [(namespace (first args)) (name (first args)) (second args)])]
-   (.getStatic gen (type class) field (type tag))))
+    (.getStatic gen (type (name class)) (f-name field) (type tag))))
 
 (defmethod -exec :put-static
   [_ args ^GeneratorAdapter gen]
@@ -127,7 +133,7 @@
         (if (= 3 (count args))
           args
           [(namespace (first args)) (name (first args)) (second args)])]
-    (.putStatic gen (type class) field (type tag))))
+    (.putStatic gen (type (name class)) (f-name field) (type tag))))
 
 (defmethod -exec :get-field
   [_ args ^GeneratorAdapter gen]
@@ -135,7 +141,7 @@
         (if (= 3 (count args))
           args
           [(namespace (first args)) (name (first args)) (second args)])]
-   (.getField gen (type class) field (type tag))))
+    (.getField gen (type (name class)) (f-name field) (type tag))))
 
 (defmethod -exec :put-field
   [_ args ^GeneratorAdapter gen]
@@ -143,7 +149,7 @@
         (if (= 3 (count args))
           args
           [(namespace (first args)) (name (first args)) (second args)])]
-   (.putField gen (type class) field (type tag))))
+    (.putField gen (type (name class)) (f-name field) (type tag))))
 
 (defn get-label [^GeneratorAdapter gen label]
   (or (*labels* label)
@@ -272,7 +278,7 @@
   [_ [insn local] ^GeneratorAdapter gen]
   (.visitVarInsn gen (.getOpcode (type (namespace insn))
                                  (opcode (name insn)))
-                 (get-local local)))
+                 (inc (get-local local))))
 
 (defn descriptor [tag]
   (.getDescriptor (type tag)))
@@ -284,7 +290,7 @@
 
 (defmethod -exec :local-variable
   [_ [desc tag _ l1 l2 local] ^GeneratorAdapter gen]
-  (.visitLocalVariable gen (name desc) (descriptor tag) nil (get-label gen l1)
+  (.visitLocalVariable gen (f-name desc) (descriptor tag) nil (get-label gen l1)
                        (get-label gen l2) (get-local local)))
 
 (defmethod -exec :line-number
@@ -335,7 +341,7 @@
 (defmethod -compile :field
   [{:keys [attr tag cv] :as f}]
   (let [tag (if (keyword? tag) (Class/forName (name tag)) tag)]
-    (.visitField ^ClassWriter cv (compute-attr attr) (name (:name f))
+    (.visitField ^ClassWriter cv (compute-attr attr) (f-name (:name f))
                  (descriptor tag) nil nil)))
 
 (defmethod -compile :class
