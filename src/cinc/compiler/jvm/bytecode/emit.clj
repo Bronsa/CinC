@@ -359,13 +359,13 @@
   [{:keys [env tag validated? args method ^Class class instance]} frame]
   (if validated?
     `[~@(emit-line-number env)
-      ~(emit instance frame)
+      ~@(emit instance frame)
       [:check-cast ~class]
       ~@(mapcat #(emit % frame) args)
-      [(if (.isInterface class)
-         :invoke-interface
-         :invoke-virtual)
-       [~(keyword (str class) (str method)) ~@(arg-types args)] ~tag]]
+      [~(if (.isInterface class)
+          :invoke-interface
+          :invoke-virtual)
+       [~(keyword (.getName class) (str method)) ~@(arg-types args)] ~tag]]
     `[~(emit instance frame)
       [:push ~(str method)]
       ~@(emit-as-array args frame)
