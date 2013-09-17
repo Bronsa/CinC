@@ -681,7 +681,7 @@
                          :loop-label loop-label
                          :loop-locals params))
           [:mark ~end-label]
-          [:local-variable :this :java.lang.Object nil ~loop-label ~end-label :this]
+          [:local-variable :this :clojure.lang.AFunction nil ~loop-label ~end-label :this]
           ~@(mapv (fn [{:keys [tag name]}]
                     [:local-variable name :java.lang.Object nil loop-label end-label name])
                   params) ;; cast when emitting locals?
@@ -697,29 +697,34 @@
 
 (defmethod -emit :local
   [{:keys [to-clear? local name tag arg-id]} {:keys [closed-overs class] :as frame}]
-  (cond
+  (let [to-clear? (and to-clear?
+                       (not (primitive? tag)))]
+   (cond
 
-   (closed-overs name)
-   `[[:load-this]
-     ~[:get-field class name tag]
-     ~@(when to-clear?
-         [[:load-this]
-          [:insn :ACONST_NULL]
-          [:put-field class name tag]])]
+    (closed-overs name)
+    `[[:load-this]
+      ~[:get-field class name tag]
+      ~@(when to-clear?
+          [[:load-this]
+           [:insn :ACONST_NULL]
+           [:put-field class name tag]])]
 
-   (= :arg local)
-   `[[:load-arg ~arg-id]
-     ~@(when to-clear?
-         [[:insn :ACONST_NULL]
-          [:store-arg arg-id]])]
+    (= :arg local)
+    `[[:load-arg ~arg-id]
+      ~@(when to-clear?
+          [[:insn :ACONST_NULL]
+           [:store-arg arg-id]])]
 
-   :else
-   `[~[:var-insn (keyword (if tag (.getName ^Class tag)
-                              "java.lang.Object") "ILOAD") name]
-     ~@(when to-clear?
-         [[:insn :ACONST_NULL]
-          [:var-insn (keyword (if tag (.getName ^Class tag)
-                                  "java.lang.Object") "ISTORE") name]])]))
+    (= :fn local)
+    [[:var-insn :clojure.lang.AFunction/ILOAD :this]]
+
+    :else
+    `[~[:var-insn (keyword (if tag (.getName ^Class tag)
+                               "java.lang.Object") "ILOAD") name]
+      ~@(when to-clear?
+          [[:insn :ACONST_NULL]
+           [:var-insn (keyword (if tag (.getName ^Class tag)
+                                   "java.lang.Object") "ISTORE") name]])])))
 
 (defmulti -emit-value (fn [type _] type))
 
