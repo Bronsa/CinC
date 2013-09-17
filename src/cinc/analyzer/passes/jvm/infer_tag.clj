@@ -230,7 +230,9 @@
           arglist (arglist-for-arity fn argc)]
       (if-let [tag (or (:tag (meta arglist)) ;; ideally we would select the fn-method
                        (:return-tag fn))]
-        (assoc ast :tag tag)
+        (assoc ast
+          :tag tag
+          :cast tag) ;; ensure we check-cast the return value
         ast))
     ast))
 
