@@ -248,8 +248,7 @@
                constant-lift))
       (prewalk (collect :constants
                         :callsites
-                        :closed-overs
-                        :vars))
+                        :closed-overs))
       clear-locals)))
 
 (defn analyze-file

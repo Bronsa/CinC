@@ -117,13 +117,11 @@
                  (postwalk (comp validate constant-lift))
                  (prewalk (collect :constants
                                    :callsites
-                                   :closed-overs
-                                   :vars))
+                                   :closed-overs))
                  :body :ret)]
     (is (= '#{a} (-> c-test :closed-overs keys set)))
     (is (set/subset? #{:foo #' + {}}
                      (-> c-test :constants keys set))) ;; it registers metadata too (line+col info)
-    (is (= #{#'+} (-> c-test :vars keys set)))
     (is (= '#{a x} (-> c-test :methods first :body :ret :closed-overs keys set)))
 
     (is (= #{:foo} (-> c-test :keyword-callsites)))))
@@ -214,7 +212,6 @@
     (is (= '#{a__#0} (-> c-test :closed-overs keys set)))
     (is (set/subset? #{:foo #' + {}}
                      (-> c-test :constants keys set))) ;; it registers metadata too (line+col info)
-    (is (= #{#'+} (-> c-test :vars keys set)))
     (is (= '#{a__#0 x__#0} (-> c-test :methods first :body :ret :closed-overs keys set)))
 
     (is (= #{:foo} (-> c-test :keyword-callsites))))
