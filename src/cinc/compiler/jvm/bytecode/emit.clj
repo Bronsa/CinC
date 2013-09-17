@@ -618,7 +618,7 @@
   (mapv
    (fn [{:keys [init tag name] :as binding}]
      (let [init (emit init frame)
-           class-name (.getName (:class (meta init)))]
+           class-name (.getName ^Class (:class (meta init)))]
        `[~class-name
          [~@init
           [:var-insn ~(keyword (if tag (.getName ^Class tag)
@@ -708,10 +708,12 @@
           [:store-arg arg-id]])]
 
    :else
-   `[~[:var-insn (keyword (.getName ^Class tag) "ILOAD") name]
+   `[~[:var-insn (keyword (if tag (.getName ^Class tag)
+                              "java.lang.Object") "ILOAD") name]
      ~@(when to-clear?
          [[:insn :ACONST_NULL]
-          [:var-insn (keyword (.getName ^Class tag) "ISTORE") name]])]))
+          [:var-insn (keyword (if tag (.getName ^Class tag)
+                                  "java.lang.Object") "ISTORE") name]])]))
 
 (defmulti -emit-value (fn [type _] type))
 
@@ -857,6 +859,7 @@
                         (gensym (str (or (and (:form local)
                                               (s/replace (:form local) "." "_DOT_"))
                                          "fn") "__")))
+        old-frame frame
         frame (merge frame
                      {:class              class-name
                       :constants          constants
@@ -906,11 +909,11 @@
                                           :tag  :clojure.lang.IFn}]))
                                     protocol-callsites)
 
-        closed-overs (mapv (fn [{:keys [name tag]}]
-                             {:op   :field
-                              :attr #{}
-                              :name name
-                              :tag  tag}) (vals closed-overs))
+        closed-overs (mapv (fn [{:keys [name tag] :as local}]
+                             (merge local
+                                    {:op   :field
+                                     :attr #{}
+                                     :tag  (or tag Object)})) (vals closed-overs))
 
         ctor-types (into (if meta [:clojure.lang.IPersistentMap] [])
                          (repeat (count closed-overs) :java.lang.Object))
@@ -939,10 +942,12 @@
                                       [[:load-this]
                                        [:var-insn :clojure.lang.IPersistentMap/ILOAD :__meta]
                                        [:put-field ~class-name :__meta :clojure.lang.IPersistentMap]])
-
                                   ~@(mapcat
                                      (fn [{:keys [name tag]}]
-                                       [[:var-insn (keyword (.getName ^Class tag) "ILOAD") name]
+                                       [[:load-this]
+                                        [:var-insn (keyword (.getName ^Class tag) "ILOAD") name]
+
+                                        [:check-cast tag]
                                         [:put-field class-name name tag]])
                                      closed-overs)
 
@@ -1034,7 +1039,7 @@
         [:dup]
         ~@(when meta
             [[:insn :ACONST_NULL]])
-        ~@(mapcat #(emit (assoc % :op :local) frame) closed-overs) ;; need to clear?
+        ~@(mapcat #(emit (assoc % :op :local) old-frame) closed-overs) ;; need to clear?
         [:invoke-constructor [~(keyword class-name "<init>")
                               ~@ctor-types] :void]]
       {:class (.defineClass (clojure.lang.RT/baseLoader) class-name bc nil)})))
