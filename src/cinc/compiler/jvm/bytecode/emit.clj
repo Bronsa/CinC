@@ -118,8 +118,8 @@
   (conj
    (emit-var var frame)
    [:invoke-virtual [(if (u/dynamic? var)
-                          :clojure.lang.Var/get
-                          :clojure.lang.Var/getRawRoot)] :java.lang.Object]))
+                       :clojure.lang.Var/get
+                       :clojure.lang.Var/getRawRoot)] :java.lang.Object]))
 
 (defmethod -emit-set! :var
   [{:keys [target val]} frame]
@@ -213,51 +213,51 @@
 
     `^:container
     [[:mark ~start-label]
-      ~@(emit body frame)
-      ~@(when (not= :statement context) ;; do this automatically on emit?
-          [[:var-insn :java.lang.Object/ISTORE ret-local]])
-      [:mark ~end-label]
-      ~@(when finally
-          (emit finally frame))
-      [:go-to ~ret-label]
+     ~@(emit body frame)
+     ~@(when (not= :statement context) ;; do this automatically on emit?
+         [[:var-insn :java.lang.Object/ISTORE ret-local]])
+     [:mark ~end-label]
+     ~@(when finally
+         (emit finally frame))
+     [:go-to ~ret-label]
 
-      ~@(mapcat
-         (fn [{:keys [body start-label end-label local]}]
-           `[[:mark ~start-label]
-             [:var-insn :java.lang.Object/ISTORE ~(:name local)]
-             ~@(emit body frame)
-             ~@(when (not= :statement context)
-                 [[:var-insn :java.lang.Object/ISTORE ret-local]])
-             [:mark ~end-label]
-             ~@(when finally
-                 (emit finally frame))
-             [:go-to ~ret-label]])
-         catches)
-      ~@(when finally
-          `[[:mark ~finally-label]
-            [:var-insn :java.lang.Object/ISTORE ~finally-local]
-            ~@(emit finally frame)
-            [:var-insn :java.lang.Object/ILOAD ~finally-local]
-            [:throw-exception]])
+     ~@(mapcat
+        (fn [{:keys [body start-label end-label local]}]
+          `[[:mark ~start-label]
+            [:var-insn :java.lang.Object/ISTORE ~(:name local)]
+            ~@(emit body frame)
+            ~@(when (not= :statement context)
+                [[:var-insn :java.lang.Object/ISTORE ret-local]])
+            [:mark ~end-label]
+            ~@(when finally
+                (emit finally frame))
+            [:go-to ~ret-label]])
+        catches)
+     ~@(when finally
+         `[[:mark ~finally-label]
+           [:var-insn :java.lang.Object/ISTORE ~finally-local]
+           ~@(emit finally frame)
+           [:var-insn :java.lang.Object/ILOAD ~finally-local]
+           [:throw-exception]])
 
-      [:mark ~ret-label]
-      ~@(when (not= :statement context)
-          `[[:var-insn :java.lang.Object/ILOAD ~ret-local]
-            ~@(when tag
-                [[:check-cast tag]])])
-      [:mark ~(label)]
+     [:mark ~ret-label]
+     ~@(when (not= :statement context)
+         `[[:var-insn :java.lang.Object/ILOAD ~ret-local]
+           ~@(when tag
+               [[:check-cast tag]])])
+     [:mark ~(label)]
 
-      ~@(for [{:keys [^Class class] :as c} catches]
-          [:try-catch-block start-label end-label (:start-label c) class])
+     ~@(for [{:keys [^Class class] :as c} catches]
+         [:try-catch-block start-label end-label (:start-label c) class])
 
-      ~@(when finally
-          `[~[:try-catch-block start-label end-label finally-label nil]
-            ~@(for [{:keys [start-label end-label] :as c} catches]
-                [:try-catch-block start-label end-label finally-label nil])])
+     ~@(when finally
+         `[~[:try-catch-block start-label end-label finally-label nil]
+           ~@(for [{:keys [start-label end-label] :as c} catches]
+               [:try-catch-block start-label end-label finally-label nil])])
 
-      ~@(for [{:keys [local start-label end-label] :as c} catches]
-          [:local-variable (:name local) ; or :form?
-           :objects nil start-label end-label (:name local)])])) ;; generate idx based on name
+     ~@(for [{:keys [local start-label end-label] :as c} catches]
+         [:local-variable (:name local) ; or :form?
+          :objects nil start-label end-label (:name local)])])) ;; generate idx based on name
 
 (defn emit-line-number
   [{:keys [line]} & [l]]
@@ -393,20 +393,20 @@
   (let [[null-label false-label end-label] (repeatedly label)]
     `^:container
     [~@(emit-line-number env)
-      ~@(emit test frame)
-      ~@(if (:box test)
-          [[:dup]
-           [:if-null null-label]
-           [:get-static :java.lang.Boolean/FALSE :java.lang.Boolean]
-           [:jump-insn :IF_ACMPEQ false-label]]
-          [[:if-z-cmp :EQ false-label]])
-      ~@(emit then frame)
-      [:go-to ~end-label]
-      [:mark ~null-label]
-      [:pop]
-      [:mark ~false-label]
-      ~@(emit (or else nil-expr) frame)
-      [:mark ~end-label]]))
+     ~@(emit test frame)
+     ~@(if (:box test)
+         [[:dup]
+          [:if-null null-label]
+          [:get-static :java.lang.Boolean/FALSE :java.lang.Boolean]
+          [:jump-insn :IF_ACMPEQ false-label]]
+         [[:if-z-cmp :EQ false-label]])
+     ~@(emit then frame)
+     [:go-to ~end-label]
+     [:mark ~null-label]
+     [:pop]
+     [:mark ~false-label]
+     ~@(emit (or else nil-expr) frame)
+     [:mark ~end-label]]))
 
 (defn emit-args-and-invoke [args frame]
   `[~@(mapcat #(emit % frame) (take 20 args))
@@ -544,25 +544,25 @@
          (emit-test-ints ast frame default-label)
          (emit-test-hashes ast frame))
      ~(if (= :sparse switch-type)
-         [:lookup-switch-insn default-label (keys tests) (vals labels)] ; to array
-         [:table-switch-insn low high default-label
-          (mapv (fn [i] (if (contains? labels i) (labels i) default-label)) (range low (inc high)))])
-      ~@(mapcat (fn [[i label]]
-                  `[[:mark ~label]
-                    ~@(cond
-                       (= :int test-type)
-                       (emit-then-ints (:tag test) test (tests i) (thens i) default-label mask frame)
+        [:lookup-switch-insn default-label (keys tests) (vals labels)] ; to array
+        [:table-switch-insn low high default-label
+         (mapv (fn [i] (if (contains? labels i) (labels i) default-label)) (range low (inc high)))])
+     ~@(mapcat (fn [[i label]]
+                 `[[:mark ~label]
+                   ~@(cond
+                      (= :int test-type)
+                      (emit-then-ints (:tag test) test (tests i) (thens i) default-label mask frame)
 
-                       (contains? skip-check? i)
-                       [(emit (thens i) frame)]
+                      (contains? skip-check? i)
+                      [(emit (thens i) frame)]
 
-                       :else
-                       (emit-then-hashes test (tests i) (thens i) test-type default-label frame))
-                    [:go-to ~end-label]])
-                labels)
-      [:mark ~default-label]
-      ~@(emit default frame)
-      [:mark ~end-label]]))
+                      :else
+                      (emit-then-hashes test (tests i) (thens i) test-type default-label frame))
+                   [:go-to ~end-label]])
+               labels)
+     [:mark ~default-label]
+     ~@(emit default frame)
+     [:mark ~end-label]]))
 
 (defn emit-bindings [bindings labels frame]
   (mapcat (fn [{:keys [init tag name] :as binding} label]
@@ -580,13 +580,13 @@
         [end-label loop-label & labels] (repeatedly (+ 2 (count bindings)) label)]
     `^:container
     [~@(emit-bindings bindings labels frame)
-      [:mark ~loop-label]
-      ~@(emit body (merge frame (when loop? {:loop-label loop-label
-                                             :loop-locals bindings})))
-      [:mark ~end-label]
-      ~@(mapv (fn [{:keys [name tag]} label]
-                [:local-variable name (or tag :java.lang.Object) nil label end-label name])
-              bindings labels)]))
+     [:mark ~loop-label]
+     ~@(emit body (merge frame (when loop? {:loop-label loop-label
+                                            :loop-locals bindings})))
+     [:mark ~end-label]
+     ~@(mapv (fn [{:keys [name tag]} label]
+               [:local-variable name (or tag :java.lang.Object) nil label end-label name])
+             bindings labels)]))
 (defmethod -emit :let
   [ast frame]
   (emit-let ast frame))
