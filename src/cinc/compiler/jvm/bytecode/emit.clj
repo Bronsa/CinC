@@ -675,16 +675,16 @@
 
         code
         `[[:start-method]
+          [:local-variable :this :clojure.lang.AFunction nil ~loop-label ~end-label :this]
+          ~@(mapv (fn [{:keys [tag name]}]
+                    [:local-variable name :java.lang.Object nil loop-label end-label name])
+                  params) ;; cast when emitting locals?
           [:mark ~loop-label]
           ~@(emit-line-number env loop-label)
           ~@(emit body (assoc frame
                          :loop-label loop-label
                          :loop-locals params))
           [:mark ~end-label]
-          [:local-variable :this :clojure.lang.AFunction nil ~loop-label ~end-label :this]
-          ~@(mapv (fn [{:keys [tag name]}]
-                    [:local-variable name :java.lang.Object nil loop-label end-label name])
-                  params) ;; cast when emitting locals?
           [:return-value]
           [:end-method]]]
 

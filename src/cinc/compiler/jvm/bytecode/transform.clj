@@ -25,7 +25,7 @@
                          \( (s/join ", " (map type-str args)) \))))
 
 (def ^:dynamic *labels* {})
-(def ^:dynamic *locals* {:this 0})
+(def ^:dynamic *locals* {})
 
 (defmulti -compile :op)
 (defmulti -exec (fn [op _ _] op))
