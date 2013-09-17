@@ -113,7 +113,9 @@
              {:return-tag return-tag})
            (when-let [arglists (:arglists init)]
              {:arglists arglists}))
-    ast))
+    (if (= :fn local)
+      (assoc ast :tag clojure.lang.AFunction)
+      ast)))
 
 (defmethod -infer-tag :var
   [{:keys [var] :as ast}]
