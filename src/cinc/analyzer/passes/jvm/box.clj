@@ -14,14 +14,14 @@
 (defmethod box :instance-call
   [{:keys [class] :as ast}]
   (if-let-box class
-   (assoc (assoc-in ast [:instance] :box true)
+              (assoc (assoc-in ast [:instance :box] true)
      :class class)
    ast))
 
 (defmethod box :instance-field
   [{:keys [class] :as ast}]
   (if-let-box class
-    (assoc (assoc-in ast [:instance] :box true)
+              (assoc (assoc-in ast [:instance :box] true)
       :class class)
     ast))
 
