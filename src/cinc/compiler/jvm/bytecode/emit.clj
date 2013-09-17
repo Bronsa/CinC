@@ -595,6 +595,56 @@
   [ast frame]
   (emit-let ast frame))
 
+(defn emit-letfn-bindings [bindings  class-names frame]
+  (let [binds (set (mapv :name bindings))]
+    (mapcat (fn [{:keys [init tag name]} class-name]
+              (let [{:keys [closed-overs]} init]
+                `[[:var-insn ~(keyword (if tag (.getName ^Class tag)
+                                           "java.lang.Object") "ILOAD") ~name]
+                  [:check-cast ~class-name]
+
+                  ~@(mapcat (fn [[k c]]
+                              (when (binds c)
+                                `[~@(emit (assoc c :op :local)
+                                          (assoc frame :closed-overs closed-overs))
+                                  ~[:put-field class-name k (:tag c)]]))
+                            closed-overs)
+
+                  [:pop]]))
+            bindings class-names)))
+
+
+(defn x [bindings frame]
+  (mapv
+   (fn [{:keys [init tag name] :as binding}]
+     (let [init (emit init frame)
+           class-name (.getName (:class (meta init)))]
+       `[~class-name
+         [~@init
+          [:var-insn ~(keyword (if tag (.getName ^Class tag)
+                                   "java.lang.Object") "ISTORE")
+           ~name]]]))
+   bindings))
+
+(defmethod -emit :letfn
+  [{:keys [bindings body env]} frame]
+  (let [[loop-label end-label] (repeatedly label)]
+    `^:container
+    [~@(emit-bindings (mapv #(assoc % :init nil-expr) bindings) (repeat nil) frame)
+
+     ~@(let [binds (x bindings frame)
+             bindings-emit(mapcat second binds)
+             class-names (mapv first binds)]
+         `[~@bindings-emit
+           ~@(emit-letfn-bindings bindings class-names frame)])
+
+     [:mark ~loop-label]
+     ~@(emit body frame)
+     [:mark ~end-label]
+     ~@(mapv (fn [{:keys [name tag]}]
+               [:local-variable name (or tag :java.lang.Object) nil loop-label end-label name])
+             bindings)]))
+
 (defmethod -emit :recur
   [{:keys [exprs]} {:keys [loop-label loop-locals] :as frame}]
   `[~@(mapcat (fn [arg binding]
