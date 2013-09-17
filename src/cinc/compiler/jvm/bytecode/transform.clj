@@ -24,7 +24,7 @@
                          \( (s/join ", " (map type-str args)) \))))
 
 (def ^:dynamic *labels* {})
-(def ^:dynamic *locals* {})
+(def ^:dynamic *locals* {:this 0})
 
 (defmulti -compile :op)
 (defmulti -exec (fn [op _ _] op))
@@ -278,7 +278,7 @@
   [_ [insn local] ^GeneratorAdapter gen]
   (.visitVarInsn gen (.getOpcode (type (namespace insn))
                                  (opcode (name insn)))
-                 (inc (get-local local))))
+                 (get-local local)))
 
 (defn descriptor [tag]
   (.getDescriptor (type tag)))
