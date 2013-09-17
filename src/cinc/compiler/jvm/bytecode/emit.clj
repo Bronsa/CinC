@@ -57,7 +57,11 @@
                  ~@(when box
                      (emit-box tag (j.u/box tag)))
                  ~@(when cast
-                     (emit-cast tag cast))])))))
+                     (if box
+                       (when (not (and box (= cast (j.u/box tag))))
+                         (emit-cast (j.u/box tag) cast))
+                       (when-not (= tag cast)
+                         (emit-cast tag cast))))])))))
 
 (defmethod -emit :import
   [{:keys [class]} frame]
@@ -70,10 +74,9 @@
 
 (defmethod -emit :throw
   [{:keys [exception]} frame]
-  (into
-   (emit exception frame)
-   [[:check-cast :java.lang.Throwable]
-    [:throw-exception]]))
+  (conj
+   (emit (assoc exception :cast :java.lang.Throwable) frame)
+   [:throw-exception]))
 
 (defmethod -emit :monitor-enter
   [{:keys [target]} frame]
@@ -141,8 +144,7 @@
          [:invoke-virtual [:clojure.lang.Var/setDynamic :boolean] :clojure.lang.Var]])
     ~@(when meta
         `[[:dup]
-          ~@(emit meta frame)
-          [:check-cast :clojure.lang.IPersistentMap]
+          ~@(emit (assoc meta :cast :clojure.lang.IPersistentMap) frame)
           [:invoke-virtual [:clojure.lang.Var/setMeta :clojure.lang.IPersistentMap] :void]])
     ~@(when init
         `[[:dup]
@@ -184,10 +186,8 @@
 (defmethod -emit :with-meta
   [{:keys [meta expr]} frame]
   (into
-   (emit expr frame)
-   `[[:check-cast :clojure.lang.IObj]
-     ~@(emit meta frame)
-     [:check-cast :clojure.lang.IPersistentMap]
+   (emit (assoc expr :cast :clojure.lang.IObj) frame)
+   `[~@(emit (assoc meta :cast :clojure.lang.IPersistentMap) frame)
      [:invoke-interface [:clojure.lang.IObj/withMeta :clojure.lang.IPersistentMap]
       :clojure.lang.IObj]]))
 
@@ -286,15 +286,13 @@
   [{:keys [instance class field env tag]} frame]
   `^:const
   [~@(emit-line-number env)
-   ~@(emit instance frame)
-   ~[:check-cast class]
+   ~@(emit (assoc instance :cast class) frame)
    ~[:get-field class field tag]])
 
 (defmethod -emit-set! :instance-field
   [{:keys [target val env]} frame]
   `[~@(emit-line-number env)
-    ~@(emit (:instance target) frame)
-    ~[:check-cast (:class target)]
+    ~@(emit (assoc (:instance target) :cast (:class target)) frame)
     ~@(emit val frame)
     [:dup-x1]
     ~@(emit-cast (:tag val) (:tag target))
@@ -363,8 +361,7 @@
   [{:keys [env tag validated? args method ^Class class instance]} frame]
   (if validated?
     `[~@(emit-line-number env)
-      ~@(emit instance frame)
-      [:check-cast ~class]
+      ~@(emit (assoc instance :cast class) frame)
       ~@(mapcat #(emit % frame) args)
       [~(if (.isInterface class)
           :invoke-interface
@@ -463,8 +460,7 @@
 
         [:mark ~end-label]])
 
-    `[~@(emit fn frame)
-      [:check-cast :clojure.lang.IFn]
+    `[~@(emit (assoc fn :cast :clojure.lang.IFn) frame)
       ~@(emit-args-and-invoke args frame)]))
 
 (defn emit-shift-mask
@@ -483,9 +479,7 @@
    `[~@(emit test frame)
      [:instance-of :java.lang.Number]
      [:if-z-cmp :EQ ~default-label]
-     ~@(emit test frame) ;; can we avoid emitting this twice?
-     [:check-cast :java.lang.Number]
-     [:invoke-virtual [:java.lang.Number/intValue] :int]
+     ~@(emit (assoc test :cast :int) frame) ;; can we avoid emitting this twice?
      ~@(emit-shift-mask ast)]
 
    (#{Long/TYPE Integer/TYPE Short/TYPE Byte/TYPE} (:tag test))
@@ -771,25 +765,19 @@
      [:invoke-static [:java.lang.Class/forName :java.lang.String] :java.lang.Class]]))
 
 (defmethod -emit-value :symbol [_ s]
-  `[~@(if-let [ns (namespace s)]
-        [[:push (namespace s)]]
-        [[:insn :ACONST_NULL]
-         [:check-cast :java.lang.String]])
+  `[[:push (namespace s)]
     [:push ~(name s)]
     [:invoke-static [:clojure.lang.Symbol/intern :java.lang.String :java.lang.String]
      :clojure.lang.Symbol]])
 
 (defmethod -emit-value :keyword [_ k]
-  `[~@(if-let [ns (namespace k)]
-        [[:push (namespace k)]]
-        [[:insn :ACONST_NULL]
-         [:check-cast :java.lang.String]])
+  `[[:push (namespace k)]
     [:push ~(name k)]
     [:invoke-static [:clojure.lang.Keyword/intern :java.lang.String :java.lang.String]
      :clojure.lang.Keyword]])
 
 (defmethod -emit-value :var [_ ^clojure.lang.Var v]
-  (let [name (str (.sym v))
+  (let [name (name (.sym v))
         ns (str (ns-name (.ns v)))]
     [[:push ns]
      [:push name]
@@ -841,7 +829,7 @@
             (let [v (emit-value (or type (u/classify val)) val)]
               `[~@(if (primitive? tag)
                     (butlast v)
-                    (conj v [:check-cast tag]))
+                    (conj v [:check-cast tag])) ;; can we avoid this?
                 ~[:put-static class (str "const__" id) tag]]))
           (vals constants)))
 
@@ -958,7 +946,7 @@
                                        [[:load-this]
                                         [:var-insn (keyword (.getName ^Class tag) "ILOAD") name]
 
-                                        [:check-cast tag]
+                                        ;[:check-cast tag]
                                         [:put-field class-name name tag]])
                                      closed-overs)
 
