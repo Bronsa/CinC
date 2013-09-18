@@ -22,14 +22,12 @@
      [[:invoke-static [:clojure.lang.RT/box tag] :java.lang.Character]]
      (= Boolean box)
      [[:invoke-static [:clojure.lang.RT/box tag] :java.lang.Boolean]])
-    (if (nil? tag)
-      [[:insn :ACONST_NULL]]
-      (when (primitive? box)
-        [[:invoke-static [(keyword "clojure.lang.RT"
-                                   (str (.getName ^Class box)
-                                        "Cast"))
-                          (if (primitive? tag) tag
-                              :java.lang.Object)] box]]))))
+    (when (primitive? box)
+      [[:invoke-static [(keyword "clojure.lang.RT"
+                                 (str (.getName ^Class box)
+                                      "Cast"))
+                        (if (primitive? tag) tag
+                            :java.lang.Object)] box]])))
 
 (defn emit-cast [tag cast]
   (if (not (or (primitive? tag)
