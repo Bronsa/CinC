@@ -103,10 +103,8 @@
 
        nil
        [:insn :ACONST_NULL]
-
-       (if (string? const) ;; or primitive number
-         [:push const]
-         [:get-static (frame :class) (str "const__" id) tag]))]))
+       ;; push primitive numbers
+       [:get-static (frame :class) (str "const__" id) tag])]))
 
 (defmethod -emit :const
   [{:keys [form]} frame]
@@ -730,30 +728,20 @@
            [:var-insn (keyword (if tag (.getName ^Class tag)
                                    "java.lang.Object") "ISTORE") name]])])))
 
-(defmulti -emit-value (fn [type _] type))
-
-(defn emit-value [t form]
-  `[~@(-emit-value t form)
-    ~@(when (and (u/obj? form)
-                 (seq (meta form)))
-        `[[:check-cast :clojure.lang.IObj]
-          ~@(emit-value :map (meta form))
-          [:check-cast :clojure.lang.IPersistentMap]
-          [:invoke-interface [:clojure.lang.IObj/withMeta :clojure.lang.IPersistentMap]
-           :clojure.lang.IObj]])])
+(defmulti emit-value (fn [type _] type))
 
 ;; should probably never hit those
-(defmethod -emit-value :nil [_ _]
+(defmethod emit-value :nil [_ _]
   [[:insn :ACONST_NULL]])
 
-(defmethod -emit-value :string [_ s]
+(defmethod emit-value :string [_ s]
   [[:push s]])
 
-(defmethod -emit-value :bool [_ b]
+(defmethod emit-value :bool [_ b]
   [[:get-static (if b :java.lang.Boolean/TRUE :java.lang.Boolean/FALSE)
     :java.lang.Boolean]])
 
-(defmethod -emit-value :number [_ n]
+(defmethod emit-value :number [_ n]
   [[:push n]
    (cond
     (instance? Long n)
@@ -768,25 +756,25 @@
     (instance? Float n)
     [:invoke-static [:java.lang.Float/valueOf :float] :java.lang.Float])])
 
-(defmethod -emit-value :class [_ c]
+(defmethod emit-value :class [_ c]
   (if (primitive? c)
     [[:get-static (box c) "TYPE" :java.lang.Class]]
     [[:push (.getName ^Class c)]
      [:invoke-static [:java.lang.Class/forName :java.lang.String] :java.lang.Class]]))
 
-(defmethod -emit-value :symbol [_ s]
+(defmethod emit-value :symbol [_ s]
   [[:push (namespace s)]
    [:push (name s)]
    [:invoke-static [:clojure.lang.Symbol/intern :java.lang.String :java.lang.String]
     :clojure.lang.Symbol]])
 
-(defmethod -emit-value :keyword [_ k]
+(defmethod emit-value :keyword [_ k]
   [[:push (namespace k)]
    [:push (name k)]
    [:invoke-static [:clojure.lang.Keyword/intern :java.lang.String :java.lang.String]
     :clojure.lang.Keyword]])
 
-(defmethod -emit-value :var [_ ^clojure.lang.Var v]
+(defmethod emit-value :var [_ ^clojure.lang.Var v]
   (let [name (name (.sym v))
         ns (str (ns-name (.ns v)))]
     [[:push ns]
@@ -806,30 +794,30 @@
                   [:array-store :java.lang.Object]])
               (range) list)])
 
-(defmethod -emit-value :map [_ m]
+(defmethod emit-value :map [_ m]
   (let [arr (mapcat identity m)]
     `[~@(emit-values-as-array arr)
       [:invoke-static [:clojure.lang.RT/map :objects] :clojure.lang.IPersistentMap]]))
 
-(defmethod -emit-value :vector [_ v]
+(defmethod emit-value :vector [_ v]
   `[~@(emit-values-as-array v)
     [:invoke-static [:clojure.lang.RT/vector :objects] :clojure.lang.IPersistentVector]])
 
-(defmethod -emit-value :set [_ s]
+(defmethod emit-value :set [_ s]
   `[~@(emit-values-as-array s)
     [:invoke-static [:clojure.lang.RT/set :objects] :clojure.lang.IPersistentSet]])
 
-(defmethod -emit-value :seq [_ s]
+(defmethod emit-value :seq [_ s]
   `[~@(emit-values-as-array s)
     [:invoke-static [:java.util.Arrays/asList :objects] :java.util.List]
     [:invoke-static [:clojure.lang.PersistentList/create :java.util.List]
      :clojure.lang.IPersistentList]])
 
-(defmethod -emit-value :char [_ c]
+(defmethod emit-value :char [_ c]
   [[:push c]
    [:invoke-static [:java.lang.Character/valueOf :char] :java.lang.Character]])
 
-(defmethod -emit-value :regex [_ r]
+(defmethod emit-value :regex [_ r]
   `[~@(emit-value :string (str r))
     [:invoke-static [:java.util.regex.Pattern/compile :java.lang.String]
      :java.util.regex.Pattern]])
@@ -839,7 +827,7 @@
             (let [v (emit-value (or type (u/classify val)) val)]
               `[~@(if (primitive? tag)
                     (butlast v)
-                    (conj v [:check-cast tag])) ;; can we avoid this?
+                    v)
                 ~[:put-static class (str "const__" id) tag]]))
           (vals constants)))
 

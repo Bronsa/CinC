@@ -582,9 +582,6 @@
             :env  env}
            expr)))
 
-;; primitives
-;; keyword callsites
-;; runtime instanceof for constant exprs
 ;; invoke
 (defmethod parse :default
   [[f & args :as form] env]

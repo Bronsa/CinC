@@ -166,6 +166,12 @@
   [ast]
   (assoc ast :loop-tag true))
 
+(defmethod -infer-tag :with-meta
+  [{:keys [expr] :as ast}]
+  (if-let [tag (:tag expr)]
+    (assoc ast :tag tag)
+    ast))
+
 (defmethod -infer-tag :do
   [{:keys [ret] :as ast}]
   (if-let [tag (:tag ret)]
