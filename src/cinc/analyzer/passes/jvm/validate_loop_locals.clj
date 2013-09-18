@@ -21,15 +21,14 @@
     (binding [mismatch? #{}]
       (let [bind-tags (mapv :tag bindings)]
         (prewalk body (fn [ast] (find-mismatch ast bind-tags)))
-        (if mismatch?
-          (let [bindings (apply mapcat (fn [{:keys [name tag init]} & mismatches]
+        (if (seq mismatch?)
+          (let [bindings (apply mapcat (fn [{:keys [form tag init]} & mismatches]
                                          (if (every? #{tag} mismatches)
-                                           [name (emit-form init)]
-                                           [(with-meta name {:tag Object})
+                                           [form (emit-form init)]
+                                           [(with-meta form {:tag Object})
                                             (emit-form init)]))
                                 bindings mismatch?)]
             (binding [validating? true]
-
               (analyze `(loop* [~@bindings] ~(emit-form body))
                        (assoc env :loop-locals-casts
                               (let [binds (mapv first (partition 2 bindings))]
