@@ -61,8 +61,8 @@
                      (if box
                        (when (not (and box (= cast (j.u/box tag))))
                          (emit-cast (j.u/box tag) cast))
-                       (when-not (= tag cast)
-                         (emit-cast tag cast))))])))))
+                       ;;when-not (= tag cast) ;temporary disable until we stabilize
+                       (emit-cast tag cast)))])))))
 
 (defmethod -emit :import
   [{:keys [class]} frame]

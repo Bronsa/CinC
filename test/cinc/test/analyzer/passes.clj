@@ -44,8 +44,7 @@
   (is (= Long (-> (ast 1) infer-constant-tag :tag)))
   (is (= Pattern (-> (ast #"foo") infer-constant-tag :tag)))
   (is (= Var (-> (ast #'+)  infer-constant-tag :tag)))
-  (is (= Boolean (-> (ast true) infer-constant-tag :tag)))
-  (is (= AFunction (-> (ast #()) infer-constant-tag :tag))))
+  (is (= Boolean (-> (ast true) infer-constant-tag :tag))))
 
 (deftest annotate-branch-test
   (let [i-ast (annotate-branch (ast (if 1 2 3)))]

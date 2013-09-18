@@ -69,10 +69,6 @@
   [ast]
   (assoc ast :tag Boolean))
 
-(defmethod infer-constant-tag :fn
-  [ast]
-  (assoc ast :tag AFunction))
-
 (defmethod infer-constant-tag :const
   [{:keys [op type form] :as ast}]
   (if (not= :unknown type)
@@ -221,7 +217,9 @@
 
 (defmethod -infer-tag :fn
   [{:keys [methods] :as ast}]
-  (assoc ast :arglists (mapv :arglist methods)))
+  (assoc ast
+    :arglists (mapv :arglist methods)
+    :tag AFunction))
 
 (defmethod -infer-tag :try
   [{:keys [body catches] :as ast}]
@@ -241,7 +239,7 @@
       (if-let [tag (or (:tag (meta arglist)) ;; ideally we would select the fn-method
                        (:return-tag fn))]
         (assoc ast
-          :tag tag
+          :tag  tag
           :cast tag) ;; ensure we check-cast the return value
         ast))
     ast))
