@@ -91,9 +91,7 @@
   [{:keys [init local] :as ast}]
   (if init
     (merge ast
-           (when-let [tag (if (not= :loop local)
-                            (:tag init)
-                            Object)]
+           (when-let [tag (:tag init)]
              {:tag tag})
            (when-let [return-tag (:return-tag init)]
              {:return-tag return-tag})
@@ -105,9 +103,7 @@
   [{:keys [init local] :as ast}]
   (if init
     (merge ast
-           (when-let [tag (if (not= :loop local)
-                            (:tag init)
-                            Object)]
+           (when-let [tag (:tag init)]
              {:tag tag})
            (when-let [return-tag (:return-tag init)]
              {:return-tag return-tag})
