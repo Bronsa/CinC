@@ -85,7 +85,7 @@
           (cond
 
            macro?
-           (apply @v env form (rest form)) ; (m &env &form & args)
+           (apply @v form env (rest form)) ; (m &form &env & args)
 
            inline?
            (vary-meta (apply inline? args) merge m)

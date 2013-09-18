@@ -149,7 +149,7 @@
         (let [v (maybe-var op)]
           (if (and (not (-> env :locals (get op))) ;; locals cannot be macros
                    (:macro (meta v)))
-            (apply @v env form (rest form)) ; (m &env &form & args)
+            (apply @v form env (rest form)) ; (m &form &env & args)
             (desugar-host-expr form)))))
     form))
 
