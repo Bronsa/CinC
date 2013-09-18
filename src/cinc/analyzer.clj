@@ -596,6 +596,6 @@
               :env  env
               :fn   fn-expr
               :args args-expr}
-       (when m
-        {:meta (analyze m (ctx env :expr))})
-       {:children `[~@(when m [:meta]) :args :fn]}))))
+             (when m
+               {:meta m}) ;; this means it's not going to be evaluated
+       {:children [:args :fn]}))))
