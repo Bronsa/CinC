@@ -441,15 +441,17 @@
          (not-any? namespace params)]}
   (let [variadic? (boolean (some '#{&} params))
         params-names (vec (remove '#{&} params))
-        params-expr (mapv (fn [name id]
-                            {:env    env
-                             :form   name
-                             :name   name
-                             :op     :binding
-                             :arg-id id
-                             :local  :arg})
-                          params-names (range))
         arity (count params-names)
+        params-expr (mapv (fn [name id]
+                            {:env       env
+                             :form      name
+                             :name      name
+                             :variadic? (and variadic?
+                                             (= id (dec arity)))
+                             :op        :binding
+                             :arg-id    id
+                             :local     :arg})
+                          params-names (range))
         fixed-arity (if variadic?
                       (dec arity)
                       arity)

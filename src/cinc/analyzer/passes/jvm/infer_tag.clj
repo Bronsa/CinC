@@ -100,7 +100,7 @@
     ast))
 
 (defmethod -infer-tag :local
-  [{:keys [init local] :as ast}]
+  [{:keys [init local env form] :as ast}]
   (if init
     (merge ast
            (when-let [tag (:tag init)]
@@ -111,7 +111,13 @@
              {:arglists arglists}))
     (if (= :fn local)
       (assoc ast :tag clojure.lang.AFunction)
-      ast)))
+      (if (= :arg local)
+        (let [{:keys [form variadic?]} ((:locals env) form)
+              tag (or (:tag (meta form))
+                      (and variadic? clojure.lang.ArraySeq)
+                      Object)]
+          (assoc ast :tag tag))
+        ast))))
 
 (defmethod -infer-tag :var
   [{:keys [var] :as ast}]

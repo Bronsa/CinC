@@ -715,7 +715,9 @@
     `[[:load-arg ~arg-id]
       ~@(when to-clear?
           [[:insn :ACONST_NULL]
-           [:store-arg arg-id]])]
+           [:store-arg arg-id]])
+      ~@(when tag
+          [[:check-cast tag]])]
 
     (= :fn local)
     [[:var-insn :clojure.lang.AFunction/ILOAD :this]]
