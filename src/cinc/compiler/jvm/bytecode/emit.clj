@@ -684,16 +684,17 @@
                   params) ;; cast when emitting locals?
           [:mark ~loop-label]
           ~@(emit-line-number env loop-label)
-          ~@(emit body (assoc frame
-                         :loop-label loop-label
-                         :loop-locals params))
+          ~@(emit (assoc body :box true)
+                  (assoc frame
+                    :loop-label  loop-label
+                    :loop-locals params))
           [:mark ~end-label]
           [:return-value]
           [:end-method]]]
 
     [{:op     :method
       :attr   #{:public}
-      :method [(into [method-name] arg-types) return-type]
+      :method [(into [method-name] arg-types) :java.lang.Object]
       :code   code}]))
 
 ;; emit local, deftype/reify, letfn
