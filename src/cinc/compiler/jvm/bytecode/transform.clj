@@ -220,20 +220,22 @@
   (.monitorExit gen))
 
 (defn opcode [op]
-  (case (name op)
-    "ISTORE"      Opcodes/ISTORE
-    "ILOAD"       Opcodes/ILOAD
-    "ACONST_NULL" Opcodes/ACONST_NULL
-    "IF_ACMPEQ"   Opcodes/IF_ACMPEQ
-    "ISHR"        Opcodes/ISHR
-    "IAND"        Opcodes/IAND
-    "public"      Opcodes/ACC_PUBLIC
-    "super"       Opcodes/ACC_SUPER
-    "final"       Opcodes/ACC_FINAL
-    "static"      Opcodes/ACC_STATIC
-    "private"     Opcodes/ACC_PRIVATE
-    "EQ"          GeneratorAdapter/EQ
-    "NE"          GeneratorAdapter/NE))
+  (if (integer? op)
+    op
+    (case (name op)
+      "ISTORE"      Opcodes/ISTORE
+      "ILOAD"       Opcodes/ILOAD
+      "ACONST_NULL" Opcodes/ACONST_NULL
+      "IF_ACMPEQ"   Opcodes/IF_ACMPEQ
+      "ISHR"        Opcodes/ISHR
+      "IAND"        Opcodes/IAND
+      "public"      Opcodes/ACC_PUBLIC
+      "super"       Opcodes/ACC_SUPER
+      "final"       Opcodes/ACC_FINAL
+      "static"      Opcodes/ACC_STATIC
+      "private"     Opcodes/ACC_PRIVATE
+      "EQ"          GeneratorAdapter/EQ
+      "NE"          GeneratorAdapter/NE)))
 
 (defmethod -exec :insn
   [_ [insn] ^GeneratorAdapter gen]

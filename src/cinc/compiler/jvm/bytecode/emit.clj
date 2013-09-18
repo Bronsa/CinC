@@ -2,7 +2,8 @@
   (:require [cinc.analyzer.utils :as u]
             [cinc.analyzer.jvm.utils :refer [primitive? numeric? box] :as j.u]
             [clojure.string :as s]
-            [cinc.compiler.jvm.bytecode.transform :as t]))
+            [cinc.compiler.jvm.bytecode.transform :as t]
+            [cinc.compiler.jvm.bytecode.intrinsics :refer [intrinsic]]))
 
 (defmulti -emit (fn [{:keys [op]} _] op))
 (defmulti -emit-set! (fn [{:keys [op]} _] op))
@@ -341,12 +342,21 @@
       ~@(emit-as-array args frame)
       [:invoke-static [:clojure.lang.Reflector/invokeCostructor :objects] :java.lang.Object]]))
 
+(defn emit-intrinsic [^Class class method args]
+  (let [args (mapv (fn [{:keys [cast tag]}] (or cast tag)) args)
+        m    (str (.getMethod class (name method) (into-array Class args)))]
+    (println m)
+    (when-let [ops (intrinsic m)]
+      (mapv (fn [op] [:insn op]) ops))))
+
 (defmethod -emit :static-call
   [{:keys [env tag validated? args method ^Class class]} frame]
   (if validated?
     `[~@(emit-line-number env)
       ~@(mapcat #(emit % frame) args)
-      [:invoke-static [~(keyword (.getName class) (str method)) ~@(arg-types args)] ~tag]]
+      ~@(or
+         (emit-intrinsic class method args)
+         `[[:invoke-static [~(keyword (.getName class) (str method)) ~@(arg-types args)] ~tag]])]
     `[[:push ~(.getName class)]
       [:invoke-static [:java.lang.Class/forName :java.lang.String] :java.lang.Class]
       [:push ~(str method)]
@@ -390,7 +400,6 @@
     ~@(emit val frame)
     [:invoke-static [:clojure.lang.Reflector/setInstanceField :java.lang.Object :java.lang.String :java.lang.Object] :java.lang.Object]])
 
-;; todo: intrinsics
 (defmethod -emit :if
   [{:keys [test then else env]} frame]
   (let [[null-label false-label end-label] (repeatedly label)]
@@ -1042,4 +1051,5 @@
         ~@(mapcat #(emit (assoc % :op :local) old-frame) closed-overs) ;; need to clear?
         [:invoke-constructor [~(keyword class-name "<init>")
                               ~@ctor-types] :void]]
-      {:class (.defineClass (clojure.lang.RT/baseLoader) class-name bc nil)})))
+      {:class (.defineClass ^clojure.lang.DynamicClassLoader (clojure.lang.RT/baseLoader)
+                            class-name bc nil)})))
