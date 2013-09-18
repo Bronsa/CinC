@@ -775,16 +775,16 @@
      [:invoke-static [:java.lang.Class/forName :java.lang.String] :java.lang.Class]]))
 
 (defmethod -emit-value :symbol [_ s]
-  `[[:push (namespace s)]
-    [:push ~(name s)]
-    [:invoke-static [:clojure.lang.Symbol/intern :java.lang.String :java.lang.String]
-     :clojure.lang.Symbol]])
+  [[:push (namespace s)]
+   [:push (name s)]
+   [:invoke-static [:clojure.lang.Symbol/intern :java.lang.String :java.lang.String]
+    :clojure.lang.Symbol]])
 
 (defmethod -emit-value :keyword [_ k]
-  `[[:push (namespace k)]
-    [:push ~(name k)]
-    [:invoke-static [:clojure.lang.Keyword/intern :java.lang.String :java.lang.String]
-     :clojure.lang.Keyword]])
+  [[:push (namespace k)]
+   [:push (name k)]
+   [:invoke-static [:clojure.lang.Keyword/intern :java.lang.String :java.lang.String]
+    :clojure.lang.Keyword]])
 
 (defmethod -emit-value :var [_ ^clojure.lang.Var v]
   (let [name (name (.sym v))
