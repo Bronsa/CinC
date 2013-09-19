@@ -16,6 +16,7 @@
    "long" Long/TYPE
    "float" Float/TYPE
    "double" Double/TYPE
+   "short" Short/TYPE
    "void" Void/TYPE})
 
 (defmulti ^Class maybe-class class)

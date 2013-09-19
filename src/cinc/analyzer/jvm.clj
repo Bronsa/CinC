@@ -200,9 +200,7 @@
 (defmethod parse 'case*
   [[_ expr shift mask default case-map switch-type test-type & [skip-check?] :as form] env]
   (let [[low high] ((juxt first last) (keys case-map))
-        test-expr (-analyze
-                   (with-meta expr (dissoc (meta expr) :tag)) ;; clojure tags as Object
-                   (ctx env :expr))
+        test-expr (-analyze expr (ctx env :expr))
         [tests thens] (reduce (fn [[te th] [min-hash [test then]]]
                                 (let [test-expr (-analyze (list 'quote test) env)
                                       then-expr (-analyze then env)]

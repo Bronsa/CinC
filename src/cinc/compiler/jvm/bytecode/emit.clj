@@ -343,7 +343,6 @@
 (defn emit-intrinsic [^Class class method args]
   (let [args (mapv (fn [{:keys [cast tag]}] (or cast tag)) args)
         m    (str (.getMethod class (name method) (into-array Class args)))]
-    (println m)
     (when-let [ops (intrinsic m)]
       (mapv (fn [op] [:insn op]) ops))))
 
