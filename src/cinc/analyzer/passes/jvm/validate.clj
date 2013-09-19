@@ -172,27 +172,40 @@
   ast)
 
 (defmethod -validate :invoke
-  [{:keys [args tag fn form] :as ast}]
-  (let [argc (count args)]
-    (if (and (= :const (:op fn))
+  [{:keys [args tag env fn form] :as ast}]
+  (let [argc (count args)
+        op (:op fn)]
+    (if (and (= :const op)
              (= :keyword (:type fn)))
       (if (<= 1 argc 2)
         (assoc ast :op :keyword-invoke)
         (throw (ex-info (str "Cannot invoke keyword with " argc " arguments")
                         {:form form})))
-      (do
-        (when (:arglists fn)
-          (when-not (arglist-for-arity fn argc)
-            (throw (ex-info (str "No matching arity found for function: " (:name fn))
-                            {:arity (count args)
-                             :fn    fn }))))
-        (when (and (= :const (:op fn))
-                   (not (instance? IFn (:form fn))))
-          (throw (ex-info (str (class (:form fn)) " is not a function, but it's used as such")
-                          {:form form})))
-        (if (and tag (not (u/primitive? tag)))
-          (assoc ast :cast tag)
-          ast)))))
+      (if (and (= 2 argc)
+               (= :var op)
+               (= #'clojure.core/instance? (:var fn))
+               (= :const (:op (first args)))
+               (= :class (:type (first args))))
+        {:op       :instance?
+         :class    (:form (first args))
+         :target   (second args)
+         :form     form
+         :env      env
+         :tag      Boolean/TYPE
+         :children [:target]}
+        (do
+          (when (:arglists fn)
+            (when-not (arglist-for-arity fn argc)
+              (throw (ex-info (str "No matching arity found for function: " (:name fn))
+                              {:arity (count args)
+                               :fn    fn }))))
+          (when (and (= :const (:op fn))
+                     (not (instance? IFn (:form fn))))
+            (throw (ex-info (str (class (:form fn)) " is not a function, but it's used as such")
+                            {:form form})))
+          (if (and tag (not (u/primitive? tag)))
+            (assoc ast :cast tag)
+            ast))))))
 
 (defn validate-interfaces [interfaces]
   (when-not (every? #(.isInterface ^Class %) (disj interfaces Object))

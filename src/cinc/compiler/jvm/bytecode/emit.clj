@@ -19,9 +19,10 @@
      [[:invoke-static [:clojure.lang.RT/box tag] :java.lang.Number]
       [:check-cast box]]
      (= Character box)
-     [[:invoke-static [:clojure.lang.RT/box tag] :java.lang.Character]]
+     [[:invoke-static [:clojure.lang.RT/box :char] :java.lang.Character]]
      (= Boolean box)
-     [[:invoke-static [:clojure.lang.RT/box tag] :java.lang.Boolean]])
+     [[:invoke-static [:clojure.lang.RT/box :boolean] :java.lang.Object]
+      [:check-cast :java.lang.Boolean]])
     (when (primitive? box)
       [[:invoke-static [(keyword "clojure.lang.RT"
                                  (str (.getName ^Class box)
@@ -396,6 +397,11 @@
     [:push ~(str (:m-or-f target))]
     ~@(emit val frame)
     [:invoke-static [:clojure.lang.Reflector/setInstanceField :java.lang.Object :java.lang.String :java.lang.Object] :java.lang.Object]])
+
+(defmethod -emit :instance?
+  [{:keys [target class]} frame]
+  `[~@(emit target frame)
+    ~[:instance-of class]])
 
 (defmethod -emit :if
   [{:keys [test then else env]} frame]
