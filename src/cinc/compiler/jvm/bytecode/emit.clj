@@ -486,10 +486,10 @@
    `[~@(emit test frame)
      [:instance-of :java.lang.Number]
      [:if-z-cmp :EQ ~default-label]
-     ~@(emit (assoc test :cast :int) frame) ;; can we avoid emitting this twice?
+     ~@(emit (assoc test :cast Integer/TYPE) frame) ;; can we avoid emitting this twice?
      ~@(emit-shift-mask ast)]
 
-   (#{Long/TYPE Integer/TYPE Short/TYPE Byte/TYPE} (:tag test))
+   (numeric? (:tag test))
    `[~@(emit (assoc test :cast Integer/TYPE) frame)
      ~@(emit-shift-mask ast)]
 
@@ -512,15 +512,15 @@
      [:if-z-cmp :EQ ~default-label]
      ~@(emit then frame)]
 
-   (= tag Long/TYPE)
-   `[~@(emit test frame)
-     ~@(emit comp frame)
+   (= tag Long)
+   `[~@(emit (assoc test :cast Long/TYPE) frame)
+     ~@(emit (assoc comp :cast Long/TYPE) frame)
      [:if-cmp :long :NE ~default-label]
      ~@(emit then frame)]
 
-   (#{Integer/TYPE Short/TYPE Byte/TYPE} tag)
+   (#{Integer Short Byte} tag)
    `[~@(when (not (zero? mask))
-         `[~@(emit test frame)
+         `[~@(emit (assoc test :cast Long/TYPE) frame)
            ~@(emit (assoc comp :cast Long/TYPE) frame)
            [:if-cmp :long :NE ~default-label]])
      ~@(emit then frame)]
