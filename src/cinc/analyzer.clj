@@ -350,25 +350,28 @@
                  fns)
       (throw (ex-info (str "bad binding form: " (first (remove symbol? fns)))
                       {:form form})))
-    (let [binds (map (fn [name]
-                       {:op    :binding
-                        :env   env
-                        :name  name
-                        :form  name
-                        :local :letfn
-                        :children [:init]})
-                     fns)
-          e (update-in env [:locals] merge (zipmap fns binds))
-          binds (mapv (fn [{:keys [name] :as b}]
-                        (assoc b
-                          :init (analyze (bindings name) (ctx e :expr))))
-                      binds)
-          e (update-in env [:locals] merge (zipmap fns binds))
+    (let [binds (reduce (fn [binds name]
+                          (assoc binds name
+                                 {:op    :binding
+                                  :env   env
+                                  :name  name
+                                  :form  name
+                                  :local :letfn
+                                  :children [:init]}))
+                        {} fns)
+          e (update-in env [:locals] merge binds)
+
+          binds (reduce-kv (fn [binds name bind]
+                             (assoc binds name
+                                    (assoc bind :init
+                                           (analyze (bindings name) (ctx e :expr)))))
+                           {} binds)
+          e (update-in env [:locals] merge binds)
           body (parse (cons 'do body) e)]
       {:op       :letfn
        :env      env
        :form     form
-       :bindings binds
+       :bindings (vec (vals binds))
        :body     body
        :children [:bindings :body]})))
 
