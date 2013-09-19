@@ -109,11 +109,11 @@
   [{:keys [variadic? params body]} hygienic?]
   (let [params (if variadic? (concat (butlast params) '[&] (last params)) params)]
     `(~(mapv #(-emit-form % hygienic?) params)
-      ~(-emit-form body))))
+      ~(-emit-form body hygienic?))))
 
 (defmethod -emit-form :fn
-  [{:keys [name methods]} hygienic?]
-  `(fn* ~name
+  [{:keys [local methods]} hygienic?]
+  `(fn* ~(-emit-form local hygienic?)
         ~@(mapv #(-emit-form % hygienic?) methods)))
 
 (defmethod -emit-form :def
