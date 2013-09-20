@@ -357,9 +357,10 @@
                  (descriptor tag) nil nil)))
 
 (defmethod -compile :class
-  [{:keys [attr super fields methods debug?] :as c}]
+  [{:keys [attr super fields methods debug? interfaces] :as c}]
   (let [cv (ClassWriter. ClassWriter/COMPUTE_MAXS)]
-    (.visit cv Opcodes/V1_5 (compute-attr attr) (:name c) nil (name super) nil)
+    (.visit cv Opcodes/V1_5 (compute-attr attr) (:name c) nil (name super)
+            (into-array String (mapv (fn [i] (s/replace (type-str i) \. \/)) interfaces)))
 
     (.visitSource cv (:name c) nil)
 

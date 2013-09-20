@@ -949,7 +949,9 @@
                              (merge local
                                     {:op   :field
                                      :attr (when deftype? ;; deftype closed overs are its fields
-                                             (or #{mutable} #{:public :final}))
+                                             (if mutable
+                                               #{mutable}
+                                               #{:public :final}))
                                      :tag  (or tag Object)})) (vals closed-overs))
 
         ctor-types (into (if meta [:clojure.lang.IPersistentMap] [])
@@ -1084,17 +1086,22 @@
                         ~@meta-methods ~@(mapcat #(emit % frame) methods)]}
 
         bc
-        (t/-compile jvm-ast)]
-    (with-meta
-      `[[:new-instance ~class-name]
-        [:dup]
-        ~@(when meta
-            [[:insn :ACONST_NULL]])
-        ~@(mapcat #(emit (assoc % :op :local) old-frame) closed-overs) ;; need to clear?
-        [:invoke-constructor [~(keyword class-name "<init>")
-                              ~@ctor-types] :void]]
-      {:class (.defineClass ^clojure.lang.DynamicClassLoader (clojure.lang.RT/makeClassLoader)
-                            class-name bc nil)})))
+        (t/-compile jvm-ast)
+
+        class (.defineClass ^clojure.lang.DynamicClassLoader
+                            (clojure.lang.RT/makeClassLoader)
+                            class-name bc nil)]
+    (if deftype?
+      (emit nil-expr frame)
+      (with-meta
+        `[[:new-instance ~class-name]
+          [:dup]
+          ~@(when meta
+              [[:insn :ACONST_NULL]])
+          ~@(mapcat #(emit (assoc % :op :local) old-frame) closed-overs) ;; need to clear?
+          [:invoke-constructor [~(keyword class-name "<init>")
+                                ~@ctor-types] :void]]
+        {:class class}))))
 
 (defmethod -emit :deftype
   [{:keys [class-name] :as ast}
