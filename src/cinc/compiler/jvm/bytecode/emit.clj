@@ -56,9 +56,9 @@
          (into bytecode
                `[~@(when (= :untyped m)
                      (emit nil-expr frame))
-                 ~@(when box
+                 ~@(when (and box (not (:container m)))
                      (emit-box tag (j.u/box tag)))
-                 ~@(when cast
+                 ~@(when (and cast (not (:container m)))
                      (if box
                        (when (not (and box (= cast (j.u/box tag))))
                          (emit-cast (j.u/box tag) cast))
@@ -375,7 +375,7 @@
           :invoke-interface
           :invoke-virtual)
        [~(keyword (.getName class) (str method)) ~@(arg-types args)] ~tag]]
-    `[~(emit instance frame)
+    `[~@(emit instance frame)
       [:push ~(str method)]
       ~@(emit-as-array (mapv #(assoc % :cast Object) args) frame)
       [:invoke-static [:clojure.lang.Reflector/invokeInstanceMethod
@@ -420,7 +420,7 @@
      [:mark ~null-label]
      [:pop]
      [:mark ~false-label]
-     ~@(emit (or else nil-expr) frame)
+     ~@(emit else frame)
      [:mark ~end-label]]))
 
 (defn emit-args-and-invoke [args frame]

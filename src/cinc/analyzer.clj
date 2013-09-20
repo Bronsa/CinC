@@ -225,20 +225,19 @@
         (analyze-block exprs env)))
 
 (defmethod parse 'if
-  [[_ test then & [else] :as form] env]
+  [[_ test then else :as form] env]
   {:pre [(or (= 3 (count form))
              (= 4 (count form)))]}
   (let [test-expr (analyze test (ctx env :expr))
         then-expr (analyze then env)
         else-expr (analyze else env)]
-    (merge {:op   :if
-            :form form
-            :env  env
-            :test test-expr
-            :then then-expr}
-           (when else
-             {:else else-expr})
-           {:children `[:test :then ~@(when else [:else])]})))
+    {:op   :if
+     :form form
+     :env  env
+     :test test-expr
+     :then then-expr
+     :else else-expr
+     :children `[:test :then :else]}))
 
 (defmethod parse 'new
   [[_ class & args :as form] env]

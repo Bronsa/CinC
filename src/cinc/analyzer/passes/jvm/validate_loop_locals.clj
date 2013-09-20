@@ -1,15 +1,14 @@
 (ns cinc.analyzer.passes.jvm.validate-loop-locals
   (:require [cinc.analyzer.passes.jvm.emit-form :refer [emit-form]]
-            [cinc.analyzer.passes :refer [prewalk]]
-            [cinc.analyzer.utils :refer [update!]]))
+            [cinc.analyzer.passes :refer [prewalk]]))
 
 (def ^:dynamic ^:private validating? false)
-(def ^:dynamic ^:private mismatch? #{})
+(def ^:private mismatch? (atom #{}))
 
 (defn find-mismatch [{:keys [op exprs] :as ast} tags]
   (when (and (= op :recur)
              (not= (mapv :tag exprs) tags))
-    (update! mismatch? conj (mapv :tag exprs)))
+    (swap! mismatch? conj (mapv :tag exprs)))
   ast)
 
 (defmulti -validate-loop-locals (fn [_ {:keys [op]}] op))
@@ -18,22 +17,21 @@
   [analyze {:keys [bindings body env] :as ast}]
   (if validating?
     ast
-    (binding [mismatch? #{}]
-      (let [bind-tags (mapv :tag bindings)]
-        (prewalk body (fn [ast] (find-mismatch ast bind-tags)))
-        (if (seq mismatch?)
-          (let [bindings (apply mapcat (fn [{:keys [form tag init]} & mismatches]
-                                         (if (every? #{tag} mismatches)
-                                           [form (emit-form init)]
-                                           [(with-meta form {:tag Object})
-                                            (emit-form init)]))
-                                bindings mismatch?)]
-            (binding [validating? true]
-              (analyze `(loop* [~@bindings] ~(emit-form body))
-                       (assoc env :loop-locals-casts
-                              (let [binds (mapv first (partition 2 bindings))]
-                                (zipmap binds (mapv (comp :tag meta) binds)))))))
-          ast)))))
+    (let [bind-tags (mapv :tag bindings)]
+      (prewalk body (fn [ast] (find-mismatch ast bind-tags)))
+      (if (seq @mismatch?)
+        (let [bindings (apply mapcat (fn [{:keys [form tag init]} & mismatches]
+                                       (if (every? #{tag} mismatches)
+                                         [form (emit-form init)]
+                                         [(with-meta form {:tag Object})
+                                          (emit-form init)]))
+                              bindings @mismatch?)]
+          (binding [validating? true]
+            (analyze `(loop* [~@bindings] ~(emit-form body))
+                     (assoc env :loop-locals-casts
+                            (let [binds (mapv first (partition 2 bindings))]
+                              (zipmap binds (mapv (comp :tag meta) binds)))))))
+        ast))))
 
 (defmethod -validate-loop-locals :local
   [_ {:keys [form local env] :as ast}]

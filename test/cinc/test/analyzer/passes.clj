@@ -10,7 +10,8 @@
             [cinc.analyzer.passes.constant-lifter :refer [constant-lift]]
             [cinc.analyzer.passes.warn-earmuff :refer [warn-earmuff]]
             [cinc.analyzer.passes.collect :refer [collect]]
-            [cinc.analyzer.passes.jvm.clear-locals :refer [annotate-branch clear-locals]]
+            [cinc.analyzer.passes.jvm.annotate-branch :refer [annotate-branch]]
+            [cinc.analyzer.passes.jvm.clear-locals :refer [clear-locals]]
             [cinc.analyzer.passes.jvm.validate :refer [validate]]
             [cinc.analyzer.passes.jvm.infer-tag :refer [infer-tag infer-constant-tag]]
             [cinc.analyzer.passes.jvm.analyze-host-expr :refer [analyze-host-expr]])

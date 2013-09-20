@@ -139,8 +139,7 @@
   (let [[then-tag else-tag] (mapv :tag [then else])]
     (cond
      (and then-tag
-          (or (not else)
-              (:loop-tag else)
+          (or (:loop-tag else)
               (= then-tag else-tag)))
      (assoc ast :tag then-tag)
 

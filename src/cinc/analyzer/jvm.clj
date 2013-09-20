@@ -15,7 +15,8 @@
             [cinc.analyzer.passes.collect :refer [collect]]
             [cinc.analyzer.passes.jvm.box :refer [box]]
             [cinc.analyzer.passes.uniquify :refer [uniquify-locals]]
-            [cinc.analyzer.passes.jvm.clear-locals :refer [annotate-branch clear-locals]]
+            [cinc.analyzer.passes.jvm.annotate-branch :refer [annotate-branch]]
+            [cinc.analyzer.passes.jvm.clear-locals :refer [clear-locals]]
             [cinc.analyzer.passes.jvm.validate :refer [validate]]
             [cinc.analyzer.passes.jvm.infer-tag :refer [infer-tag infer-constant-tag]]
             [cinc.analyzer.passes.jvm.validate-loop-locals :refer [validate-loop-locals]]
@@ -247,12 +248,13 @@
                 elide-meta))
             (comp cleanup
                (validate-loop-locals analyze)
-               (cycling infer-tag analyze-host-expr validate box)
+               (cycling infer-tag analyze-host-expr validate)
                infer-constant-tag
                constant-lift))
-      (prewalk (collect :constants
-                        :callsites
-                        :closed-overs))
+      (prewalk (comp (collect :constants
+                           :callsites
+                           :closed-overs)
+                  box))
       clear-locals)))
 
 (defn analyze-file
