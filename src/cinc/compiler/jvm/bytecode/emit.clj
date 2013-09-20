@@ -853,24 +853,19 @@
 
 
 ;; TODO: generalize this for deftype/reify: needs  mutable field handling + altCtor + annotations
+;; add smap
 
-(defmethod -emit :fn
-  [{:keys [local meta methods variadic? constants closed-overs keyword-callsites
-           protocol-callsites env] :as ast}
-   {:keys [class debug?] :as frame}]
-  (let [class-name (str (or class (munge (ns-name *ns*)))
-                        "$"
-                        (gensym (str (or (and (:form local)
-                                              (s/replace (:form local) "." "_DOT_"))
-                                         "fn") "__")))
-        old-frame frame
+(defn emit-class
+  [{:keys [class-name meta methods variadic? constants closed-overs keyword-callsites
+           protocol-callsites env annotations super interfaces op] :as ast}
+   {:keys [debug?] :as frame}]
+  (let [old-frame frame
         frame (merge frame
                      {:class              class-name
                       :constants          constants
                       :closed-overs       closed-overs
                       :keyword-callsites  keyword-callsites
                       :protocol-callsites protocol-callsites})
-        super (if variadic? :clojure.lang.RestFn :clojure.lang.AFunction)
 
         consts (mapv (fn [{:keys [id tag]}]
                        {:op   :field
@@ -913,10 +908,15 @@
                                           :tag  :clojure.lang.IFn}]))
                                     protocol-callsites)
 
-        closed-overs (mapv (fn [{:keys [name tag] :as local}]
+
+        deftype? (= op :deftype)
+        defrecord? (contains? closed-overs '__meta)
+
+        closed-overs (mapv (fn [{:keys [name tag mutable] :as local}]
                              (merge local
                                     {:op   :field
-                                     :attr #{}
+                                     :attr (when deftype? ;; deftype closed overs are its fields
+                                             (or #{mutable} #{:public :final}))
                                      :tag  (or tag Object)})) (vals closed-overs))
 
         ctor-types (into (if meta [:clojure.lang.IPersistentMap] [])
@@ -942,10 +942,6 @@
                                   [:label ~start-label]
                                   [:load-this]
                                   [:invoke-constructor [~(keyword (name super) "<init>")] :void]
-                                  ~@(when meta
-                                      [[:load-this]
-                                       [:var-insn :clojure.lang.IPersistentMap/ILOAD :__meta]
-                                       [:put-field ~class-name :__meta :clojure.lang.IPersistentMap]])
                                   ~@(mapcat
                                      (fn [{:keys [name tag]}]
                                        [[:load-this]
@@ -958,6 +954,19 @@
                                   [:label ~end-label]
                                   [:return-value]
                                   [:end-method]]})]
+
+        defrecord-ctor (when defrecord?
+                         [{:op     :method
+                            :attr   #{:public}
+                            :method `[[:<init> ~@(drop-last 2 ctor-types)] :void]
+                            :code   `[[:start-method]
+                                      [:load-this]
+                                      [:load-args]
+                                      [:insn :ACONST_NULL]
+                                      [:insn :ACONST_NULL]
+                                      [:invoke-constructor [~(keyword class-name "<init>") ~@ctor-types] :void]
+                                      [:return-value]
+                                      [:end-method]]}])
 
         kw-callsite-method (when-let [kw-cs (seq (frame :keyword-callsites))]
                              (let [cs-count (count kw-cs)
@@ -991,7 +1000,7 @@
         meta-methods (when meta
                        [{:op     :method
                          :attr   #{:public}
-                         :method `[[:<init> ~@(rest ctor-types)] :void]
+                         :method `[[:<init> ~@(butlast ctor-types)] :void]
                          :code   `[[:start-method]
                                    [:load-this]
                                    [:insn :ACONST_NULL]
@@ -1025,16 +1034,21 @@
                                    [:return-value]
                                    [:end-method]]}])
 
+        deftype-methods (comment emit statics + bridge methods)
+
         jvm-ast
-        {:op        :class
-         :debug?    debug?
-         :attr      #{:public :super :final}
-         :name      (s/replace class-name \. \/)
-         :super     (s/replace (name super) \. \/)
-         :fields    `[~@consts ~@ keyword-callsites
-                      ~@meta-field ~@closed-overs ~@protocol-callsites]
-         :methods   `[~@class-ctors ~@kw-callsite-method ~@variadic-method
-                      ~@meta-methods ~@(mapcat #(emit % frame) methods)]}
+        {:op          :class
+         :debug?      debug?
+         :attr        #{:public :super :final}
+         :annotations annotations
+         :name        (s/replace class-name \. \/)
+         :super       (s/replace (name super) \. \/)
+         :interfaces  interfaces
+         :fields      `[~@consts ~@ keyword-callsites
+                        ~@meta-field ~@closed-overs ~@protocol-callsites]
+         :methods     `[~@class-ctors ~@defrecord-ctor ~@deftype-methods
+                        ~@kw-callsite-method ~@variadic-method
+                        ~@meta-methods ~@(mapcat #(emit % frame) methods)]}
 
         bc
         (t/-compile jvm-ast)]
@@ -1049,3 +1063,18 @@
                               ~@ctor-types] :void]]
       {:class (.defineClass ^clojure.lang.DynamicClassLoader (clojure.lang.RT/baseLoader)
                             class-name bc nil)})))
+
+(defmethod -emit :fn
+  [{:keys [local variadic?] :as ast}
+   {:keys [class] :as frame}]
+  (let [class-name (str (or class (munge (ns-name *ns*)))
+                        "$"
+                        (gensym (str (or (and (:form local)
+                                              (s/replace (:form local) "." "_DOT_"))
+                                         "fn") "__")))
+        super (if variadic? :clojure.lang.RestFn :clojure.lang.AFunction)
+        ast (assoc ast
+              :class-name class-name
+              :super super)]
+
+    (emit-class ast frame)))
