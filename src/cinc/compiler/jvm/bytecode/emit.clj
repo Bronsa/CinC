@@ -681,7 +681,7 @@
 
         code
         `[[:start-method]
-          [:local-variable :this :clojure.lang.AFunction nil ~loop-label ~end-label 0]
+          [:local-variable :this :clojure.lang.AFunction nil ~loop-label ~end-label :this]
           ~@(mapv (fn [{:keys [name]}]
                     [:local-variable name :java.lang.Object nil loop-label end-label name])
                   params) ;; cast when emitting locals?
@@ -1069,7 +1069,17 @@
                                    [:return-value]
                                    [:end-method]]}])
 
-        deftype-methods (comment emit statics + bridge methods)
+        deftype-fields (vec (remove '#{__meta __extmap} (mapv :name closed-overs)))
+
+        deftype-methods (when deftype?
+                          `[~{:op     :method
+                              :attr   #{:public :static}
+                              :method `[[:getBasis] :clojure.lang.IPersistentVector]
+                              :code   `[[:start-method]
+                                        ~@(emit-value :vector deftype-fields)
+                                        [:return-value]
+                                        [:end-method]]}
+                            ~@(when defrecord?)]) ;; emit create
 
         jvm-ast
         {:op          :class
