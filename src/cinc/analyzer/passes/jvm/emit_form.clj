@@ -115,7 +115,7 @@
 
 (defmethod -emit-form :fn
   [{:keys [local methods]} hygienic?]
-  `(fn* ~(-emit-form local hygienic?)
+  `(fn* ~@(when local [(-emit-form local hygienic?)])
         ~@(mapv #(-emit-form % hygienic?) methods)))
 
 (defmethod -emit-form :def
