@@ -183,6 +183,10 @@
   [_ _ ^GeneratorAdapter gen]
   (.loadThis gen))
 
+(defmethod -exec :load-args
+  [_ _ ^GeneratorAdapter gen]
+  (.loadArgs gen))
+
 (defmethod -exec :swap
   [_ _ ^GeneratorAdapter gen]
   (.swap gen))
@@ -223,19 +227,21 @@
   (if (integer? op)
     op
     (case (name op)
-      "ISTORE"      Opcodes/ISTORE
-      "ILOAD"       Opcodes/ILOAD
-      "ACONST_NULL" Opcodes/ACONST_NULL
-      "IF_ACMPEQ"   Opcodes/IF_ACMPEQ
-      "ISHR"        Opcodes/ISHR
-      "IAND"        Opcodes/IAND
-      "public"      Opcodes/ACC_PUBLIC
-      "super"       Opcodes/ACC_SUPER
-      "final"       Opcodes/ACC_FINAL
-      "static"      Opcodes/ACC_STATIC
-      "private"     Opcodes/ACC_PRIVATE
-      "EQ"          GeneratorAdapter/EQ
-      "NE"          GeneratorAdapter/NE)))
+      "ISTORE"               Opcodes/ISTORE
+      "ILOAD"                Opcodes/ILOAD
+      "ACONST_NULL"          Opcodes/ACONST_NULL
+      "IF_ACMPEQ"            Opcodes/IF_ACMPEQ
+      "ISHR"                 Opcodes/ISHR
+      "IAND"                 Opcodes/IAND
+      "public"               Opcodes/ACC_PUBLIC
+      "super"                Opcodes/ACC_SUPER
+      "final"                Opcodes/ACC_FINAL
+      "static"               Opcodes/ACC_STATIC
+      "private"              Opcodes/ACC_PRIVATE
+      "volatile-mutable"     Opcodes/ACC_VOLATILE
+      "synchronized-mutable" 0
+      "EQ"                   GeneratorAdapter/EQ
+      "NE"                   GeneratorAdapter/NE)))
 
 (defmethod -exec :insn
   [_ [insn] ^GeneratorAdapter gen]

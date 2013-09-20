@@ -136,7 +136,7 @@
       :op       :method
       :form     form
       :this     this-expr
-      :name     name
+      :name     (symbol (clojure.core/name name))
       :children (into [:this] (:children method)))))
 
 (defn -deftype [name class-name args interfaces]
