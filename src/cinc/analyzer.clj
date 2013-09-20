@@ -225,7 +225,7 @@
         (analyze-block exprs env)))
 
 (defmethod parse 'if
-  [[_ test then & [else] :as form] env]
+  [[_ test then & [else :as has-else?] :as form] env]
   {:pre [(or (= 3 (count form))
              (= 4 (count form)))]}
   (let [test-expr (analyze test (ctx env :expr))
@@ -236,9 +236,9 @@
             :env  env
             :test test-expr
             :then then-expr}
-           (when else
+           (when has-else?
              {:else else-expr})
-           {:children `[:test :then ~@(when else [:else])]})))
+           {:children `[:test :then ~@(when has-else? [:else])]})))
 
 (defmethod parse 'new
   [[_ class & args :as form] env]
