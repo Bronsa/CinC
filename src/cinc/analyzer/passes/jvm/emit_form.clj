@@ -77,7 +77,7 @@
   [{:keys [test then else]} hygienic?]
   `(if ~(-emit-form test hygienic?)
      ~(-emit-form then hygienic?)
-     ~(-emit-form else hygienic?)))
+     ~@(when else [(-emit-form else hygienic?)])))
 
 (defmethod -emit-form :new
   [{:keys [class args]} hygienic?]
@@ -120,7 +120,7 @@
 
 (defmethod -emit-form :def
   [{:keys [name doc init]} hygienic?]
-  `(def ~name ~@[doc] ~@[(-emit-form init hygienic?)]))
+  `(def ~name ~@[doc] ~@(when init [(-emit-form init hygienic?)])))
 
 (defmethod -emit-form :invoke
   [{:keys [fn args]} hygienic?]
@@ -186,7 +186,7 @@
 (defmethod -emit-form :static-call
   [{:keys [class method args]} hygienic?]
   `(~(symbol (.getName ^Class class) (name method))
-    ~@(map #(-emit-form % hygienic?) args)))
+    ~@(mapv #(-emit-form % hygienic?) args)))
 
 (defmethod -emit-form :instance-field
   [{:keys [instance field]} hygienic?]
@@ -195,7 +195,7 @@
 (defmethod -emit-form :instance-call
   [{:keys [instance method args]} hygienic?]
   `((symbol (str "." (name method))) ~(-emit-form instance hygienic?)
-    ~@(map #(-emit-form % hygienic?) args)))
+    ~@(mapv #(-emit-form % hygienic?) args)))
 
 (defmethod -emit-form :host-expr
   [{:keys [target m-or-f]} hygienic?]
