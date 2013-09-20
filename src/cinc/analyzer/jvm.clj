@@ -248,12 +248,13 @@
                 elide-meta))
             (comp cleanup
                (validate-loop-locals analyze)
-               (cycling infer-tag analyze-host-expr validate box)
+               (cycling infer-tag analyze-host-expr validate)
                infer-constant-tag
                constant-lift))
-      (prewalk (collect :constants
-                        :callsites
-                        :closed-overs))
+      (prewalk (comp (collect :constants
+                           :callsites
+                           :closed-overs)
+                  box))
       clear-locals)))
 
 (defn analyze-file
