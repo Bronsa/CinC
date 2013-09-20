@@ -70,9 +70,9 @@
   [[:get-static :clojure.lang.RT/CURRENT_NS :clojure.lang.Var]
    [:invoke-virtual [:clojure.lang.Var/deref] :java.lang.Object]
    [:check-cast :clojure.lang.Namespace]
-   [:push class]
+   [:push (.getName ^Class class)]
    [:invoke-static [:java.lang.Class/forName :java.lang.String] :java.lang.Class]
-   [:invoke-virtual [:clojure.lang.Namespace/importClass :java.lang.Class]] :java.lang.Class])
+   [:invoke-virtual [:clojure.lang.Namespace/importClass :java.lang.Class] :java.lang.Class]])
 
 (defmethod -emit :throw
   [{:keys [exception]} frame]
