@@ -976,13 +976,13 @@
                                   [:load-this]
                                   [:invoke-constructor [~(keyword (name super) "<init>")] :void]
                                   ~@(mapcat
-                                     (fn [{:keys [name tag]}]
+                                     (fn [{:keys [name tag]} id]
                                        [[:load-this]
-                                        [:var-insn (keyword (.getName ^Class tag) "ILOAD") name]
+                                        [:var-insn (keyword (.getName ^Class tag) "ILOAD") id]
 
-                                        ;[:check-cast tag]
+                                        [:check-cast tag]
                                         [:put-field class-name name tag]])
-                                     closed-overs)
+                                     closed-overs (rest (range)))
 
                                   [:label ~end-label]
                                   [:return-value]
