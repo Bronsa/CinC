@@ -224,24 +224,30 @@
   (.monitorExit gen))
 
 (defn opcode [op]
-  (if (integer? op)
-    op
-    (case (name op)
-      "ISTORE"               Opcodes/ISTORE
-      "ILOAD"                Opcodes/ILOAD
-      "ACONST_NULL"          Opcodes/ACONST_NULL
-      "IF_ACMPEQ"            Opcodes/IF_ACMPEQ
-      "ISHR"                 Opcodes/ISHR
-      "IAND"                 Opcodes/IAND
-      "public"               Opcodes/ACC_PUBLIC
-      "super"                Opcodes/ACC_SUPER
-      "final"                Opcodes/ACC_FINAL
-      "static"               Opcodes/ACC_STATIC
-      "private"              Opcodes/ACC_PRIVATE
-      "volatile-mutable"     Opcodes/ACC_VOLATILE
-      "synchronized-mutable" 0
-      "EQ"                   GeneratorAdapter/EQ
-      "NE"                   GeneratorAdapter/NE)))
+  (cond
+   (integer? op)
+   op
+
+   (nil? op)
+   0
+
+   :else
+   (case (name op)
+     "ISTORE"               Opcodes/ISTORE
+     "ILOAD"                Opcodes/ILOAD
+     "ACONST_NULL"          Opcodes/ACONST_NULL
+     "IF_ACMPEQ"            Opcodes/IF_ACMPEQ
+     "ISHR"                 Opcodes/ISHR
+     "IAND"                 Opcodes/IAND
+     "public"               Opcodes/ACC_PUBLIC
+     "super"                Opcodes/ACC_SUPER
+     "final"                Opcodes/ACC_FINAL
+     "static"               Opcodes/ACC_STATIC
+     "private"              Opcodes/ACC_PRIVATE
+     "volatile-mutable"     Opcodes/ACC_VOLATILE
+     "synchronized-mutable" 0
+     "EQ"                   GeneratorAdapter/EQ
+     "NE"                   GeneratorAdapter/NE)))
 
 (defmethod -exec :insn
   [_ [insn] ^GeneratorAdapter gen]
@@ -334,7 +340,7 @@
    (.push gen (double x))))
 
 (defn compute-attr [attr]
-  (reduce (fn [r x] (+ r (opcode (name x)))) 0 attr))
+  (reduce (fn [r x] (+ r (opcode x))) 0 attr))
 
 (defmethod -compile :method
   [{:keys [attr method code cv]}]
