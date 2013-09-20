@@ -375,7 +375,7 @@
           :invoke-interface
           :invoke-virtual)
        [~(keyword (.getName class) (str method)) ~@(arg-types args)] ~tag]]
-    `[~(emit instance frame)
+    `[~@(emit instance frame)
       [:push ~(str method)]
       ~@(emit-as-array (mapv #(assoc % :cast Object) args) frame)
       [:invoke-static [:clojure.lang.Reflector/invokeInstanceMethod
