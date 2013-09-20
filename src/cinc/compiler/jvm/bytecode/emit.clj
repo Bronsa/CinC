@@ -681,8 +681,8 @@
 
         code
         `[[:start-method]
-          [:local-variable :this :clojure.lang.AFunction nil ~loop-label ~end-label :this]
-          ~@(mapv (fn [{:keys [tag name]}]
+          [:local-variable :this :clojure.lang.AFunction nil ~loop-label ~end-label 0]
+          ~@(mapv (fn [{:keys [name]}]
                     [:local-variable name :java.lang.Object nil loop-label end-label name])
                   params) ;; cast when emitting locals?
           [:mark ~loop-label]
@@ -698,6 +698,36 @@
     [{:op     :method
       :attr   #{:public}
       :method [(into [method-name] arg-types) :java.lang.Object]
+      :code   code}]))
+
+;; addAnnotations
+(defmethod -emit :method
+  [{:keys [this args name tag fixed-arity variadic? body env]}
+   {:keys [class] :as frame}]
+  (let [method-name name
+        return-type tag
+        arg-types (mapv :tag args)
+        [loop-label end-label] (repeatedly label)
+
+        code
+        `[[:start-method]
+          [:local-variable ~(:name this) ~class nil ~loop-label ~end-label 0]
+          ~@(mapv (fn [{:keys [tag name]}]
+                    [:local-variable name tag nil loop-label end-label name])
+                  args)
+          [:mark ~loop-label]
+          ~@(emit-line-number env loop-label)
+          ~@(emit (assoc body :box true)
+                  (assoc frame
+                    :loop-label  loop-label
+                    :loop-locals args))
+          [:mark ~end-label]
+          [:return-value]
+          [:end-method]]]
+
+    [{:op     :method
+      :attr   #{:public}
+      :method [(into [method-name] arg-types) return-type]
       :code   code}]))
 
 ;; emit local, deftype/reify, letfn
@@ -725,7 +755,10 @@
           [[:check-cast tag]])]
 
     (= :fn local)
-    [[:var-insn :clojure.lang.AFunction/ILOAD :this]]
+    [[:var-insn :clojure.lang.AFunction/ILOAD 0]]
+
+    (= :this local)
+    [[:var-insn :clojure.lang.Object/ILOAD 0]]
 
     :else
     `[~[:var-insn (keyword (if tag (.getName ^Class tag)
@@ -1052,7 +1085,6 @@
 
         bc
         (t/-compile jvm-ast)]
-
     (with-meta
       `[[:new-instance ~class-name]
         [:dup]
@@ -1061,8 +1093,19 @@
         ~@(mapcat #(emit (assoc % :op :local) old-frame) closed-overs) ;; need to clear?
         [:invoke-constructor [~(keyword class-name "<init>")
                               ~@ctor-types] :void]]
-      {:class (.defineClass ^clojure.lang.DynamicClassLoader (clojure.lang.RT/baseLoader)
+      {:class (.defineClass ^clojure.lang.DynamicClassLoader (clojure.lang.RT/makeClassLoader)
                             class-name bc nil)})))
+
+(defmethod -emit :deftype
+  [{:keys [class-name] :as ast}
+   frame]
+  (let [class-name (.getName ^Class class-name)
+        ast (assoc ast
+              :class-name class-name
+              :super :java.lang.Object)]
+    (with-meta
+      (emit-class ast frame)
+      {:untyped true})))
 
 (defmethod -emit :fn
   [{:keys [local variadic?] :as ast}
@@ -1076,5 +1119,4 @@
         ast (assoc ast
               :class-name class-name
               :super super)]
-
     (emit-class ast frame)))
