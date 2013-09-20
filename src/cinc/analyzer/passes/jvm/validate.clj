@@ -227,9 +227,14 @@
   (if interfaces
     (let [interfaces (conj interfaces Object)
           methods (seq (filter identity
-                               (mapcat #(u/instance-methods % name fixed-arity) interfaces)))]
-      (if-let [[m & rest] (seq (filter (partial tag-match? (mapv :tag params)) methods))]
-        (if (empty? rest)
+                               (mapcat #(u/instance-methods % name fixed-arity) interfaces)))
+          tags (mapv :tag params)]
+      (if-let [[m & rest :as matches]
+               (try-best-match tags
+                               (seq (filter (partial tag-match? tags) methods)))]
+        (if (or (empty? rest)
+                (and (apply = (mapv :return-type matches))
+                     (apply = (mapv :parameter-types matches))))
           (let [ret-tag  (u/maybe-class (:return-type m))
                 i-tag    (u/maybe-class (:declaring-class m))
                 arg-tags (mapv u/maybe-class (:parameter-types m))
@@ -241,7 +246,8 @@
           (throw (ex-info (str "ambiguous method signature for method: " name)
                           {:method     name
                            :interfaces interfaces
-                           :params     params})))
+                           :params     params
+                           :matches    matches})))
         (throw (ex-info (str "no such method found: " name " with given signature in any of the"
                              " provided interfaces: " interfaces)
                         {:method     name
