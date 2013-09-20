@@ -695,15 +695,16 @@
           [:return-value]
           [:end-method]]]
 
-    [{:op     :method
-      :attr   #{:public}
-      :method [(into [method-name] arg-types) :java.lang.Object]
-      :code   code}]))
+    {:op     :method
+     :attr   #{:public}
+     :method [(into [method-name] arg-types) :java.lang.Object]
+     :code   code}))
 
 ;; addAnnotations
 (defmethod -emit :method
   [{:keys [this args name tag fixed-arity variadic? body env]}
    {:keys [class] :as frame}]
+
   (let [method-name name
         return-type tag
         arg-types (mapv :tag args)
@@ -725,10 +726,10 @@
           [:return-value]
           [:end-method]]]
 
-    [{:op     :method
-      :attr   #{:public}
-      :method [(into [method-name] arg-types) return-type]
-      :code   code}]))
+    {:op     :method
+     :attr   #{:public}
+     :method [(into [method-name] arg-types) return-type]
+     :code   code}))
 
 ;; emit local, deftype/reify, letfn
 
@@ -941,7 +942,6 @@
                                           :tag  :clojure.lang.IFn}]))
                                     protocol-callsites)
 
-
         deftype? (= op :deftype)
         defrecord? (contains? closed-overs '__meta)
 
@@ -1083,7 +1083,7 @@
                         ~@meta-field ~@closed-overs ~@protocol-callsites]
          :methods     `[~@class-ctors ~@defrecord-ctor ~@deftype-methods
                         ~@kw-callsite-method ~@variadic-method
-                        ~@meta-methods ~@(mapcat #(emit % frame) methods)]}
+                        ~@meta-methods ~@(mapv #(-emit % frame) methods)]}
 
         bc
         (t/-compile jvm-ast)
