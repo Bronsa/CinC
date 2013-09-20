@@ -137,7 +137,7 @@
 
 (defmethod -emit-form :import
   [{:keys [class]} hygienic?]
-  `(clojure.core/import* ~class))
+  `(clojure.core/import* ~(.getName ^Class class)))
 
 (defmethod -emit-form :class
   [{:keys [class]} hygienic?]
