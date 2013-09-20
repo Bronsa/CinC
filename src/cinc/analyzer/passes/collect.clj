@@ -57,12 +57,6 @@
   (when init
     (-collect-closed-overs init)) ;; since we're in a postwalk, a bit of trickery is necessary
   ast)
-
-(defmethod -collect-closed-overs :deftype
-  [{:keys [fields] :as ast}]
-  (update! *collects* assoc :closed-overs (zipmap (mapv :name fields) fields))
-  ast)
-
 (defmethod -collect-closed-overs :fn-method
   [{:keys [params] :as ast}]
   (update! *collects* update-in [:closed-overs]
@@ -92,6 +86,11 @@
     (if (#{:fn :deftype :reify} op)
       (binding [*collects* *collects*]
         (let [f (apply comp (filter identity (mapv collect-fns what)))]
-          (into (postwalk ast f :reversed)
-                *collects*)))
+          (let [ast (postwalk ast f :reversed)
+                *collects* (merge *collects*
+                                  (when (and (= :deftype op)
+                                             (:closed-overs (set what)))
+                                    {:closed-overs
+                                     (zipmap (mapv :name (:fields ast)) (:fields ast))}))]
+            (into ast *collects*))))
       ast)))
