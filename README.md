@@ -2,6 +2,6 @@
 
 CinC is an experimental Clojure analyzer and compiler implemented in pure Clojure.
 
-Currently only the analyzer is written but work on the compiler will start soon.
+It's mostly working except for deftype and reify that are not implemented and primitive optimizations/handling is buggy/not there yet.
 
-Docs for AST nodes description and on the passes can be found on the doc folder
+Docs will come soon.
