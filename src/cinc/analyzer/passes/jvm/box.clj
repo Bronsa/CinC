@@ -74,7 +74,19 @@
 (defmethod box :do
   [{:keys [box] :as ast}]
   (if box
-    (update-in ast [:ret] -box)
+    (assoc-in ast [:ret :box] true)
+    ast))
+
+(defmethod box :let
+  [{:keys [box] :as ast}]
+  (if box
+    (assoc-in ast [:body :box] true)
+    ast))
+
+(defmethod box :letfn
+  [{:keys [box] :as ast}]
+  (if box
+    (assoc-in ast [:body :box] true)
     ast))
 
 (defmethod box :invoke
