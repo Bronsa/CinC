@@ -1074,12 +1074,39 @@
         deftype-methods (when deftype?
                           `[~{:op     :method
                               :attr   #{:public :static}
-                              :method `[[:getBasis] :clojure.lang.IPersistentVector]
+                              :method [[:getBasis] :clojure.lang.IPersistentVector]
                               :code   `[[:start-method]
                                         ~@(emit-value :vector deftype-fields)
                                         [:return-value]
                                         [:end-method]]}
-                            ~@(when defrecord?)]) ;; emit create
+                            ~@(when defrecord?
+                                [{:op     :method
+                                  :attr   #{:public :static}
+                                  :method [[:create :clojure.lang.IPersistentMap] class-name]
+                                  :code   `[[:start-method]
+                                            ~@(mapcat
+                                               (fn [field id]
+                                                 `[[:load-arg 0]
+                                                   ~@(emit-value :keyword field)
+                                                   [:insn :ACONST_NULL]
+                                                   [:invoke-interface [:clojure.lang.IPersistentMap/valAt :java.lang.Object :java.lang.Object] :java.lang.Object]
+                                                   [:var-insn :java.lang.Object/ISTORE ~id]
+                                                   [:load-arg 0]
+                                                   ~@(emit-value :keyword field)
+                                                   [:invoke-interface [:clojure.lang.IPersistentMap/without :java.lang.Object] :clojure.lang.IPersistentMap]
+                                                   [:store-arg 0]])
+                                               deftype-fields (rest (range)))
+                                            [:new-instance ~class-name]
+                                            [:dup]
+                                            ~@(for [i (rest (range (inc (count deftype-fields))))]
+                                                [:var-insn :java.lang.Object/ILOAD i])
+                                            [:insn :ACONST_NULL]
+                                            [:load-arg 0]
+                                            [:invoke-static [:clojure.lang.RT/seqOrElse :java.lang.Object] :java.lang.Object]
+                                            [:invoke-constructor [~(keyword class-name "<init>")
+                                                                  ~@ctor-types] :void]
+                                            [:return-value]
+                                            [:end-method]]}])])
 
         jvm-ast
         {:op          :class
