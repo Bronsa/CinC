@@ -123,7 +123,7 @@
         (if (= 3 (count args))
           args
           [(namespace (first args)) (name (first args)) (second args)])]
-    (.getStatic gen (type (name class)) (name field) (type tag))))
+    (.getStatic gen (type class) (name field) (type tag))))
 
 (defmethod -exec :put-static
   [_ args ^GeneratorAdapter gen]
@@ -131,7 +131,7 @@
         (if (= 3 (count args))
           args
           [(namespace (first args)) (name (first args)) (second args)])]
-    (.putStatic gen (type (name class)) (name field) (type tag))))
+    (.putStatic gen (type class) (name field) (type tag))))
 
 (defmethod -exec :get-field
   [_ args ^GeneratorAdapter gen]
@@ -139,7 +139,7 @@
         (if (= 3 (count args))
           args
           [(namespace (first args)) (name (first args)) (second args)])]
-    (.getField gen (type (name class)) (name field) (type tag))))
+    (.getField gen (type class) (name field) (type tag))))
 
 (defmethod -exec :put-field
   [_ args ^GeneratorAdapter gen]
@@ -147,7 +147,7 @@
         (if (= 3 (count args))
           args
           [(namespace (first args)) (name (first args)) (second args)])]
-    (.putField gen (type (name class)) (name field) (type tag))))
+    (.putField gen (type class) (name field) (type tag))))
 
 (defn get-label [^GeneratorAdapter gen label]
   (or (*labels* label)
