@@ -149,7 +149,7 @@
   (let [interfaces (conj (disj (set (mapv maybe-class interfaces)) Object)
                          clojure.lang.IObj)
         name (gensym "reify__")
-        class-name (symbol (str (namespace-munge *ns*) "." name))
+        class-name (symbol (str (namespace-munge *ns*) "$" name))
         menv (assoc env :this class-name)
         methods (mapv #(assoc (analyze-method-impls % menv)
                          :interfaces interfaces) methods)]

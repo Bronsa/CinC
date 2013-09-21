@@ -892,7 +892,7 @@
 (defn emit-class
   [{:keys [class-name meta methods variadic? constants closed-overs keyword-callsites
            protocol-callsites env annotations super interfaces op] :as ast}
-   {:keys [debug?] :as frame}]
+   {:keys [debug? class-loader] :as frame}]
   (let [old-frame frame
         frame (merge frame
                      {:class              class-name
@@ -910,7 +910,7 @@
 
         meta-field (when meta
                      [{:op   :field
-                       :attr #{:public :final :static}
+                       :attr #{:public :final}
                        :name "__meta"
                        :tag  :clojure.lang.IPersistentMap}])
 
@@ -977,14 +977,18 @@
                                   [:label ~start-label]
                                   [:load-this]
                                   [:invoke-constructor [~(keyword (name super) "<init>")] :void]
+                                  ~@(when meta
+                                      [[:load-this]
+                                       [:load-arg 0]
+                                       [:put-field class-name :__meta :clojure.lang.IPersistentMap]])
                                   ~@(mapcat
                                      (fn [{:keys [name tag]} id]
                                        [[:load-this]
-                                        [:var-insn (keyword (.getName ^Class tag) "ILOAD") id]
+                                        [:load-arg id]
 
                                         [:check-cast tag]
                                         [:put-field class-name name tag]])
-                                     closed-overs (rest (range)))
+                                     closed-overs (if meta (rest (range)) (range)))
 
                                   [:label ~end-label]
                                   [:return-value]
@@ -1125,9 +1129,7 @@
         bc
         (t/-compile jvm-ast)
 
-        class (.defineClass ^clojure.lang.DynamicClassLoader
-                            (clojure.lang.RT/makeClassLoader)
-                            class-name bc nil)]
+        class (.defineClass ^clojure.lang.DynamicClassLoader class-loader class-name bc nil)]
     (if deftype?
       (emit nil-expr frame)
       (with-meta
@@ -1135,10 +1137,21 @@
           [:dup]
           ~@(when meta
               [[:insn :ACONST_NULL]])
-          ~@(mapcat #(emit (assoc % :op :local) old-frame) closed-overs) ;; need to clear?
+          ~@(mapcat #(emit (assoc % :op :local) old-frame)
+                    closed-overs) ;; need to clear?
           [:invoke-constructor [~(keyword class-name "<init>")
                                 ~@ctor-types] :void]]
         {:class class}))))
+
+(defmethod -emit :reify
+  [{:keys [class-name] :as ast}
+   frame]
+  (let [class-name (.getName ^Class class-name)
+        ast (assoc ast
+              :class-name class-name
+              :super :java.lang.Object
+              :meta {})]
+    (emit-class ast frame)))
 
 (defmethod -emit :deftype
   [{:keys [class-name] :as ast}
