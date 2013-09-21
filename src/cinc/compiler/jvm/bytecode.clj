@@ -7,6 +7,7 @@
   ([form] (eval form false))
   ([form debug?]
      (let [r (e/emit (a/analyze `(^:once fn* [] ~form) {:context :expression})
-                     {:debug? debug?})
+                     {:debug? debug?
+                      :class-loader (clojure.lang.RT/makeClassLoader)})
            {:keys [class]} (meta r)]
        ((.newInstance ^Class class)))))
