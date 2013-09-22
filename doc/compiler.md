@@ -153,7 +153,7 @@ The basic AST that results from the `-analyze` pass is (a bit cleaned-up):
 
 ## passes
 
-For a description of what all the passes do on the AST see: doc/passes.md.
+For a description of what all the passes do on the AST see: [passes](doc/passes.md).
 
 After all the passes have run, the AST now looks like
 
@@ -285,26 +285,66 @@ The `emit` function will then walk every node calling `:emit` on it, resulting i
  :op :class,
  :name cinc/compiler/jvm/bytecode$fn__12845,
  :interfaces nil,
- :methods [{:op :method,
-            :attr #{:static :public},
-            :method [[:<clinit>] :void],
-            :code [[:start-method] [:push 1] [:invoke-static [:java.lang.Long/valueOf :long] :java.lang.Long] [:check-cast java.lang.Long] [:put-static cinc.compiler.jvm.bytecode$fn__12845 const__1 java.lang.Long] [:push clojure.core] [:push println] [:invoke-static [:clojure.lang.RT/var :java.lang.String :java.lang.String] :clojure.lang.Var] [:check-cast clojure.lang.Var] [:put-static cinc.compiler.jvm.bytecode$fn__12845 const__0 clojure.lang.Var] [:return-value] [:end-method]]}
-            {:op :method,
-            :attr #{:public},
-            :method [[:<init>] :void],
-            :code [[:start-method] [:label :label__12846] [:load-this] [:invoke-constructor [:clojure.lang.AFunction/<init>] :void] [:label :label__12847] [:return-value] [:end-method]]}
-            {:op :method,
-            :attr #{:public},
-            :method [[:invoke] :java.lang.Object],
-            :code [[:start-method] [:local-variable :this :clojure.lang.AFunction nil :label__12848 :label__12849 :this] [:mark :label__12848] [:get-static cinc.compiler.jvm.bytecode$fn__12845 const__1 java.lang.Long] [:var-insn :java.lang.Long/ISTORE a__#0] [:mark :label__12852] [:mark :label__12851] [:get-static cinc.compiler.jvm.bytecode$fn__12845 const__0 clojure.lang.Var] [:invoke-virtual [:clojure.lang.Var/getRawRoot] :java.lang.Object] [:check-cast :clojure.lang.IFn] [:var-insn :java.lang.Long/ILOAD a__#0] [:insn :ACONST_NULL] [:var-insn :java.lang.Long/ISTORE a__#0] [:invoke-interface [:clojure.lang.IFn/invoke :java.lang.Object] :java.lang.Object] [:mark :label__12850] [:local-variable a__#0 java.lang.Long nil :label__12852 :label__12850 a__#0] [:mark :label__12849] [:return-value] [:end-method]]}],
-  :fields [{:op :field,
-            :attr #{:static :public :final},
-            :name const__1,
-            :tag java.lang.Long}
-            {:op :field,
-            :attr #{:static :public :final},
-            :name const__0,
-            :tag clojure.lang.Var}],
+ :methods
+ [{:op :method,
+   :attr #{:static :public},
+   :method [[:<clinit>] :void],
+   :code
+   [[:start-method]
+    [:push 1]
+    [:invoke-static [:java.lang.Long/valueOf :long] :java.lang.Long]
+    [:check-cast java.lang.Long]
+    [:put-static cinc.compiler.jvm.bytecode$fn__12845 const__1 java.lang.Long]
+    [:push clojure.core]
+    [:push println]
+    [:invoke-static [:clojure.lang.RT/var :java.lang.String :java.lang.String] :clojure.lang.Var]
+    [:check-cast clojure.lang.Var]
+    [:put-static cinc.compiler.jvm.bytecode$fn__12845 const__0 clojure.lang.Var]
+    [:return-value]
+    [:end-method]]}
+  {:op :method,
+   :attr #{:public},
+   :method [[:<init>] :void],
+   :code
+   [[:start-method]
+    [:label :label__12846]
+    [:load-this]
+    [:invoke-constructor [:clojure.lang.AFunction/<init>] :void]
+    [:label :label__12847]
+    [:return-value]
+    [:end-method]]}
+  {:op :method,
+   :attr #{:public},
+   :method [[:invoke] :java.lang.Object],
+   :code
+   [[:start-method]
+    [:local-variable :this :clojure.lang.AFunction nil :label__12848 :label__12849 :this]
+    [:mark :label__12848]
+    [:get-static cinc.compiler.jvm.bytecode$fn__12845 const__1 java.lang.Long]
+    [:var-insn :java.lang.Long/ISTORE a__#0]
+    [:mark :label__12852]
+    [:mark :label__12851]
+    [:get-static cinc.compiler.jvm.bytecode$fn__12845 const__0 clojure.lang.Var]
+    [:invoke-virtual [:clojure.lang.Var/getRawRoot] :java.lang.Object]
+    [:check-cast :clojure.lang.IFn]
+    [:var-insn :java.lang.Long/ILOAD a__#0]
+    [:insn :ACONST_NULL]
+    [:var-insn :java.lang.Long/ISTORE a__#0]
+    [:invoke-interface [:clojure.lang.IFn/invoke :java.lang.Object] :java.lang.Object]
+    [:mark :label__12850]
+    [:local-variable a__#0 java.lang.Long nil :label__12852 :label__12850  a__#0]
+    [:mark :label__12849]
+    [:return-value]
+    [:end-method]]}],
+ :fields
+ [{:op :field,
+   :attr #{:static :public :final},
+   :name const__1,
+   :tag java.lang.Long}
+  {:op :field,
+   :attr #{:static :public :final},
+   :name const__0,
+   :tag clojure.lang.Var}],
  :attr #{:super :public :final},
  :annotations nil}
 ```
