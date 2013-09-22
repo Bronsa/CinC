@@ -10,18 +10,21 @@ Some passes depend on other passes, some needs explicitely to be used as prewalk
       uniquify-locals
       (walk (fn [ast]
               (-> ast
-                remove-locals
                 warn-earmuff
                 annotate-branch
                 source-info
                 elide-meta))
-            (comp (cycling infer-tag analyze-host-expr validate box)
-               infer-constant-tag
-               constant-lift))
-      (prewalk (collect :constants
-                        :callsites
-                        :closed-overs
-                        :vars))
+            (fn analyze
+              [ast]
+              ((comp (validate-loop-locals analyze)
+                  (cycling infer-tag analyze-host-expr validate)
+                  infer-constant-tag
+                  constant-lift) ast)))
+      (prewalk (comp (collect :constants
+                           :callsites
+                           :closed-overs)
+                  cleanup
+                  box))
       clear-locals)
 ```
 
@@ -40,12 +43,11 @@ user=> (postwalk *1 constant-lift)
 ; {:op :const, :env {}, :type :vector, :literal? true, :form [1 {:foo 3.14}]}
 ```
 
-### remove-locals
+### cleanup
 
 This pass doesn't wrap any walking, doesn't depend on any other pass and doesn't need any specific walking.
 
-This pass simply dissoc `:locals` from the `:env` of every node since it is no longer needed and would be invalidated by other passes.
-If some pass will ever need to know the locals of the environment of a specific node, it would need to rebuild the `:locals` node afresh and dissoc it after the pass.
+This pass dissocs from the ast some keys that are no longer necessary/would be invalidated by other passes, like `[:env :locals]`
 
 ### warn-earmuff
 
@@ -102,12 +104,11 @@ The emitter should then not clear every local marked `:to-clear` that is closed 
 This pass doesn't wrap any walking but depends on `uniquify-locals` and **must** be run in a prewalk; additionally, if `constant-lift` is run, this pass must be run **after** it, in a different walk.
 
 This pass adds to `:fn`, `:deftype` and `:reify` nodes info about:
-* constants
-* vars
+* constants and vars
 * keyword and protocol callsites
 * closed overs
 
-It should be noted that `collect` takes as arguments the keywords regarding the infos to be collected (e.g `(collect :constants :vars)` to collect only constants and vars) and returns the actual pass.
+It should be noted that `collect` takes as arguments the keywords regarding the infos to be collected (e.g `(collect :constants)` to collect only constants and vars) and returns the actual pass.
 
 ### infer-constant-tag
 
@@ -115,14 +116,20 @@ This pass doesn't wrap any walking, doesn't depend on any other pass and doesn't
 
 This pass adds `:tag` info to every `:const` node.
 
-### infer-tag/analyze-host-expr/validate/box
+### `box`
+
+This pass doesn't wrap any walking but must be run after (infer-tag/analyze-host-expr/validate)
+
+This pass marks which expressions must be boxed
+
+### infer-tag/analyze-host-expr/validate
 
 Those pass don't wrap any walking, but **must** be run in a cycling postwalk in this order and **depend** on `infer-constant-tag`.
 
 * `infer-tag` infers the tag of non constant expressions
 * `analyze-host-expr` use reflection to tag and specialize host forms
 * `validate` use reflection to validate and tag host forms
-* `box` marks nodes to be boxed with `:box` true (still **incomplete**)
+
 
 #### infer-tag
 
@@ -218,3 +225,17 @@ If no matching method can be found on the `:interfaces`, an exception is thrown.
 If more than one method can be found an no one can be preferred over the others, an exception is thrown.
 
 Otherwise, the node gets tagged with the returning class of the method, `:args` get tagged with their specific type and `:interface` is addedd to the node to denote the interface of the method.
+
+### validate-loop-locals
+
+This pass doesn't wrap any walking, depends on (infer-tag/analyze-host-expr/validate).
+
+This pass walks any loop exception and checks its recur points for unmatched local types (e.g (loop [x 1] (recur "1"))); if it can find one, it tags the unmatching loop-locals as Objects and reanalyzes the sub-tree
+
+### emit-form/emit-hygienic-form
+
+This pass doesn't wrap any walking.
+
+`emit-form` returns from the ast the macroexpanded-form that was parsed for the AST to be produced.
+
+`emit-hygienic-form` returns the ast the macroexpanded-form that was parsed for the AST to be produced, with all its locals uniquified. (depends on uniquify-locals)
