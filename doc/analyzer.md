@@ -1,9 +1,12 @@
 # AST nodes description
 
-**Every** node has the following self-explicatory keys:
+**Every** node has the following keys:
 * `:op`
 * `:env` contains `:context`, one of `#{:statement :expr :return}`
 * `:form`
+
+If the node contains other nodes, then the node will contain:
+* `:children` a vector of all the keys that map to a node, in order.
 
 Additionally, every node has some specific attributes:
 
@@ -25,6 +28,9 @@ If the const comes from a quoted expression, the metadata is also quoted
 
 * `:type` the result of (cinc.analyzer.utils/classify form), annotates the type of the constant (eg `:vector` if the constant is a vector)
 * `:literal?` always set to true
+
+### :quote
+* `:expr` the quoted expression, a `:const` node
 
 ### :vector
 
@@ -81,8 +87,7 @@ If `:op` is `:local`
 
 * `:test` the analyzed expression of the test part of the if, context is set to `:expr`
 * `:then` the analyzed expression of the then part of the if
-
-* `:else` the analyzed expression of the else part of the if, if present
+* `:else` the analyzed expression of the else part of the if
 
 
 ### :new
