@@ -37,7 +37,7 @@
       (cond
        (and (= :var (:op f))
             (protocol-node? (:var f)))
-       (update! *collects* update-in [:protocol-callsites] conj (:name f))
+       (update! *collects* update-in [:protocol-callsites] conj (:var f))
 
        (= :keyword-invoke op)
        (update! *collects* update-in [:keyword-callsites] conj (:form f)))))

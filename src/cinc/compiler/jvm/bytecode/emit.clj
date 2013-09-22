@@ -438,7 +438,8 @@
           v (:var fn)
           [target & args] args
           id (:id fn)
-          ^Class pinterface (:on-interface @(:protocol v))]
+
+          ^Class pinterface (:on-interface @(:protocol (meta v)))]
       `[~@(emit target frame)
         [:dup]
 
@@ -928,7 +929,7 @@
                                   keyword-callsites)
 
         protocol-callsites  (mapcat (fn [p]
-                                      (let [{:keys [id]} (p constants)]
+                                      (let [{:keys [id]} (constants p)]
                                         [{:op   :field
                                           :attr #{:private}
                                           :name (str "cached__class__" id)
