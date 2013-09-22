@@ -1,6 +1,5 @@
 (ns cinc.analyzer.passes.jvm.validate-loop-locals
-  (:require [cinc.analyzer.passes.jvm.emit-form :refer [emit-form]]
-            [cinc.analyzer.passes :refer [prewalk]]
+  (:require [cinc.analyzer.passes :refer [prewalk postwalk]]
             [cinc.analyzer.utils :refer [update!]]))
 
 (def ^:dynamic ^:private validating? false)
@@ -22,17 +21,17 @@
       (let [bind-tags (mapv :tag bindings)]
         (prewalk body (fn [ast] (find-mismatch ast bind-tags)))
         (if (seq mismatch?)
-          (let [bindings (apply mapcat (fn [{:keys [form tag init]} & mismatches]
-                                         (if (every? #{tag} mismatches)
-                                           [form (emit-form init)]
-                                           [(with-meta form {:tag Object})
-                                            (emit-form init)]))
-                                bindings mismatch?)]
+          (let [bindings (apply mapv (fn [{:keys [form tag]} & mismatches]
+                                       (if (every? #{tag} mismatches)
+                                         form
+                                         (with-meta form {:tag Object})))
+                                bindings mismatch?)
+                binds (zipmap bindings (mapv (comp :tag meta) bindings))]
             (binding [validating? true]
-              (analyze `(loop* [~@bindings] ~(emit-form body))
-                       (assoc env :loop-locals-casts
-                              (let [binds (mapv first (partition 2 bindings))]
-                                (zipmap binds (mapv (comp :tag meta) binds)))))))
+              (postwalk (prewalk ast (fn [ast]
+                                       (assoc-in (dissoc ast :tag)
+                                                 [:env :loop-locals-casts] binds)))
+                        analyze)))
           ast)))))
 
 (defmethod -validate-loop-locals :local
