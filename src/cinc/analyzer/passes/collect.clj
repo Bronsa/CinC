@@ -12,11 +12,10 @@
   [form tag type]
   (or ((:constants *collects*) form)
       (let [id (count (:constants *collects*))]
-        (update! *collects* assoc-in [:constants form]
-                 {:id   id
-                  :tag  tag
-                  :val  form
-                  :type type})
+        (update! *collects* assoc-in [:constants form] {:id   id
+                                                        :tag  tag
+                                                        :val  form
+                                                        :type type})
         id)))
 
 (defn -collect-constants
@@ -58,7 +57,6 @@
   (when init
     (-collect-closed-overs init)) ;; since we're in a postwalk, a bit of trickery is necessary
   ast)
-
 (defmethod -collect-closed-overs :fn-method
   [{:keys [params] :as ast}]
   (update! *collects* update-in [:closed-overs]
