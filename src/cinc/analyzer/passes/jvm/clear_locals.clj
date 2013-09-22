@@ -1,6 +1,6 @@
 (ns cinc.analyzer.passes.jvm.clear-locals
-  (:require [cinc.analyzer.passes :refer [walk]]))
-
+  (:require [cinc.analyzer.passes :refer [walk]]
+            [cinc.analyzer.utils :refer [update!]]))
 
 (def ^:dynamic *clears* {:branch-clears #{}
                          :clears        #{}

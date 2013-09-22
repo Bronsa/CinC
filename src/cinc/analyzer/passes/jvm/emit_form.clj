@@ -92,7 +92,7 @@
   `(try ~(-emit-form body hygienic?)
         ~@(mapv #(-emit-form % hygienic?) catches)
         ~@(when finally
-            [`(finally ~@(-emit-form finally hygienic?))])))
+            [`(finally ~(-emit-form finally hygienic?))])))
 
 (defmethod -emit-form :catch
   [{:keys [class local body]} hygienic?]
@@ -190,13 +190,13 @@
 
 (defmethod -emit-form :instance-field
   [{:keys [instance field]} hygienic?]
-  `((symbol (str ".-" (name field))) ~(-emit-form instance hygienic?)))
+  `(~(symbol (str ".-" (name field))) ~(-emit-form instance hygienic?)))
 
 (defmethod -emit-form :instance-call
   [{:keys [instance method args]} hygienic?]
-  `((symbol (str "." (name method))) ~(-emit-form instance hygienic?)
+  `(~(symbol (str "." (name method))) ~(-emit-form instance hygienic?)
     ~@(mapv #(-emit-form % hygienic?) args)))
 
-(defmethod -emit-form :host-expr
+(defmethod -emit-form :host-interop
   [{:keys [target m-or-f]} hygienic?]
-  `((symbol (str "." (name m-or-f))) ~(-emit-form target hygienic?)))
+  `(~(symbol (str "." (name m-or-f))) ~(-emit-form target hygienic?)))
