@@ -6,7 +6,7 @@ CinC is an experimental Clojure analyzer and compiler implemented in pure Clojur
 
 CinC currently contains both an analyzer composed of multiple passes and an emitter.
 
-Docs on how the compile pipeline works are in doc/compiler.md
+Docs on how the compile process works are in doc/compiler.md
 
 # Analyzer
 
