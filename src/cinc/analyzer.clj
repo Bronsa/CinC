@@ -421,7 +421,7 @@
   (into {:op   :loop
          :form form
          :env  env}
-        (analyze-let form env)))
+        (analyze-let form (dissoc env :in-try))))
 
 (defmethod parse 'recur
   [[_ & exprs :as form] {:keys [context loop-locals in-try]
@@ -488,7 +488,7 @@
                    :local :fn
                    :name  name}
         e (if n (assoc-in env [:locals name] name-expr) env)
-        e (assoc e :once (-> op meta :once boolean))
+        e (assoc (dissoc e :in-try) :once (-> op meta :once boolean))
         meths (if (vector? (first meths)) (list meths) meths) ;;turn (fn [] ...) into (fn ([]...))
         menv (if (> (count meths) 1) (ctx env :expr) e)
         methods-exprs (mapv #(analyze-fn-method % menv) meths)
