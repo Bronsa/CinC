@@ -423,17 +423,18 @@
      ~@(emit else frame)
      [:mark ~end-label]]))
 
-(defn emit-args-and-invoke [args frame]
-  `[~@(mapcat #(emit % frame) (take 20 args))
-    ~@(when-let [args (seq (drop 20 args))]
-        (emit-as-array args frame))
-    [:invoke-interface [:clojure.lang.IFn/invoke ~@(repeat (min 21 (count args)) :java.lang.Object)] :java.lang.Object]])
+(defn emit-args-and-invoke
+  ([args frame] (emit-args-and-invoke args frame false))
+  ([args frame proto?]
+     `[~@(mapcat #(emit % frame) (take 20 args))
+       ~@(when-let [args (seq (drop 20 args))]
+           (emit-as-array args frame))
+       [:invoke-interface [:clojure.lang.IFn/invoke ~@(repeat (min 21 (count args)) :java.lang.Object) ~@(when proto? [:java.lang.Object])] :java.lang.Object]]))
 
 (defmethod -emit :invoke
   [{:keys [fn args env]} frame]
   (if (and (= :var (:op fn))
            (u/protocol-node? (:var fn)))
-
     (let [[on-label call-label end-label] (repeatedly label)
           v (:var fn)
           [target & args] args
@@ -442,6 +443,7 @@
           ^Class pinterface (:on-interface @(:protocol (meta v)))]
       `[~@(emit target frame)
         [:dup]
+        [:invoke-static [:clojure.lang.Util/classOf :java.lang.Object] :java.lang.Class]
 
         [:load-this]
         [:get-field ~(name (frame :class)) ~(str "cached__class__" id) :java.lang.Class]
@@ -449,7 +451,7 @@
 
         [:dup]
         [:instance-of ~pinterface]
-        [:if-z-cmp :EQ ~on-label]
+        [:if-z-cmp :NE ~on-label]
 
         [:dup]
         [:invoke-static [:clojure.lang.Util/classOf :java.lang.Object] :java.lang.Class]
@@ -461,7 +463,7 @@
         ~@(emit-var v frame)
         [:invoke-virtual [:clojure.lang.Var/getRawRoot] :java.lang.Object]
         [:swap]
-        ~@(emit-args-and-invoke args frame)
+        ~@(emit-args-and-invoke args frame true)
         [:go-to ~end-label]
 
         [:mark ~on-label]
