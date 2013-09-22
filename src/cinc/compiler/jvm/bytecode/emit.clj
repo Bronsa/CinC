@@ -869,6 +869,7 @@
               `[~@(if (primitive? tag)
                     (butlast v)
                     v)
+                [:check-cast ~tag]
                 ~[:put-static class (str "const__" id) tag]]))
           (vals constants)))
 

@@ -65,6 +65,10 @@
   [ast]
   (assoc ast :tag Var))
 
+(defmethod infer-constant-tag :var
+  [ast]
+  (assoc ast :tag Var))
+
 (defmethod infer-constant-tag :bool
   [ast]
   (assoc ast :tag Boolean))
