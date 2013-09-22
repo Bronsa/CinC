@@ -1,6 +1,6 @@
 (ns cinc.analyzer.passes.uniquify
   (:require [cinc.analyzer.utils :refer [update!]]
-            [cinc.analyzer.passes :refer [prewalk]]))
+            [cinc.analyzer.passes :refer [walk]]))
 
 (def ^:dynamic *locals* {})
 (def ^:dynamic *locals-frame* {})
@@ -25,7 +25,7 @@
 (defn uniquify-cleanup [name]
   (when-let [name (denormalize name)]
     (when (*locals* name)
-      (update! *locals-frame* update-in [name] dec))))
+      (update! *locals-frame* update-in [name] (fnil dec 0)))))
 
 (declare uniquify-locals*)
 
@@ -74,8 +74,26 @@
         (assoc ast :name (normalize name)))
     ast))
 
+(defn -uniquify-cleanup
+  [{:keys [op bindings name local params] :as ast}]
+  (cond
+   (#{:let :letfn :loop} op)
+   (doseq [n (mapv :name bindings)]
+     (uniquify-cleanup n))
+
+   (= :fn op)
+   (uniquify-cleanup name)
+
+   (= :fn-method op)
+   (doseq [n (mapv :name params)]
+     (uniquify-cleanup n))
+
+   (= :catch op)
+   (uniquify-cleanup (:name local)))
+  ast)
+
 (defn uniquify-locals* [ast]
-  (prewalk ast -uniquify-locals))
+  (walk ast -uniquify-locals -uniquify-cleanup))
 
 (defn uniquify-locals [ast]
   (binding [*locals*       *locals*
