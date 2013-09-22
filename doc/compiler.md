@@ -76,7 +76,79 @@ First, we run the analyzer over the form, the default env is `{:context :express
 
 The basic AST that results from the `-analyze` pass is (a bit cleaned-up):
 ```clojure
-{:children [:methods], :op :fn, :env {:context :expression}, :form (fn* [] (let [a 1] (println a))), :name nil, :variadic? false, :max-fixed-arity 0, :methods [{:op :fn-method, :form ([] (let [a 1] (println a))), :env {:once true, :context :expression}, :variadic? false, :params [], :fixed-arity 0, :body {:op :do, :env {:once true, :context :return, :loop-locals 0}, :form (do (let [a 1] (println a))), :statements [], :ret {:op :let, :form (let* [a 1] (println a)), :env {:once true, :context :return, :loop-locals 0}, :body {:op :do, :env {:once true, :context :return, :loop-locals 0}, :form (do (println a)), :statements [], :ret {:children [:args :fn], :meta {:line 1, :column 203}, :op :invoke, :form (println a), :env {:once true, :context :return, :loop-locals 0}, :fn {:form println, :env {:once true, :context :expr, :loop-locals 0}, :op :var, :name println, :ns clojure.core, :assignable? false, :var #'clojure.core/println}, :args [{:assignable? false, :op :local, :env {:once true, :context :expr, :loop-locals 0}, :name a, :init {:op :const, :env {:once true, :context :expr, :loop-locals 0}, :type :number, :literal? true, :form 1}, :form a, :local :let, :children [:init]}]}, :children [:statements :ret]}, :bindings [{:op :binding, :env {:once true, :context :expr, :loop-locals 0}, :name a, :init {:op :const, :env {:once true, :context :expr, :loop-locals 0}, :type :number, :literal? true, :form 1}, :form a, :local :let, :children [:init]}], :children [:bindings :body]}, :children [:statements :ret]}, :children [:params :body]}]}
+{:children [:methods],
+ :op :fn,
+ :env {:context :expression},
+ :form (fn* [] (let [a 1] (println a))),
+ :name nil,
+ :variadic? false,
+ :max-fixed-arity 0,
+ :methods
+ [{:op :fn-method,
+   :form ([] (let [a 1] (println a))),
+   :env {:once true, :context :expression},
+   :variadic? false,
+   :params [],
+   :fixed-arity 0,
+   :body
+   {:op :do,
+    :env {:once true, :context :return, :loop-locals 0},
+    :form (do (let [a 1] (println a))),
+    :statements [],
+    :ret
+    {:op :let,
+     :form (let* [a 1] (println a)),
+     :env {:once true, :context :return, :loop-locals 0},
+     :body
+     {:op :do,
+      :env {:once true, :context :return, :loop-locals 0},
+      :form (do (println a)),
+      :statements [],
+      :ret
+      {:children [:args :fn],
+       :meta {:line 1, :column 203},
+       :op :invoke,
+       :form (println a),
+       :env {:once true, :context :return, :loop-locals 0},
+       :fn
+       {:form println,
+        :env {:once true, :context :expr, :loop-locals 0},
+        :op :var,
+        :name println,
+        :ns clojure.core,
+        :assignable? false,
+        :var #'clojure.core/println},
+       :args
+       [{:assignable? false,
+         :op :local,
+         :env {:once true, :context :expr, :loop-locals 0},
+         :name a,
+         :init
+         {:op :const,
+          :env {:once true, :context :expr, :loop-locals 0},
+          :type :number,
+          :literal? true,
+          :form 1},
+         :form a,
+         :local :let,
+         :children [:init]}]},
+      :children [:statements :ret]},
+     :bindings
+     [{:op :binding,
+       :env {:once true, :context :expr, :loop-locals 0},
+       :name a,
+       :init
+       {:op :const,
+        :env {:once true, :context :expr, :loop-locals 0},
+        :type :number,
+        :literal? true,
+        :form 1},
+       :form a,
+       :local :let,
+       :children [:init]}],
+     :children [:bindings :body]},
+    :children [:statements :ret]},
+   :children [:params :body]}]}
 ```
 
 ## passes
@@ -85,8 +157,109 @@ For a description of what all the passes do on the AST see: doc/passes.md.
 
 After all the passes have run, the AST now looks like
 
-```
-{:arglists [[]], :children [:methods], :form (fn* [] (let [a 1] (println a))), :protocol-callsites #{}, :op :fn, :name nil, :keyword-callsites #{}, :max-fixed-arity 0, :methods [{:children [:params :body], :fixed-arity 0, :form ([] (let [a 1] (println a))), :op :fn-method, :variadic? false, :env {:once true, :contest :expression}, :params [], :path? true, :arglist [], :body {:box true, :op :do, :env {:once true, :contest :expression, :context :return}, :form (do (let [a 1] (println a))), :statements [], :ret {:box true, :op :let, :form (let* [a 1] (println a)), :env {:line 1, :column 26, :once true, :contest :expression, :context :return}, :body {:box true, :op :do, :env {:once true, :contest :expression, :context :return}, :form (do (println a)), :statements [], :ret {:box true, :children [:args :fn], :meta {:line 1, :column 37}, :op :invoke, :form (println a), :env {:line 1, :column 37, :once true, :contest :expression, :context :return}, :fn {:id 0, :tag clojure.lang.Var, :form println, :env {:once true, :contest :expression, :context :expr}, :op :var, :name println, :ns clojure.core, :assignable? false, :var #'clojure.core/println}, :args [{:to-clear? true, :tag java.lang.Long, :assignable? false, :op :local, :env {:once true, :contest :expression, :context :expr}, :name a__#0, :form a, :local :let, :children []}]}, :children [:statements :ret]}, :bindings [{:tag java.lang.Long, :op :binding, :env {:once true, :contest :expression, :context :expr}, :name a__#0, :init {:id {:id 1, :tag java.lang.Long, :val 1, :type :number}, :tag java.lang.Long, :op :const, :env {:once true, :contest :expression, :context :expr}, :type :number, :literal? true, :form 1}, :form a, :local :let, :children [:init]}], :children [:bindings :body]}, :children [:statements :ret]}}], :variadic? false, :env {:line 1, :column 11, :contest :expression}, :constants {1 {:id 1, :tag java.lang.Long, :val 1, :type :number}, #'clojure.core/println {:id 0, :tag clojure.lang.Var, :val #'clojure.core/println, :type :var}}, :tag clojure.lang.AFunction, :closed-overs {}}
+```clojure
+{:arglists [[]],
+ :children [:methods],
+ :form (fn* [] (let [a 1] (println a))),
+ :protocol-callsites #{},
+ :op :fn,
+ :name nil,
+ :keyword-callsites #{},
+ :max-fixed-arity 0,
+ :methods
+ [{:children [:params :body],
+   :fixed-arity 0,
+   :form ([] (let [a 1] (println a))),
+   :op :fn-method,
+   :variadic? false,
+   :env {:once true, :contest :expression},
+   :params [],
+   :path? true,
+   :arglist [],
+   :body
+   {:box true,
+    :op :do,
+    :env {:once true, :contest :expression, :context :return},
+    :form (do (let [a 1] (println a))),
+    :statements [],
+    :ret
+    {:box true,
+     :op :let,
+     :form (let* [a 1] (println a)),
+     :env
+     {:line 1,
+      :column 26,
+      :once true,
+      :contest :expression,
+      :context :return},
+     :body
+     {:box true,
+      :op :do,
+      :env {:once true, :contest :expression, :context :return},
+      :form (do (println a)),
+      :statements [],
+      :ret
+      {:box true,
+       :children [:args :fn],
+       :meta {:line 1, :column 37},
+       :op :invoke,
+       :form (println a),
+       :env
+       {:line 1,
+        :column 37,
+        :once true,
+        :contest :expression,
+        :context :return},
+       :fn
+       {:assignable? false,
+        :form println,
+        :ns clojure.core,
+        :op :var,
+        :name println,
+        :env {:once true, :contest :expression, :context :expr},
+        :id 0,
+        :var #'clojure.core/println,
+        :tag clojure.lang.Var},
+       :args
+       [{:children [],
+         :assignable? false,
+         :form a,
+         :op :local,
+         :name a__#0,
+         :local :let,
+         :env {:once true, :contest :expression, :context :expr},
+         :tag java.lang.Long,
+         :to-clear? true}]},
+      :children [:statements :ret]},
+     :bindings
+     [{:tag java.lang.Long,
+       :op :binding,
+       :env {:once true, :contest :expression, :context :expr},
+       :name a__#0,
+       :init
+       {:id {:id 1, :tag java.lang.Long, :val 1, :type :number},
+        :tag java.lang.Long,
+        :op :const,
+        :env {:once true, :contest :expression, :context :expr},
+        :type :number,
+        :literal? true,
+        :form 1},
+       :form a,
+       :local :let,
+       :children [:init]}],
+     :children [:bindings :body]},
+    :children [:statements :ret]}}],
+ :variadic? false,
+ :env {:line 1, :column 11, :contest :expression},
+ :constants
+ {1 {:id 1, :tag java.lang.Long, :val 1, :type :number},
+  #'clojure.core/println
+  {:id 0,
+   :tag clojure.lang.Var,
+   :val #'clojure.core/println,
+   :type :var}},
+ :tag clojure.lang.AFunction,
+ :closed-overs {}}
 ```
 We can see that the AST has been annotated with tag info and that every Var/constant has now an id.
 
