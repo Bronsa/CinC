@@ -298,7 +298,7 @@
 (defmethod -exec :try-catch-block
   [_ [l1 l2 l3 t] ^GeneratorAdapter gen]
   (.visitTryCatchBlock gen (get-label gen l1) (get-label gen l2) (get-label gen l3)
-                       (apply str (butlast (rest (descriptor t))))))
+                       (when t (apply str (butlast (rest (descriptor t)))))))
 
 (defmethod -exec :local-variable
   [_ [desc tag _ l1 l2 local] ^GeneratorAdapter gen]
