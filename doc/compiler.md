@@ -21,7 +21,7 @@ Let's look at the `cinc.compiler.jvm.bytecode/eval` function:
 (defn eval
   ([form] (eval form false))
   ([form debug?]
-     (let [r (e/emit (a/analyze `(^:once fn* [] ~form) {:context :expression})
+     (let [r (e/emit (a/analyze `(^:once fn* [] ~form) {:context :expr})
                      {:debug? debug?
                       :class-loader (clojure.lang.RT/makeClassLoader)})
            {:keys [class]} (meta r)]
@@ -70,7 +70,7 @@ The `analyze` function:
       clear-locals)))
 ```
 
-First, we run the analyzer over the form, the default env is `{:context :expression}`
+First, we run the analyzer over the form, the default env is `{:context :expr}`
 
 ## -analyze
 
@@ -78,7 +78,7 @@ The basic AST that results from the `-analyze` pass is (a bit cleaned-up):
 ```clojure
 {:children [:methods],
  :op :fn,
- :env {:context :expression},
+ :env {:context :expr},
  :form (fn* [] (let [a 1] (println a))),
  :name nil,
  :variadic? false,
@@ -86,7 +86,7 @@ The basic AST that results from the `-analyze` pass is (a bit cleaned-up):
  :methods
  [{:op :fn-method,
    :form ([] (let [a 1] (println a))),
-   :env {:once true, :context :expression},
+   :env {:once true, :context :expr},
    :variadic? false,
    :params [],
    :fixed-arity 0,
@@ -172,14 +172,14 @@ After all the passes have run, the AST now looks like
    :form ([] (let [a 1] (println a))),
    :op :fn-method,
    :variadic? false,
-   :env {:once true, :contest :expression},
+   :env {:once true, :context :expr},
    :params [],
    :path? true,
    :arglist [],
    :body
    {:box true,
     :op :do,
-    :env {:once true, :contest :expression, :context :return},
+    :env {:once true, :context :return},
     :form (do (let [a 1] (println a))),
     :statements [],
     :ret
@@ -190,12 +190,11 @@ After all the passes have run, the AST now looks like
      {:line 1,
       :column 26,
       :once true,
-      :contest :expression,
       :context :return},
      :body
      {:box true,
       :op :do,
-      :env {:once true, :contest :expression, :context :return},
+      :env {:once true, :context :return},
       :form (do (println a)),
       :statements [],
       :ret
@@ -208,7 +207,6 @@ After all the passes have run, the AST now looks like
        {:line 1,
         :column 37,
         :once true,
-        :contest :expression,
         :context :return},
        :fn
        {:assignable? false,
@@ -216,7 +214,7 @@ After all the passes have run, the AST now looks like
         :ns clojure.core,
         :op :var,
         :name println,
-        :env {:once true, :contest :expression, :context :expr},
+        :env {:once true, :context :expr},
         :id 0,
         :var #'clojure.core/println,
         :tag clojure.lang.Var},
@@ -227,20 +225,20 @@ After all the passes have run, the AST now looks like
          :op :local,
          :name a__#0,
          :local :let,
-         :env {:once true, :contest :expression, :context :expr},
+         :env {:once true, :context :expr},
          :tag java.lang.Long,
          :to-clear? true}]},
       :children [:statements :ret]},
      :bindings
      [{:tag java.lang.Long,
        :op :binding,
-       :env {:once true, :contest :expression, :context :expr},
+       :env {:once true, :context :expr},
        :name a__#0,
        :init
        {:id {:id 1, :tag java.lang.Long, :val 1, :type :number},
         :tag java.lang.Long,
         :op :const,
-        :env {:once true, :contest :expression, :context :expr},
+        :env {:once true, :context :expr},
         :type :number,
         :literal? true,
         :form 1},
@@ -250,7 +248,7 @@ After all the passes have run, the AST now looks like
      :children [:bindings :body]},
     :children [:statements :ret]}}],
  :variadic? false,
- :env {:line 1, :column 11, :contest :expression},
+ :env {:line 1, :column 11, :context :expr},
  :constants
  {1 {:id 1, :tag java.lang.Long, :val 1, :type :number},
   #'clojure.core/println
@@ -274,7 +272,7 @@ The `:fn` node now contains a map `:constants` of constant => constant-node
 A new dynamic-classloader is then created, and passed to the `emit` function along with the AST
 
 ```clojure
-(e/emit (a/analyze '(fn* [] (let [a 1] (println a))) {:context :expression})
+(e/emit (a/analyze '(fn* [] (let [a 1] (println a))) {:context :expr})
         {:class-loader (clojure.lang.RT/makeClassLoader)})
 ```
 
