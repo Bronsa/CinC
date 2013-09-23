@@ -541,7 +541,7 @@
   `[~@(emit comp frame)
     ~@(emit test frame)
     ~@(if (= :hash-identity test-type)
-        [[:jump-insn :IF_ACMPEQ default-label]]
+        [[:jump-insn :IF_ACMPNE default-label]]
         [[:invoke-static [:clojure.lang.Util/equiv :java.lang.Object :java.lang.Object] :boolean]
          [:if-z-cmp :EQ default-label]])
     ~@(emit then frame)])

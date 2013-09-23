@@ -237,6 +237,7 @@
      "ILOAD"                Opcodes/ILOAD
      "ACONST_NULL"          Opcodes/ACONST_NULL
      "IF_ACMPEQ"            Opcodes/IF_ACMPEQ
+     "IF_ACMPNE"            Opcodes/IF_ACMPNE
      "ISHR"                 Opcodes/ISHR
      "IAND"                 Opcodes/IAND
      "public"               Opcodes/ACC_PUBLIC
