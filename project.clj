@@ -3,5 +3,5 @@
   :url "https://github.com/Bronsa/CinC.git"
   :global-vars {*warn-on-reflection* true}
   :dependencies [[org.clojure/clojure "1.5.1"]
-                 [org.clojure/tools.reader "0.7.5"]
+                 [org.clojure/tools.reader "0.7.7"]
                  [org.ow2.asm/asm-all "4.1"]])
