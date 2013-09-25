@@ -240,7 +240,9 @@
     (let [argc (count args)
           arglist (arglist-for-arity fn argc)]
       (if-let [tag (or (:tag (meta arglist)) ;; ideally we would select the fn-method
-                       (:return-tag fn))]
+                       (:return-tag fn)
+                       (and (= :var (:op fn))
+                        (:tag (meta (:var fn)))))]
         (assoc ast
           :tag  tag
           :cast tag) ;; ensure we check-cast the return value
