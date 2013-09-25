@@ -246,16 +246,16 @@
                 annotate-branch
                 source-info
                 elide-meta))
-            (fn analyze
-              [ast]
-              ((comp (validate-loop-locals analyze)
-                  (cycling infer-tag analyze-host-expr validate)
-                  infer-constant-tag
-                  constant-lift) ast)))
+            (comp cleanup
+               (fn analyze
+                 [ast]
+                 ((comp (validate-loop-locals analyze)
+                     (cycling infer-tag analyze-host-expr validate)
+                     infer-constant-tag) ast))
+               constant-lift))
       (prewalk (comp (collect :constants
                            :callsites
                            :closed-overs)
-                  cleanup
                   box))
       clear-locals)))
 
