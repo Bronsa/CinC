@@ -42,7 +42,8 @@
 (defn uniquify-binding
   [{:keys [init name] :as b}]
   (let [init (binding [*locals-frame* *locals-frame*]
-               (uniquify-locals* init))]
+               (assoc (uniquify-locals* init)
+                 :dont-cleanup? true))]
     (uniquify name)
     (let [name (normalize name)]
       (update! *locals-init* assoc name init)
@@ -75,22 +76,23 @@
     ast))
 
 (defn -uniquify-cleanup
-  [{:keys [op bindings name local params] :as ast}]
-  (cond
-   (#{:let :letfn :loop} op)
-   (doseq [n (mapv :name bindings)]
-     (uniquify-cleanup n))
+  [{:keys [op bindings name local params dont-cleanup?] :as ast}]
+  (when (not dont-cleanup?)
+    (cond
+     (#{:let :letfn :loop} op)
+     (doseq [n (mapv :name bindings)]
+       (uniquify-cleanup n))
 
-   (= :fn op)
-   (uniquify-cleanup name)
+     (= :fn op)
+     (uniquify-cleanup name)
 
-   (= :fn-method op)
-   (doseq [n (mapv :name params)]
-     (uniquify-cleanup n))
+     (= :fn-method op)
+     (doseq [n (mapv :name params)]
+       (uniquify-cleanup n))
 
-   (= :catch op)
-   (uniquify-cleanup (:name local)))
-  ast)
+     (= :catch op)
+     (uniquify-cleanup (:name local))))
+  (dissoc ast :dont-cleanup?))
 
 (defn uniquify-locals* [ast]
   (walk ast -uniquify-locals -uniquify-cleanup))
