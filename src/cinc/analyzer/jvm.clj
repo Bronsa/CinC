@@ -22,7 +22,7 @@
             [cinc.analyzer.passes.jvm.validate-loop-locals :refer [validate-loop-locals]]
             [cinc.analyzer.passes.jvm.analyze-host-expr :refer [analyze-host-expr]]))
 
-(def jvm-specials
+(def specials
   (into ana/specials
         '#{monitor-enter monitor-exit clojure.core/import* reify* deftype* case*}))
 
@@ -71,7 +71,7 @@
 (defn macroexpand-1 [form env]
   (if (seq? form)
     (let [op (first form)]
-      (if (jvm-specials op)
+      (if (specials op)
         form
         (let [v (maybe-var op)
               m (meta v)

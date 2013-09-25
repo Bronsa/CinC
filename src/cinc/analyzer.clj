@@ -116,9 +116,8 @@
 
 (def specials
   '#{do if new var quote set! try
-     catch throw finally
-     let* letfn* loop* recur fn* case*
-     & def . deftype* reify*})
+     catch throw finally & def .
+     let* letfn* loop* recur fn*})
 
 (defn desugar-host-expr [[op & expr :as form]]
   (if (symbol? op)
