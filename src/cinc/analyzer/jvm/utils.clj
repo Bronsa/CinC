@@ -66,7 +66,8 @@
    Character/TYPE #{Character}
    Short/TYPE     #{Short}
    Byte/TYPE      #{Byte}
-   Boolean/TYPE   #{Boolean}})
+   Boolean/TYPE   #{Boolean}
+   Void/TYPE      #{Void}})
 
 (defn ^Class box [c]
   ({Integer/TYPE   Integer
@@ -76,7 +77,20 @@
     Character/TYPE Character
     Short/TYPE     Short
     Byte/TYPE      Byte
-    Boolean/TYPE   Boolean}
+    Boolean/TYPE   Boolean
+    Void/TYPE      Void}
+   c c))
+
+(defn ^Class unbox [c]
+  ({Integer   Integer/TYPE,
+    Long      Long/TYPE,
+    Float     Float/TYPE,
+    Short     Short/TYPE,
+    Boolean   Boolean/TYPE,
+    Byte      Byte/TYPE,
+    Character Character/TYPE,
+    Double    Double/TYPE,
+    Void      Void/TYPE}
    c c))
 
 (defn numeric? [c]
