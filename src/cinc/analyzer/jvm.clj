@@ -5,7 +5,7 @@
              :refer [analyze parse analyze-in-env wrapping-meta analyze-fn-method]
              :rename {analyze -analyze}]
             [cinc.analyzer.utils :refer [ctx maybe-var]]
-            [cinc.analyzer.passes :refer [walk prewalk cycling]]
+            [cinc.analyzer.passes :refer [walk prewalk postwalk cycling]]
             [cinc.analyzer.jvm.utils :refer :all :exclude [box]]
             [cinc.analyzer.passes.source-info :refer [source-info]]
             [cinc.analyzer.passes.cleanup :refer [cleanup]]
@@ -239,24 +239,32 @@
   [form env]
   (binding [ana/macroexpand-1 macroexpand-1]
     (-> (-analyze form env)
+
       uniquify-locals
+      add-binding-atom
+
       (walk (fn [ast]
               (-> ast
+                cleanup
                 warn-earmuff
                 annotate-branch
                 source-info
                 elide-meta))
-            (comp cleanup
-               (fn analyze
-                 [ast]
-                 ((comp (validate-loop-locals analyze)
-                     (cycling infer-tag analyze-host-expr validate)
-                     infer-constant-tag) ast))
-               constant-lift))
-      (prewalk (comp (collect :constants
-                           :callsites
-                           :closed-overs)
-                  box))
+            constant-lift)
+
+      ((fn analyze [ast]
+         (-> ast
+           (postwalk
+            (comp annotate-binding-tag
+               (cycling infer-tag analyze-host-expr validate)
+               annotate-literal-tag)) ;; not necesary, select on v-l-l
+           (prewalk (validate-loop-locals analyze))))) ;; empty binding atom
+
+      (prewalk
+       (collect :constants
+                :callsites
+                :closed-overs))
+
       clear-locals)))
 
 (defn analyze-file

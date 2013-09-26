@@ -533,11 +533,16 @@
         args (apply pfn expr)
         env (assoc env :name sym)
         doc (or (:doc args) (-> sym meta :doc))
-        meta (merge (meta sym) (when doc {:doc doc}))
+        arglists (when-let [arglists (:arglists (meta sym))]
+                   (second arglists)) ;; drop quote
+        meta (merge (meta sym)
+                    (when doc {:doc doc}))
         meta-expr (when meta (analyze meta
                                       (ctx env :expr)))
         var (doto (intern *ns* sym)
-              (reset-meta! meta))
+              (reset-meta! (merge meta
+                                  (when arglists
+                                    {:arglists arglists}))))
         args (when-let [[_ init] (find args :init)]
                {:init (analyze init (ctx env :expr))})
         children `[~@(when meta [:meta])
@@ -548,7 +553,7 @@
             :name sym
             :var  var}
            (when meta
-             {:meta meta-expr})
+             {:meta meta-expr}) ;; or meta?
            args
            (when-not (empty? children)
              {:children children}))))
