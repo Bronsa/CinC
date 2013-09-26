@@ -110,18 +110,18 @@
       (if-let [[m & rest :as matching] (try-best-match tags (filter (partial tag-match? tags) matching-methods))]
         (if (empty? rest)
           (let [ret-tag  (u/maybe-class (:return-type m))
-                arg-tags (mapv u/maybe-class (:parameter-types m))
-                args     (mapv (fn [arg tag] (if (not= tag (:tag arg))
-                                              (assoc arg :cast tag)
-                                              arg)) args arg-tags)]
+                arg-tags (mapv u/maybe-class (:parameter-types m))]
             (assoc ast
               :validated? true
-              :tag        ret-tag
+              :ret-tag    ret-tag
+              :arg-tags   arg-tags
+              :tag        (or tag ret-tag)
               :args       args))
           (if (apply = (mapv (comp u/maybe-class :return-type) matching))
-            (let [tag (u/maybe-class (:return-type m))]
+            (let [ret-tag (u/maybe-class (:return-type m))]
               (assoc ast
-                :tag tag))
+                :ret-tag ret-tag
+                :tag     (or tag ret-tag)))
             ast))
         (throw (ex-info (str "No matching method: " method " for class: " class " and given signature")
                         {:method method
@@ -203,9 +203,7 @@
                      (not (instance? IFn (:form fn))))
             (throw (ex-info (str (class (:form fn)) " is not a function, but it's used as such")
                             {:form form})))
-          (if (and tag (not (u/primitive? tag)))
-            (assoc ast :cast tag)
-            ast))))))
+          ast)))))
 
 (defn validate-interfaces [interfaces]
   (when-not (every? #(.isInterface ^Class %) (disj interfaces Object))
