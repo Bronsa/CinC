@@ -199,13 +199,14 @@
   [{:keys [fn args] :as ast}]
   (if (#{:var :local :fn} (:op fn))
     (let [argc (count args)
-          arglist (arglist-for-arity fn argc)]
-      (if-let [tag (or (:tag (meta arglist)) ;; ideally we would select the fn-method
-                       (:return-tag fn)
-                       (and (= :var (:op fn))
-                            (:tag (meta (:var fn)))))]
-        (assoc ast :tag tag)
-        ast))
+          arglist (arglist-for-arity fn argc)
+          tag (or (:tag (meta arglist)) ;; ideally we would select the fn-method
+                  (:return-tag fn)
+                  (and (= :var (:op fn))
+                       (:tag (meta (:var fn)))))]
+      (merge ast
+             (when tag
+               {:tag tag})))
     (if-let [tag (:return-tag fn)]
       (assoc ast :tag tag)
       ast)))

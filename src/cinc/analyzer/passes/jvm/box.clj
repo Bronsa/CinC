@@ -1,6 +1,6 @@
 (ns cinc.analyzer.passes.jvm.box
   (:require [cinc.analyzer.jvm.utils :as u])
-  (:require [cinc.analyzer.utils :refer [protocol-node?]]))
+  (:require [cinc.analyzer.utils :refer [protocol-node? arglist-for-arity]]))
 
 (defmulti box :op)
 
@@ -83,29 +83,29 @@
     ast))
 
 (defmethod box :fn-method
-  [{:keys [tag] :as ast}]
-  (if (not (u/primitive? tag))
-    (update-in ast [:body] -box)
-    ast))
+  [ast]
+  (update-in ast [:body] -box))
 
-;; (defmethod box :if
-;;   [{:keys [test then else box] :as ast}]
-;;   (if (:box then)
-;;     ast
-;;     (let [test (if (and (not (:box test))
-;;                         (= Boolean/TYPE (:tag test)))
-;;                  test (assoc test :box true))
-;;           [then else] (if box (mapv -box [then else]) [then else])]
-;;       (merge ast
-;;              {:test test
-;;               :then then
-;;               :else else}))))
+(defmethod box :if
+  [{:keys [test then else tag] :as ast}]
+  (let [test-tag (:tag test)
+        test (if (and (u/primitive? test-tag)
+                      (not= Boolean/TYPE test-tag))
+               (assoc test :tag (u/box test-tag))
+               test)
+        [then else] (if (or (boxed? tag then)
+                            (boxed? tag else))
+                      (mapv -box [then else])
+                      [then else])]
+    (merge ast
+           {:test test
+            :then then
+            :else else})))
 
-;; (defmethod box :invoke
-;;   [{:keys [fn args] :as ast}]
-;;   (if-not (and (#{:var :the-var} (:op fn))
-;;                (protocol-node? (:var fn)))
-;;     (assoc ast :args (mapv -box args))
-;;     ast))
+(defmethod box :invoke
+  [{:keys [fn args] :as ast}]
+  ;; (if-not (and (#{:var :the-var} (:op fn))
+  ;;                (protocol-node? (:var fn))))
+  (assoc ast :args (mapv -box args)))
 
 (defmethod box :default [ast] ast)
