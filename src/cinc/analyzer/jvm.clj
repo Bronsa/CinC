@@ -261,9 +261,10 @@
            (prewalk (validate-loop-locals analyze))))) ;; empty binding atom
 
       (prewalk
-       (collect :constants
-                :callsites
-                :closed-overs))
+       (comp (collect :constants
+                   :callsites
+                   :closed-overs)
+          box))
 
       clear-locals)))
 
