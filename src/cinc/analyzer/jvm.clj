@@ -13,12 +13,14 @@
             [cinc.analyzer.passes.constant-lifter :refer [constant-lift]]
             [cinc.analyzer.passes.warn-earmuff :refer [warn-earmuff]]
             [cinc.analyzer.passes.collect :refer [collect]]
-            [cinc.analyzer.passes.jvm.box :refer [box]]
+            [cinc.analyzer.passes.add-binding-atom :refer [add-binding-atom]]
             [cinc.analyzer.passes.uniquify :refer [uniquify-locals]]
+            [cinc.analyzer.passes.jvm.box :refer [box]]
             [cinc.analyzer.passes.jvm.annotate-branch :refer [annotate-branch]]
             [cinc.analyzer.passes.jvm.clear-locals :refer [clear-locals]]
             [cinc.analyzer.passes.jvm.validate :refer [validate]]
-            [cinc.analyzer.passes.jvm.infer-tag :refer [infer-tag infer-constant-tag]]
+            [cinc.analyzer.passes.jvm.infer-tag :refer [infer-tag]]
+            [cinc.analyzer.passes.jvm.annotate-tag :refer [annotate-literal-tag annotate-binding-tag]]
             [cinc.analyzer.passes.jvm.validate-loop-locals :refer [validate-loop-locals]]
             [cinc.analyzer.passes.jvm.analyze-host-expr :refer [analyze-host-expr]]))
 

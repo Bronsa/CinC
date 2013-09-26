@@ -64,9 +64,9 @@
         (assoc ast :init (assoc init :tag tag))
         ast))
     (if-let [tag (or (and init (:tag init))
-                     (and (= :fn local) AFunction)
+                     (and (= :fn local) clojure.lang.AFunction)
                      (and (= :arg local)
-                          (or (and variadic? ArraySeq)
+                          (or (and variadic? clojure.lang.ArraySeq)
                               Object)))] ;;?
       (do (swap! atom assoc :tag tag)
           (assoc ast :tag tag))

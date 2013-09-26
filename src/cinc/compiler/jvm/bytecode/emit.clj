@@ -55,7 +55,7 @@
                      [[:pop]]))))
          (into bytecode
                `[~@(when (= :untyped m)
-                     (emit nil-expr frame))
+                     [[:insn :ACONST_NULL]])
                  ~@(when (and box (not (:container m)))
                      (emit-box tag (j.u/box tag)))
                  ~@(when (and cast (not (:container m)))
@@ -1135,7 +1135,7 @@
 
         class (.defineClass ^clojure.lang.DynamicClassLoader class-loader class-name bc nil)]
     (if deftype?
-      (emit nil-expr frame)
+      [[:insn :ACONST_NULL]]
       (with-meta
         `[[:new-instance ~class-name]
           [:dup]

@@ -6,6 +6,8 @@
 
 (defmulti -add-binding-atom :op)
 
+(defmethod -add-binding-atom :default [ast] ast)
+
 (defmethod -add-binding-atom :binding
   [{:keys [name] :as ast}]
   (let [a (atom {})]

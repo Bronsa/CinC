@@ -163,12 +163,12 @@
 (defmethod -validate :def
   [{:keys [var init] :as ast}]
   (when-let [tag (:tag init)]
-    (alter-meta! var assoc :tag tag))
+    #_(alter-meta! var assoc :tag tag))
   (when-let [arglists (:arglists init)]
     (doseq [arglist arglists]
       (when-let [tag (:tag (meta arglist))]
         (validate-tag tag)))
-    (alter-meta! var assoc :arg-lists arglists))
+    #_(alter-meta! var assoc :arg-lists arglists))
   ast)
 
 (defmethod -validate :invoke

@@ -29,13 +29,13 @@
     (merge ast
            (when tag
              (if (fn? @var)
-               {:tag AFunction :return-tag tag}
+               {:tag clojure.lang.AFunction :return-tag tag}
                {:tag tag}))
            (when arglists {:arglists arglists}))))
 
 (defmethod -infer-tag :def
   [{:keys [init var] :as ast}]
-  (let [ast (assoc ast :tag Var)
+  (let [ast (assoc ast :tag clojure.lang.Var)
         {:keys [arglists return-tag]} init]
     (merge ast
            (when arglists
@@ -184,14 +184,14 @@
     (merge ast
            (when tag
              {:tag tag})
-           {:arglist (with-meta (mapv :name params)
+           {:arglist (with-meta (mapv :form params)
                        (when tag {:tag tag}))})))
 
 (defmethod -infer-tag :fn
   [{:keys [local methods] :as ast}]
   (merge ast
          {:arglists (seq (map :arglist methods))
-          :tag      AFunction}
+          :tag      clojure.lang.AFunction}
          (when-let [tag (:tag (meta (:form local)))]
            {:return-tag tag})))
 
