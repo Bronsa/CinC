@@ -106,7 +106,7 @@
        [:insn :ACONST_NULL]
 
        (if (primitive? tag)
-         [:push (cast (box tag) const)] ;; handle char/byte
+         [:push (cast (box tag) const)]
          [:get-static (frame :class) (str "const__" id) tag]))]))
 
 (defmethod -emit :const

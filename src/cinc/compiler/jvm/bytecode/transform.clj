@@ -341,6 +341,7 @@
   (.visitLookupSwitchInsn gen (get-label gen l) (int-array (map get-local t))
                           (into-array Label (mapv #(get-label gen %) labels))))
 
+;; todo: smarter
 (defmethod -exec :push
   [_ [x] ^GeneratorAdapter gen]
   (cond
@@ -358,7 +359,14 @@
    (.push gen (float x))
 
    (instance? Double x)
-   (.push gen (double x))))
+   (.push gen (double x))
+
+   (or (instance? Character x)
+       (instance? Short x))
+   (.visitIntInsn gen Opcodes/SIPUSH (int x))
+
+   (instance? Byte x)
+   (.visitIntInsn gen Opcodes/BIPUSH (int x))))
 
 (defn compute-attr [attr]
   (reduce (fn [r x] (+ r (opcode x))) 0 attr))
