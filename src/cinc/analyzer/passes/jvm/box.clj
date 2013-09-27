@@ -84,7 +84,7 @@
 
 (defmethod box :fn-method
   [ast]
-  (update-in ast [:body] -box))
+  (-box (update-in ast [:body] -box)))
 
 (defmethod box :if
   [{:keys [test then else tag] :as ast}]
@@ -101,6 +101,13 @@
            {:test test
             :then then
             :else else})))
+
+(defmethod box :try
+  [ast]
+  (-> ast
+    (update-in [:body] -box)
+    (update-in [:catches] #(mapv -box %))
+    (update-in [:finally] -box)))
 
 (defmethod box :invoke
   [{:keys [fn args] :as ast}]
