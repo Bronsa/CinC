@@ -9,19 +9,22 @@
      :assignable? (not (:final flags))
      :class       class
      :field       sym
+     :ret-tag     (maybe-class type)
      :tag         (maybe-class type)}))
 
 (defn maybe-static-method [[_ class sym]]
   (when-let [{:keys [return-type]} (static-method class sym)]
-    {:op     :static-call
-     :tag    (maybe-class return-type)
-     :class  class
-     :method sym}))
+    {:op      :static-call
+     :tag     (maybe-class return-type)
+     :ret-tag (maybe-class return-type)
+     :class   class
+     :method  sym}))
 
 (defn maybe-instance-method [target-expr class sym]
   (when-let [{:keys [return-type]} (instance-method class sym)]
       {:op       :instance-call
        :tag      (maybe-class return-type)
+       :ret-tag  (maybe-class return-type)
        :instance target-expr
        :class    class
        :method   sym
@@ -35,6 +38,7 @@
      :instance    target-expr
      :field       sym
      :tag         (maybe-class type)
+     :ret-tag     (maybe-class type)
      :children    [:instance]}))
 
 (defn analyze-host-call
@@ -95,7 +99,7 @@
        :children    [:target]})))
 
 (defn analyze-host-expr
-  [{:keys [op form env] :as ast}]
+  [{:keys [op form tag env] :as ast}]
   (if (#{:host-interop :host-call :host-field} op)
     (let [target (:target ast)
           class? (maybe-class (:form target))
@@ -114,5 +118,7 @@
                                               (maybe-class (:tag target))) env)
 
                (-analyze-host-expr target-type (:m-or-f ast)
-                                   target class? env))))
+                                   target class? env))
+             (when tag
+               {:tag tag})))
     ast))
