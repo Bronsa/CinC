@@ -224,6 +224,10 @@
   [{:keys [class-name] :as ast}]
   (assoc ast :tag class-name))
 
+(defmethod -infer-tag :set!
+  [{:keys [target] :as ast}]
+  (assoc ast :tag (:tag target)))
+
 (defn infer-tag
   [{:keys [tag form] :as ast}]
   (if tag
