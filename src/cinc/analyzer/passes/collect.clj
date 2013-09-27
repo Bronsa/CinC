@@ -12,10 +12,11 @@
   [form tag type]
   (or ((:constants *collects*) form)
       (let [id (count (:constants *collects*))]
-        (update! *collects* assoc-in [:constants form] {:id   id
-                                                        :tag  tag
-                                                        :val  form
-                                                        :type type})
+        (update! *collects* assoc-in [:constants form]
+                 {:id   id
+                  :tag  tag
+                  :val  form
+                  :type type})
         id)))
 
 (defn -collect-constants

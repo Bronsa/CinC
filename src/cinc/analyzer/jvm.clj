@@ -8,7 +8,7 @@
             [cinc.analyzer.passes :refer [walk prewalk postwalk cycling]]
             [cinc.analyzer.jvm.utils :refer :all :exclude [box]]
             [cinc.analyzer.passes.source-info :refer [source-info]]
-            [cinc.analyzer.passes.cleanup :refer [cleanup]]
+            [cinc.analyzer.passes.cleanup :refer [cleanup1 cleanup2]]
             [cinc.analyzer.passes.elide-meta :refer [elide-meta]]
             [cinc.analyzer.passes.constant-lifter :refer [constant-lift]]
             [cinc.analyzer.passes.warn-earmuff :refer [warn-earmuff]]
@@ -247,7 +247,7 @@
 
       (walk (fn [ast]
               (-> ast
-                cleanup
+                cleanup1
                 warn-earmuff
                 annotate-branch
                 source-info
@@ -260,13 +260,15 @@
             (comp annotate-binding-tag
                (cycling infer-tag analyze-host-expr validate)
                annotate-literal-tag)) ;; not necesary, select on v-l-l
-           (prewalk (validate-loop-locals analyze))))) ;; empty binding atom
+           (prewalk
+            (comp box
+               (validate-loop-locals analyze)))))) ;; empty binding atom
 
       (prewalk
-       (comp (collect :constants
+       (comp cleanup2
+          (collect :constants
                    :callsites
-                   :closed-overs)
-          box))
+                   :closed-overs)))
 
       clear-locals)))
 
