@@ -28,9 +28,13 @@
                                 bindings mismatch?)
                 binds (zipmap bindings (mapv (comp :tag meta) bindings))]
             (binding [validating? true]
-              (postwalk (prewalk ast (fn [ast]
-                                       (assoc-in (dissoc ast :tag)
-                                                 [:env :loop-locals-casts] binds)))
+              (postwalk (prewalk (assoc ast :bindings
+                                        (mapv (fn [bind f]
+                                                (assoc bind :form f))
+                                              (:bindings ast) bindings))
+                                 (fn [ast]
+                                         (assoc-in (dissoc ast :tag)
+                                                   [:env :loop-locals-casts] binds)))
                         analyze)))
           ast)))))
 
