@@ -203,6 +203,18 @@
   [_ _ ^GeneratorAdapter gen]
   (.dupX2 gen))
 
+(defmethod -exec :dup2
+  [_ _ ^GeneratorAdapter gen]
+  (.dup2 gen))
+
+(defmethod -exec :dup2-x1
+  [_ _ ^GeneratorAdapter gen]
+  (.dup2X1 gen))
+
+(defmethod -exec :dup2-x2
+  [_ _ ^GeneratorAdapter gen]
+  (.dup2X2 gen))
+
 (defmethod -exec :pop
   [_ _ ^GeneratorAdapter gen]
   (.pop gen))
@@ -292,6 +304,14 @@
   (.visitVarInsn gen (.getOpcode (type (namespace insn))
                                  (opcode (name insn)))
                  (get-local local)))
+
+(defmethod -exec :aload
+  [_ [local] ^GeneratorAdapter gen]
+  (.visitVarInsn gen Opcodes/ALOAD (get-local local)))
+
+(defmethod -exec :astore
+  [_ [local] ^GeneratorAdapter gen]
+  (.visitVarInsn gen Opcodes/ASTORE (get-local local)))
 
 (defn descriptor [tag]
   (.getDescriptor (type tag)))
