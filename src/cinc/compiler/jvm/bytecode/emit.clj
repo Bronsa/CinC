@@ -163,7 +163,7 @@
     ~@(mapcat (fn [i item]
                 `[[:dup]
                   [:push ~(int i)]
-                  ~@(emit item frame)
+                  ~@(emit (assoc item :tag :java.lang.Object) frame)
                   [:array-store :java.lang.Object]])
               (range) list)])
 
@@ -360,36 +360,35 @@
       (mapv (fn [op] [:insn op]) ops))))
 
 (defmethod -emit :static-call
-  [{:keys [env tag validated? args method ^Class class]} frame]
+  [{:keys [env ret-tag validated? args method ^Class class]} frame]
   (if validated?
     `[~@(emit-line-number env)
       ~@(mapcat #(emit % frame) args)
       ~@(or
          (emit-intrinsic class method args)
-         `[[:invoke-static [~(keyword (.getName class) (str method)) ~@(arg-types args)] ~tag]])]
+         `[[:invoke-static [~(keyword (.getName class) (str method))
+                            ~@(mapv :tag args)] ~ret-tag]])]
     `[[:push ~(.getName class)]
       [:invoke-static [:java.lang.Class/forName :java.lang.String] :java.lang.Class]
       [:push ~(str method)]
-      ~@(emit-as-array (mapv #(assoc % :cast Object) args) frame)
+      ~@(emit-as-array args frame)
       [:invoke-static [:clojure.lang.Reflector/invokeStaticMethod
                        :java.lang.Class :java.lang.String :objects]
-       :java.lang.Object]
-      ~@(when tag
-          (emit-cast Object tag))]))
+       :java.lang.Object]]))
 
 (defmethod -emit :instance-call
-  [{:keys [env tag validated? args method ^Class class instance]} frame]
+  [{:keys [env ret-tag validated? args method ^Class class instance]} frame]
   (if validated?
     `[~@(emit-line-number env)
-      ~@(emit (assoc instance :cast class) frame)
+      ~@(emit (assoc instance :tag class) frame)
       ~@(mapcat #(emit % frame) args)
       [~(if (.isInterface class)
           :invoke-interface
           :invoke-virtual)
-       [~(keyword (.getName class) (str method)) ~@(arg-types args)] ~tag]]
+       [~(keyword (.getName class) (str method)) ~@(mapv :tag args)] ~tag]]
     `[~@(emit instance frame)
       [:push ~(str method)]
-      ~@(emit-as-array (mapv #(assoc % :cast Object) args) frame)
+      ~@(emit-as-array args frame)
       [:invoke-static [:clojure.lang.Reflector/invokeInstanceMethod
                        :java.lang.Object :java.lang.String :objects]
        :java.lang.Object]
