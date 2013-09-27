@@ -91,8 +91,7 @@
 
 (defn emit-constant
   [const frame]
-  (let [{:keys [id tag]} (get-in frame [:constants const])
-        tag (or tag (class const))]
+  (let [{:keys [id tag]} (get-in frame [:constants const])]
     ^:const
     [(case const
        (true false)
@@ -102,8 +101,8 @@
        nil
        [:insn :ACONST_NULL]
 
-       (if (primitive? tag)
-         [:push (cast (box tag) const)]
+       (if-not id ;; if it's not in :constants it means it's either a primitive or a string
+         [:push (cast (class const) const)]
          [:get-static (frame :class) (str "const__" id) tag]))]))
 
 (defmethod -emit :const
@@ -880,10 +879,9 @@
 
 (defn emit-constants [{:keys [class constants]}]
   (mapcat (fn [{:keys [val id tag type]}]
-            (when-not (primitive? tag)
-             `[~@(emit-value (or type (u/classify val)) val)
-               ;; [:check-cast ~tag]
-               ~[:put-static class (str "const__" id) tag]]))
+            `[~@(emit-value (or type (u/classify val)) val)
+              ;; [:check-cast ~tag]
+              ~[:put-static class (str "const__" id) tag]])
           (vals constants)))
 
 (defn emit-keyword-callsites
@@ -908,6 +906,13 @@
            protocol-callsites env annotations super interfaces op] :as ast}
    {:keys [debug? class-loader] :as frame}]
   (let [old-frame frame
+
+        constants (into {}
+                        (remove #(let [{:keys [tag type]} (val %)]
+                                   (or (primitive? tag)
+                                       (#{:string :bool} type)))
+                                constants))
+
         frame (merge frame
                      {:class              class-name
                       :constants          constants
@@ -920,8 +925,7 @@
                         :attr #{:public :final :static}
                         :name (str "const__" id)
                         :tag  tag})
-                     (filter #(not (primitive? (:tag %)))
-                             (vals constants)))
+                     (vals constants))
 
         meta-field (when meta
                      [{:op   :field
