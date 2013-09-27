@@ -420,7 +420,7 @@
     `^:container
     [~@(emit-line-number env)
      ~@(emit test frame)
-     ~@(if (:box test)
+     ~@(if (not= (:tag test) Boolean/TYPE)
          [[:dup]
           [:if-null null-label]
           [:get-static :java.lang.Boolean/FALSE :java.lang.Boolean]
@@ -486,7 +486,7 @@
 
         [:mark ~end-label]])
 
-    `[~@(emit (assoc fn :cast :clojure.lang.IFn) frame)
+    `[~@(emit (assoc fn :tag :clojure.lang.IFn) frame) ;; is this check-cast needed?
       ~@(emit-args-and-invoke args frame)]))
 
 (defn emit-shift-mask
@@ -505,11 +505,11 @@
    `[~@(emit test frame)
      [:instance-of :java.lang.Number]
      [:if-z-cmp :EQ ~default-label]
-     ~@(emit (assoc test :cast Integer/TYPE) frame) ;; can we avoid emitting this twice?
+     ~@(emit (assoc test :tag Integer/TYPE) frame)
      ~@(emit-shift-mask ast)]
 
    (numeric? (:tag test))
-   `[~@(emit (assoc test :cast Integer/TYPE) frame)
+   `[~@(emit (assoc test :tag Integer/TYPE) frame)
      ~@(emit-shift-mask ast)]
 
    :else

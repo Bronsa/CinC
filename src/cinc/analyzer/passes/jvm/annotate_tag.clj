@@ -5,7 +5,11 @@
   (:import (clojure.lang IPersistentMap IPersistentSet ISeq Var ArraySeq)))
 
 (defmulti -annotate-literal-tag :op)
-(defmethod -annotate-literal-tag :default [ast] ast)
+(defmethod -annotate-literal-tag :default
+  [{:keys [op form] :as ast}]
+  (if (= :const op)
+    (assoc ast :tag (class form))
+    ast))
 
 (defmethod -annotate-literal-tag :map
   [ast]
@@ -35,9 +39,7 @@
 
 (defmethod -annotate-literal-tag :const
   [{:keys [op type form] :as ast}]
-  (if-let [annotate-method (get-method -annotate-literal-tag type)]
-    (annotate-method ast)
-    (assoc ast :tag (class form))))
+  ((get-method -annotate-literal-tag type) ast))
 
 (defmethod -annotate-literal-tag :quote
   [{:keys [expr] :as ast}]
