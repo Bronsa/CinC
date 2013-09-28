@@ -253,6 +253,7 @@
      "ISHR"                 Opcodes/ISHR
      "IAND"                 Opcodes/IAND
      "public"               Opcodes/ACC_PUBLIC
+     "bridge"               Opcodes/ACC_BRIDGE
      "super"                Opcodes/ACC_SUPER
      "final"                Opcodes/ACC_FINAL
      "static"               Opcodes/ACC_STATIC

@@ -136,6 +136,7 @@
         method (analyze-fn-method meth env)]
     (assoc (dissoc method :variadic?)
       :op       :method
+      :class    (:class env)
       :form     form
       :this     this-expr
       :name     (symbol (clojure.core/name name))
@@ -154,7 +155,8 @@
         class-name (symbol (str (namespace-munge *ns*) "$" name))
         menv (assoc env :this class-name)
         methods (mapv #(assoc (analyze-method-impls % menv)
-                         :interfaces interfaces) methods)]
+                         :interfaces interfaces
+                         :class class-name) methods)]
 
     (-deftype name class-name [] interfaces)
 
@@ -187,7 +189,8 @@
                :locals (zipmap fields fields-expr)
                :this class-name)
         methods (mapv #(assoc (analyze-method-impls % menv)
-                         :interfaces interfaces) methods)]
+                         :interfaces interfaces
+                         :class class-name) methods)]
 
     (-deftype name class-name fields interfaces)
 

@@ -217,8 +217,8 @@
 (defmethod -infer-tag :method
   [{:keys [form body params] :as ast}]
   (let [tag (or (:tag (meta (first form)))
-                (:tag (meta (second form)))
-                (:tag body))]
+                  (:tag (meta (second form)))
+                  #_(:tag body))]
     (if tag
       (assoc ast :tag tag)
       ast)))

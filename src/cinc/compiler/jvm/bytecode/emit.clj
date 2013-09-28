@@ -731,14 +731,14 @@
           [:return-value]
           [:end-method]]]
 
-    {:op     :method
-     :attr   #{:public}
-     :method [(into [method-name] arg-types) :java.lang.Object]
-     :code   code}))
+    [{:op     :method
+      :attr   #{:public}
+      :method [(into [method-name] arg-types) :java.lang.Object]
+      :code   code}]))
 
 ;; addAnnotations
 (defmethod -emit :method
-  [{:keys [this args name tag fixed-arity variadic? body env]}
+  [{:keys [this  methods args name bridges tag fixed-arity variadic? body env]}
    {:keys [class] :as frame}]
 
   (let [method-name name
@@ -764,10 +764,21 @@
           [:return-value]
           [:end-method]]]
 
-    {:op     :method
-     :attr   #{:public}
-     :method [(into [method-name] arg-types) return-type]
-     :code   code}))
+    `[~{:op     :method
+        :attr   #{:public}
+        :method [(into [method-name] arg-types) return-type]
+        :code   code}
+      ~@(let [target [(into [(keyword class (str method-name))] arg-types) return-type]]
+         (for [{:keys [name parameter-types return-type]} bridges]
+           {:op :method
+            :attr #{:public :bridge}
+            :method [(into [method-name] parameter-types) return-type]
+            :code `[[:start-method]
+                    [:load-this]
+                    [:load-args]
+                    [:invoke-virtual ~@target]
+                    [:return-value]
+                    [:end-method]]}))]))
 
 (defmethod -emit :local
   [{:keys [to-clear? local name tag bind-tag arg-id]}
@@ -993,7 +1004,7 @@
         closed-overs (mapv (fn [{:keys [name bind-tag mutable] :as local}]
                              (merge local
                                     {:op   :field
-                                     :attr (when deftype? ;; deftype closed overs are its fields
+                                     :attr (when deftype?
                                              (if mutable
                                                #{mutable}
                                                #{:public :final}))
@@ -1172,7 +1183,7 @@
                         ~@meta-field ~@closed-overs ~@protocol-callsites]
          :methods     `[~@class-ctors ~@defrecord-ctor ~@deftype-methods
                         ~@kw-callsite-method ~@variadic-method
-                        ~@meta-methods ~@(mapv #(-emit % frame) methods)]}
+                        ~@meta-methods ~@(mapcat #(-emit % frame) methods)]}
 
         bc
         (t/-compile jvm-ast)
