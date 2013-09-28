@@ -21,10 +21,25 @@
        (u/primitive? (:tag expr))))
 
 (defmethod box :instance-call
-  [{:keys [class] :as ast}]
-  (if-let-box class
-    (assoc (update-in ast [:instance :tag] u/box) :class class)
-    ast))
+  [{:keys [args class validated?] :as ast}]
+  (let [ast (if-let-box class
+              (assoc (update-in ast [:instance :tag] u/box) :class class)
+              ast)]
+    (if validated?
+      ast
+      (assoc ast :args (mapv -box args)))))
+
+(defmethod box :static-call
+  [{:keys [args validated?] :as ast}]
+  (if validated?
+    ast
+    (assoc ast :args (mapv -box args))))
+
+(defmethod box :new
+  [{:keys [args validated?] :as ast}]
+  (if validated?
+    ast
+    (assoc ast :args (mapv -box args))))
 
 (defmethod box :instance-field
   [{:keys [class] :as ast}]
