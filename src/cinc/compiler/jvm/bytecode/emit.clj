@@ -728,7 +728,7 @@
                   args)
           [:mark ~loop-label]
           ~@(emit-line-number env loop-label)
-          ~@(emit (assoc body :cast tag)
+          ~@(emit (assoc body :tag tag)
                   (assoc frame
                     :loop-label  loop-label
                     :loop-locals args))
