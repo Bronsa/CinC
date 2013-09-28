@@ -90,7 +90,7 @@
    [:monitor-exit]])
 
 (defn emit-constant
-  [const frame]
+  [const frame c-tag]
   (let [{:keys [id tag]} (get-in frame [:constants const])]
     ^:const
     [(case const
@@ -102,12 +102,12 @@
        [:insn :ACONST_NULL]
 
        (if-not id ;; if it's not in :constants it means it's either a primitive or a string
-         [:push (cast (class const) const)]
+         [:push (cast (or (box c-tag) (class const)) const)]
          [:get-static (frame :class) (str "const__" id) tag]))]))
 
 (defmethod -emit :const
-  [{:keys [form]} frame]
-  (emit-constant form frame))
+  [{:keys [form tag]} frame]
+  (emit-constant form frame tag))
 
 (defmethod -emit :quote
   [{:keys [expr]} frame]

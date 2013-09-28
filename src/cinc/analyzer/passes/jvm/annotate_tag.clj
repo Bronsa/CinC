@@ -1,5 +1,5 @@
 (ns cinc.analyzer.passes.jvm.annotate-tag
-  (:require [cinc.analyzer.jvm.utils :refer [unbox]]
+  (:require [cinc.analyzer.jvm.utils :refer [unbox maybe-class]]
             [cinc.analyzer.passes :refer [prewalk]]
             [cinc.analyzer.utils :refer [update!]])
   (:import (clojure.lang IPersistentMap IPersistentSet ISeq Var ArraySeq)))
@@ -59,17 +59,18 @@
 ;; after a-l-t, add-binding-atom, after cycling
 (defmethod annotate-binding-tag :binding
   [{:keys [form init local name atom variadic?] :as ast}]
-  (if-let [tag (:tag (meta form))] ;;explicit tag first
+  (if-let [tag (maybe-class (:tag (meta form)))] ;;explicit tag first
     (let [ast (assoc ast :tag tag)]
       (swap! atom assoc :tag tag)
       (if init
         (assoc ast :init (assoc init :tag tag))
         ast))
-    (if-let [tag (or (and init (:tag init))
-                     (and (= :fn local) clojure.lang.AFunction)
-                     (and (= :arg local)
-                          (or (and variadic? clojure.lang.ArraySeq)
-                              Object)))] ;;?
+    (if-let [tag (maybe-class
+                  (or (and init (:tag init))
+                      (and (= :fn local) clojure.lang.AFunction)
+                      (and (= :arg local)
+                           (or (and variadic? clojure.lang.ArraySeq)
+                               Object))))] ;;?
       (do (swap! atom assoc :tag tag)
           (assoc ast :tag tag))
       ast)))

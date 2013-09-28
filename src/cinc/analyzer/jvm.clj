@@ -257,8 +257,7 @@
       ((fn analyze [ast]
          (-> ast
            (postwalk
-            (comp annotate-binding-tag
-               (cycling infer-tag analyze-host-expr validate)
+            (comp (cycling infer-tag analyze-host-expr annotate-binding-tag validate)
                annotate-literal-tag)) ;; not necesary, select on v-l-l
            (prewalk
             (comp box

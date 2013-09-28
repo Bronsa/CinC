@@ -254,8 +254,14 @@
 (defmethod -validate :default [ast] ast)
 
 (defn validate
-  [{:keys [tag] :as ast}]
-  (let [ast (if tag
-              (assoc ast :tag (validate-tag tag))
-              ast)]
-    (-validate ast)))
+  [{:keys [tag ret-tag bind-tag return-tag] :as ast}]
+  (let [ast (merge ast
+                   (when tag
+                     {:tag (validate-tag tag)})
+                   (when ret-tag
+                     {:ret-tag (validate-tag ret-tag)})
+                   (when return-tag
+                     {:return-tag (validate-tag return-tag)})
+                   (when bind-tag
+                     {:bind-tag (validate-tag bind-tag)}))]
+    (-validate ast) ))
