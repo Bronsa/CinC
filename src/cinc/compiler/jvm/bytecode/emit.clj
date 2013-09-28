@@ -33,17 +33,18 @@
 (defn emit-cast [tag cast]
   (if (not (or (primitive? tag)
              (primitive? cast)))
-    [[:check-cast cast]]
+    (when-not (#{Void Void/TYPE} cast)
+      [[:check-cast cast]])
     (emit-box tag cast)))
 
 (defn emit
   ([ast]
      (emit ast {}))
-  ([{:keys [env ret-tag return-tag tag bind-tag] :as ast} frame]
+  ([{:keys [env ret-tag tag bind-tag] :as ast} frame]
      (let [bytecode (-emit ast frame)
            statement? (= :statement (:context env))
            m (meta bytecode)
-           ret-tag (or ret-tag return-tag bind-tag)]
+           ret-tag (or ret-tag bind-tag)]
        (if statement?
          (if (:const m)
            []
@@ -58,8 +59,7 @@
                `[~@(when (= :untyped m)
                      [[:insn :ACONST_NULL]])
                  ~@(when (and tag ret-tag
-                              (not= tag ret-tag)
-                              (not (:container m)))
+                              (not= tag ret-tag))
                      (emit-cast ret-tag tag))])))))
 
 (defmethod -emit :import
@@ -114,7 +114,7 @@
   (-emit expr frame))
 
 (defn emit-var [var frame]
-  (emit-constant var frame))
+  (emit-constant var frame clojure.lang.Var))
 
 (defmethod -emit :var
   [{:keys [var]} frame]
@@ -159,7 +159,7 @@
     ~@(mapcat (fn [i item]
                 `[[:dup]
                   [:push ~(int i)]
-                  ~@(emit (assoc item :tag :java.lang.Object) frame)
+                  ~@(emit item frame)
                   [:array-store :java.lang.Object]])
               (range) list)])
 
@@ -431,7 +431,8 @@
 (defn emit-args-and-invoke
   ([args frame] (emit-args-and-invoke args frame false))
   ([args frame proto?]
-     `[~@(mapcat #(emit % frame) (take 20 args))
+     `[[:check-cast :clojure.lang.IFn]
+       ~@(mapcat #(emit % frame) (take 20 args))
        ~@(when-let [args (seq (drop 20 args))]
            (emit-as-array args frame))
        [:invoke-interface [:clojure.lang.IFn/invoke ~@(repeat (min 21 (count args)) :java.lang.Object) ~@(when proto? [:java.lang.Object])] :java.lang.Object]]))
@@ -480,7 +481,7 @@
 
         [:mark ~end-label]])
 
-    `[~@(emit (assoc fn :tag :clojure.lang.IFn) frame) ;; is this check-cast needed?
+    `[~@(emit fn frame)
       ~@(emit-args-and-invoke args frame)]))
 
 (defn emit-shift-mask
@@ -722,13 +723,15 @@
 
         code
         `[[:start-method]
-          [:local-variable ~(:name this) ~class nil ~loop-label ~end-label 0]
+          ~[:local-variable (:name this) class nil loop-label end-label (:name this)]
           ~@(mapv (fn [{:keys [tag name]}]
                     [:local-variable name tag nil loop-label end-label name])
                   args)
           [:mark ~loop-label]
           ~@(emit-line-number env loop-label)
-          ~@(emit (assoc body :tag tag)
+          ~@(emit (assoc body
+                    :tag return-type
+                    :ret-tag (or (:tag body) Object))
                   (assoc frame
                     :loop-label  loop-label
                     :loop-locals args))
@@ -740,8 +743,6 @@
      :attr   #{:public}
      :method [(into [method-name] arg-types) return-type]
      :code   code}))
-
-;; emit local, deftype/reify, letfn
 
 (defmethod -emit :local
   [{:keys [to-clear? local name tag bind-tag arg-id]}
@@ -781,16 +782,15 @@
 
 (defmulti emit-value (fn [type value] type))
 
-;; should probably never hit those
-;; (defmethod emit-value :nil [_ _]
-;;   [[:insn :ACONST_NULL]])
+(defmethod emit-value :nil [_ _]
+  [[:insn :ACONST_NULL]])
 
-;; (defmethod emit-value :string [_ s]
-;;   [[:push s]])
+(defmethod emit-value :string [_ s]
+  [[:push s]])
 
-;; (defmethod emit-value :bool [_ b]
-;;   [[:get-static (if b :java.lang.Boolean/TRUE :java.lang.Boolean/FALSE)
-;;     :java.lang.Boolean]])
+(defmethod emit-value :bool [_ b]
+  [[:get-static (if b :java.lang.Boolean/TRUE :java.lang.Boolean/FALSE)
+    :java.lang.Boolean]])
 
 (defmethod emit-value :number [_ n]
   [[:push n]
@@ -837,7 +837,7 @@
    [:invoke-static [:clojure.lang.RT/var :java.lang.String :java.lang.String]
     :clojure.lang.Var]])
 
-;; todo record/type
+;; todo record/type, slow path
 
 (defn emit-values-as-array [list]
   `[[:push ~(int (count list))]
@@ -880,7 +880,7 @@
 (defn emit-constants [{:keys [class constants]}]
   (mapcat (fn [{:keys [val id tag type]}]
             `[~@(emit-value (or type (u/classify val)) val)
-              ;; [:check-cast ~tag]
+              [:check-cast ~tag]
               ~[:put-static class (str "const__" id) tag]])
           (vals constants)))
 

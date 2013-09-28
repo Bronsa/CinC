@@ -206,6 +206,7 @@
                   (and (= :var (:op fn))
                        (:tag (meta (:var fn)))))]
       (merge ast
+             {:ret-tag Object}
              (when tag
                {:tag tag})))
     (if-let [tag (:return-tag fn)]
