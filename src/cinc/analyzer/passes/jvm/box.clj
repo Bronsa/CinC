@@ -125,10 +125,9 @@
 
 (defmethod box :case
   [{:keys [tag default tests thens] :as ast}]
-  (if (u/primitive? tag)
+  (if (and tag (u/primitive? tag))
     ast
     (-> ast
-      (assoc-in [:tests] (mapv (fn [t] (update-in t [:test] -box)) tests))
       (assoc-in [:thens] (mapv (fn [t] (update-in t [:then] -box)) thens))
       (update-in [:default] -box))))
 

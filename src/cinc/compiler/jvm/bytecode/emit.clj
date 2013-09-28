@@ -101,8 +101,9 @@
        nil
        [:insn :ACONST_NULL]
 
-       (if-not id ;; if it's not in :constants it means it's either a primitive or a string
-         [:push (cast (or (box c-tag) (class const)) const)]
+       (if (or (primitive? c-tag)
+               (string? const))
+         [:push (do-cast (or (box c-tag) (class const)) const)]
          [:get-static (frame :class) (str "const__" id) tag]))]))
 
 (defmethod -emit :const
@@ -494,6 +495,7 @@
 
 (defn emit-test-ints
   [{:keys [test test-type] :as ast} frame default-label]
+
   (cond
    (nil? (:tag test))
    ;; reflection warning
@@ -532,7 +534,7 @@
      [:if-cmp :long :NE ~default-label]
      ~@(emit then frame)]
 
-   (#{Integer Short Byte} tag)
+   (numeric? tag)
    `[~@(when (not (zero? mask))
          `[~@(emit (assoc test :tag Long/TYPE) frame)
            ~@(emit (assoc comp :tag Long/TYPE) frame)
