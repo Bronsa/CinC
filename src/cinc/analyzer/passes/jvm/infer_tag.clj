@@ -20,7 +20,8 @@
 
 (defmethod -infer-tag :local
   [{:keys [atom] :as ast}]
-  (merge @atom ast
+  (merge @atom
+         ast
          {:bind-tag (:tag @atom)}))
 
 (defmethod -infer-tag :var
@@ -232,9 +233,7 @@
 
 (defn infer-tag
   [{:keys [tag form] :as ast}]
-  (if tag
-    ast
-    (if-let [form-tag (and form
-                           (:tag (meta form)))]
-      (assoc (-infer-tag ast) :tag form-tag)
-      (-infer-tag ast))))
+  (if-let [form-tag (and form
+                         (:tag (meta form)))]
+    (assoc (-infer-tag ast) :tag form-tag)
+    (-infer-tag ast)))

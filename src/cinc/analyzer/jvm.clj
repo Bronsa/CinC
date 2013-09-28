@@ -221,7 +221,7 @@
     {:op          :case
      :form        form
      :env         env
-     :test        test-expr
+     :test        (assoc test-expr :case-test true)
      :default     default-expr
      :tests       tests
      :thens       thens
@@ -232,7 +232,7 @@
      :switch-type switch-type
      :test-type   test-type
      :skip-check? skip-check?
-     :children [:test :tests :thens :default]}))
+     :children    [:test :tests :thens :default]}))
 
 (defn analyze
   "Given an environment, a map containing
@@ -252,7 +252,11 @@
                 warn-earmuff
                 annotate-branch
                 source-info
-                elide-meta))
+                elide-meta
+                ((fn [ast]
+                   (when (:case-test ast)
+                     (swap! (:atom ast) assoc :case-test true))
+                   ast))))
             constant-lift)
 
       ((fn analyze [ast]

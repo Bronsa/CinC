@@ -59,7 +59,8 @@
 ;; after a-l-t, add-binding-atom, after cycling
 (defmethod annotate-binding-tag :binding
   [{:keys [form init local name atom variadic?] :as ast}]
-  (if-let [tag (maybe-class (:tag (meta form)))] ;;explicit tag first
+  (if-let [tag (and (not (:case-test @atom))
+                    (maybe-class (:tag (meta form))))] ;;explicit tag first
     (let [ast (assoc ast :tag tag)]
       (swap! atom assoc :tag tag)
       (if init
@@ -75,8 +76,9 @@
       ast)))
 
 (defmethod annotate-binding-tag :local
-  [{:keys [name form atom] :as ast}]
-  (if-let [tag (or (:tag (meta form)) ;;explicit tag first
+  [{:keys [name form atom case-test] :as ast}]
+  (if-let [tag (or (and (not case-test)
+                        (:tag (meta form))) ;;explicit tag first
                    (@atom :tag))]
     (assoc ast :tag tag)
     ast))
