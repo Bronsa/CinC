@@ -1,4 +1,5 @@
 (ns cinc.compiler.jvm.bytecode.emit
+  (:refer-clojure :exclude [cast])
   (:require [cinc.analyzer.utils :as u]
             [cinc.analyzer.jvm.utils :refer [primitive? numeric? box] :as j.u]
             [clojure.string :as s]
@@ -89,6 +90,28 @@
   [~@(emit target frame)
    [:monitor-exit]])
 
+(defn cast [to el]
+  (if (numeric? to)
+    (condp = (box to)
+      Integer
+      (.intValue ^Number el)
+
+      Long
+      (.longValue ^Number el)
+
+      Double
+      (.doubleValue ^Number el)
+
+      Float
+      (.floatValue ^Number el)
+
+      Short
+      (.shortValue ^Number el)
+
+      Byte
+      (.byteValue ^Number el))
+    (clojure.core/cast to el)))
+
 (defn emit-constant
   [const frame c-tag]
   (let [{:keys [id tag]} (get-in frame [:constants const])]
@@ -103,7 +126,7 @@
 
        (if (or (primitive? c-tag)
                (string? const))
-         [:push (do-cast (or (box c-tag) (class const)) const)]
+         [:push (cast (or (box c-tag) (class const)) const)]
          [:get-static (frame :class) (str "const__" id) tag]))]))
 
 (defmethod -emit :const
