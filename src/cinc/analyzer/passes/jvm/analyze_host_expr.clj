@@ -102,7 +102,8 @@
   [{:keys [op form tag env] :as ast}]
   (if (#{:host-interop :host-call :host-field} op)
     (let [target (:target ast)
-          class? (maybe-class (:form target))
+          class? (and (= :const (:op target))
+                      (maybe-class (:form target)))
           target-type (if class? :static :instance)]
       (merge {:form form
               :env  env}

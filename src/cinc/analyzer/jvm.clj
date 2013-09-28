@@ -28,7 +28,7 @@
   (into ana/specials
         '#{monitor-enter monitor-exit clojure.core/import* reify* deftype* case*}))
 
-(defn desugar-host-expr [form]
+(defn desugar-host-expr [form env]
   (cond
    (symbol? form)
    (let [target (maybe-class (namespace form))
@@ -47,11 +47,12 @@
 
           (= (first opname) \.) ; (.foo bar ..)
           (let [[target & args] expr
-                target (if-let [target (maybe-class target)]
+                target (if-let [target (and (not (get (:locals env) target))
+                                            (maybe-class target))]
                          (with-meta (list 'clojure.core/identity target) {:tag Class})
                          target)
                 args (list* (symbol (subs opname 1)) args)]
-            (with-meta (list '. target (if (= 1 (count args)) ;; we don't know if (.foo bar) ia
+            (with-meta (list '. target (if (= 1 (count args)) ;; we don't know if (.foo bar) is
                                          (first args) args)) ;; a method call or a field access
               (meta form)))
 
@@ -94,8 +95,8 @@
            (vary-meta (apply inline? args) merge m)
 
            :else
-           (desugar-host-expr form)))))
-    (desugar-host-expr form)))
+           (desugar-host-expr form env)))))
+    (desugar-host-expr form env)))
 
 (defmethod parse 'monitor-enter
   [[_ target :as form] env]
