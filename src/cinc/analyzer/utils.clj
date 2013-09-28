@@ -97,5 +97,5 @@
         last-arglist (last arglists)]
     (or arglist
         (when (and (seq (filter '#{&} last-arglist))
-                   (>= argc (dec (count last-arglist))))
+                   (>= argc (- (count last-arglist) 2)))
           last-arglist))))
