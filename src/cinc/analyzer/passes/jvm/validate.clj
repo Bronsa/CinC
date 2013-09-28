@@ -90,7 +90,7 @@
                                   (try-best-match tags))]
         (if (empty? rest)
           (let [arg-tags (mapv u/maybe-class (:parameter-types ctor))
-                args (mapv (fn [arg tag] (assoc arg :args tag))
+                args (mapv (fn [arg tag] (assoc arg :tag tag))
                            args arg-tags)]
             (assoc ast
               :args       args
@@ -118,7 +118,7 @@
           (if (apply = (mapv (comp u/maybe-class :return-type) matching))
             (let [ret-tag (u/maybe-class (:return-type m))]
               (assoc ast
-                :ret-tag ret-tag
+                :ret-tag Object
                 :tag     (or tag ret-tag)))
             ast))
         (throw (ex-info (str "No matching method: " method " for class: " class " and given signature")
@@ -196,7 +196,7 @@
             (when-not (arglist-for-arity fn argc)
               (throw (ex-info (str "No matching arity found for function: " (:name fn))
                               {:arity (count args)
-                               :fn    fn }))))
+                               :fn    fn}))))
           (when (and (= :const (:op fn))
                      (not (instance? IFn (:form fn))))
             (throw (ex-info (str (class (:form fn)) " is not a function, but it's used as such")
@@ -247,6 +247,7 @@
         (throw (ex-info (str "no such method found: " name " with given signature in any of the"
                              " provided interfaces: " interfaces)
                         {:method     name
+                         :methods    methods
                          :interfaces interfaces
                          :params     params}))))
     ast))
