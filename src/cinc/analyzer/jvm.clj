@@ -183,6 +183,7 @@
                              :op      :binding})
                           fields)
         menv (assoc env
+               :context :expr
                :locals (zipmap fields fields-expr)
                :this class-name)
         methods (mapv #(assoc (analyze-method-impls % menv)
