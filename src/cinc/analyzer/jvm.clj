@@ -5,20 +5,22 @@
              :refer [analyze parse analyze-in-env wrapping-meta analyze-fn-method]
              :rename {analyze -analyze}]
             [cinc.analyzer.utils :refer [ctx maybe-var]]
-            [cinc.analyzer.passes :refer [walk prewalk cycling]]
+            [cinc.analyzer.passes :refer [walk prewalk postwalk cycling]]
             [cinc.analyzer.jvm.utils :refer :all :exclude [box]]
             [cinc.analyzer.passes.source-info :refer [source-info]]
-            [cinc.analyzer.passes.cleanup :refer [cleanup]]
+            [cinc.analyzer.passes.cleanup :refer [cleanup1 cleanup2]]
             [cinc.analyzer.passes.elide-meta :refer [elide-meta]]
             [cinc.analyzer.passes.constant-lifter :refer [constant-lift]]
             [cinc.analyzer.passes.warn-earmuff :refer [warn-earmuff]]
             [cinc.analyzer.passes.collect :refer [collect]]
-            [cinc.analyzer.passes.jvm.box :refer [box]]
+            [cinc.analyzer.passes.add-binding-atom :refer [add-binding-atom]]
             [cinc.analyzer.passes.uniquify :refer [uniquify-locals]]
+            [cinc.analyzer.passes.jvm.box :refer [box]]
             [cinc.analyzer.passes.jvm.annotate-branch :refer [annotate-branch]]
             [cinc.analyzer.passes.jvm.clear-locals :refer [clear-locals]]
             [cinc.analyzer.passes.jvm.validate :refer [validate]]
-            [cinc.analyzer.passes.jvm.infer-tag :refer [infer-tag infer-constant-tag]]
+            [cinc.analyzer.passes.jvm.infer-tag :refer [infer-tag]]
+            [cinc.analyzer.passes.jvm.annotate-tag :refer [annotate-literal-tag annotate-binding-tag]]
             [cinc.analyzer.passes.jvm.validate-loop-locals :refer [validate-loop-locals]]
             [cinc.analyzer.passes.jvm.analyze-host-expr :refer [analyze-host-expr]]))
 
@@ -181,6 +183,7 @@
                              :op      :binding})
                           fields)
         menv (assoc env
+               :context :expr
                :locals (zipmap fields fields-expr)
                :this class-name)
         methods (mapv #(assoc (analyze-method-impls % menv)
@@ -218,7 +221,7 @@
     {:op          :case
      :form        form
      :env         env
-     :test        test-expr
+     :test        (assoc test-expr :case-test true)
      :default     default-expr
      :tests       tests
      :thens       thens
@@ -229,7 +232,7 @@
      :switch-type switch-type
      :test-type   test-type
      :skip-check? skip-check?
-     :children [:test :tests :thens :default]}))
+     :children    [:test :tests :thens :default]}))
 
 (defn analyze
   "Given an environment, a map containing
@@ -239,24 +242,38 @@
   [form env]
   (binding [ana/macroexpand-1 macroexpand-1]
     (-> (-analyze form env)
+
       uniquify-locals
+      add-binding-atom
+
       (walk (fn [ast]
               (-> ast
+                cleanup1
                 warn-earmuff
                 annotate-branch
                 source-info
-                elide-meta))
-            (comp cleanup
-               (fn analyze
-                 [ast]
-                 ((comp (validate-loop-locals analyze)
-                     (cycling infer-tag analyze-host-expr validate)
-                     infer-constant-tag) ast))
-               constant-lift))
-      (prewalk (comp (collect :constants
-                           :callsites
-                           :closed-overs)
-                  box))
+                elide-meta
+                ((fn [ast]
+                   (when (:case-test ast)
+                     (swap! (:atom ast) assoc :case-test true))
+                   ast))))
+            constant-lift)
+
+      ((fn analyze [ast]
+         (-> ast
+           (postwalk
+            (comp (cycling infer-tag analyze-host-expr annotate-binding-tag validate)
+               annotate-literal-tag)) ;; not necesary, select on v-l-l
+           (prewalk
+            (comp box
+               (validate-loop-locals analyze)))))) ;; empty binding atom
+
+      (prewalk
+       (comp cleanup2
+          (collect :constants
+                   :callsites
+                   :closed-overs)))
+
       clear-locals)))
 
 (defn analyze-file

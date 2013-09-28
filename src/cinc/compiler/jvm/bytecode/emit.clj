@@ -1,4 +1,5 @@
 (ns cinc.compiler.jvm.bytecode.emit
+  (:refer-clojure :exclude [cast])
   (:require [cinc.analyzer.utils :as u]
             [cinc.analyzer.jvm.utils :refer [primitive? numeric? box] :as j.u]
             [clojure.string :as s]
@@ -17,10 +18,10 @@
     (cond
      (numeric? tag)
      [[:invoke-static [:clojure.lang.RT/box tag] :java.lang.Number]
-      [:check-cast box]]
-     (= Character box)
+      #_[:check-cast box]]
+     (= Character box) ;;only char->Character
      [[:invoke-static [:clojure.lang.RT/box :char] :java.lang.Character]]
-     (= Boolean box)
+     (= Boolean box) ;; only bool->Boolean
      [[:invoke-static [:clojure.lang.RT/box :boolean] :java.lang.Object]
       [:check-cast :java.lang.Boolean]])
     (when (primitive? box)
@@ -33,16 +34,18 @@
 (defn emit-cast [tag cast]
   (if (not (or (primitive? tag)
              (primitive? cast)))
-    [[:check-cast cast]]
+    (when-not (#{Void Void/TYPE} cast)
+      [[:check-cast cast]])
     (emit-box tag cast)))
 
 (defn emit
   ([ast]
      (emit ast {}))
-  ([{:keys [env box tag cast] :as ast} frame]
+  ([{:keys [env ret-tag tag bind-tag] :as ast} frame]
      (let [bytecode (-emit ast frame)
            statement? (= :statement (:context env))
-           m (meta bytecode)]
+           m (meta bytecode)
+           ret-tag (or ret-tag bind-tag)]
        (if statement?
          (if (:const m)
            []
@@ -50,20 +53,15 @@
                  (when (and (not (:untyped m))
                             (not (:container m))
                             (not= Void/TYPE tag))
-                   (if (#{Double/TYPE Long/TYPE} tag)
+                   (if (#{Double/TYPE Long/TYPE} ret-tag)
                      [[:pop2]]
                      [[:pop]]))))
          (into bytecode
                `[~@(when (= :untyped m)
-                     (emit nil-expr frame))
-                 ~@(when (and box (not (:container m)))
-                     (emit-box tag (j.u/box tag)))
-                 ~@(when (and cast (not (:container m)))
-                     (if box
-                       (when (not (and box (= cast (j.u/box tag))))
-                         (emit-cast (j.u/box tag) cast))
-                       ;;when-not (= tag cast) ;temporary disable until we stabilize
-                       (emit-cast tag cast)))])))))
+                     [[:insn :ACONST_NULL]])
+                 ~@(when (and tag ret-tag
+                              (not= tag ret-tag))
+                     (emit-cast ret-tag tag))])))))
 
 (defmethod -emit :import
   [{:keys [class]} frame]
@@ -76,9 +74,9 @@
 
 (defmethod -emit :throw
   [{:keys [exception]} frame]
-  (conj
-   (emit (assoc exception :cast :java.lang.Throwable) frame)
-   [:throw-exception]))
+  `^:untyped
+  [~@(emit (assoc exception :tag :java.lang.Throwable) frame)
+   [:throw-exception]])
 
 (defmethod -emit :monitor-enter
   [{:keys [target]} frame]
@@ -92,10 +90,31 @@
   [~@(emit target frame)
    [:monitor-exit]])
 
+(defn cast [to el]
+  (if (numeric? to)
+    (condp = (box to)
+      Integer
+      (.intValue ^Number el)
+
+      Long
+      (.longValue ^Number el)
+
+      Double
+      (.doubleValue ^Number el)
+
+      Float
+      (.floatValue ^Number el)
+
+      Short
+      (.shortValue ^Number el)
+
+      Byte
+      (.byteValue ^Number el))
+    (clojure.core/cast to el)))
+
 (defn emit-constant
-  [const frame]
-  (let [{:keys [id tag]} (get-in frame [:constants const])
-        tag (or tag (class const))]
+  [const frame c-tag]
+  (let [{:keys [id tag]} (get-in frame [:constants const])]
     ^:const
     [(case const
        (true false)
@@ -104,19 +123,22 @@
 
        nil
        [:insn :ACONST_NULL]
-       ;; push primitive numbers
-       [:get-static (frame :class) (str "const__" id) tag])]))
+
+       (if (or (primitive? c-tag)
+               (string? const))
+         [:push (cast (or (box c-tag) (class const)) const)]
+         [:get-static (frame :class) (str "const__" id) tag]))]))
 
 (defmethod -emit :const
-  [{:keys [form]} frame]
-  (emit-constant form frame))
+  [{:keys [form tag]} frame]
+  (emit-constant form frame tag))
 
 (defmethod -emit :quote
   [{:keys [expr]} frame]
   (-emit expr frame))
 
 (defn emit-var [var frame]
-  (emit-constant var frame))
+  (emit-constant var frame clojure.lang.Var))
 
 (defmethod -emit :var
   [{:keys [var]} frame]
@@ -144,7 +166,7 @@
          [:invoke-virtual [:clojure.lang.Var/setDynamic :boolean] :clojure.lang.Var]])
     ~@(when meta
         `[[:dup]
-          ~@(emit (assoc meta :cast :clojure.lang.IPersistentMap) frame)
+          ~@(emit (assoc meta :tag :clojure.lang.IPersistentMap) frame)
           [:invoke-virtual [:clojure.lang.Var/setMeta :clojure.lang.IPersistentMap] :void]])
     ~@(when init
         `[[:dup]
@@ -186,8 +208,8 @@
 (defmethod -emit :with-meta
   [{:keys [meta expr]} frame]
   (into
-   (emit (assoc expr :cast :clojure.lang.IObj) frame)
-   `[~@(emit (assoc meta :cast :clojure.lang.IPersistentMap) frame)
+   (emit (assoc expr :tag :clojure.lang.IObj) frame)
+   `[~@(emit (assoc meta :tag :clojure.lang.IPersistentMap) frame)
      [:invoke-interface [:clojure.lang.IObj/withMeta :clojure.lang.IPersistentMap]
       :clojure.lang.IObj]]))
 
@@ -204,7 +226,7 @@
   (keyword (gensym "local__")))
 
 (defmethod -emit :try
-  [{:keys [body catches finally env tag]} frame]
+  [{:keys [body catches finally env]} frame]
   (let [[start-label end-label ret-label finally-label] (repeatedly label)
         catches (mapv #(assoc %
                          :start-label (label)
@@ -212,12 +234,11 @@
         context (:context env)
         [ret-local finally-local] (repeatedly local)]
 
-
     `^:container
     [[:mark ~start-label]
      ~@(emit body frame)
-     ~@(when (not= :statement context) ;; do this automatically on emit?
-         [[:var-insn :java.lang.Object/ISTORE ret-local]])
+     ~@(when (not= :statement context)
+         [[:astore ret-local]])
      [:mark ~end-label]
      ~@(when finally
          (emit finally frame))
@@ -226,10 +247,10 @@
      ~@(mapcat
         (fn [{:keys [body start-label end-label local]}]
           `[[:mark ~start-label]
-            [:var-insn :java.lang.Object/ISTORE ~(:name local)]
+            [:astore ~(:name local)]
             ~@(emit body frame)
             ~@(when (not= :statement context)
-                [[:var-insn :java.lang.Object/ISTORE ret-local]])
+                [[:astore ret-local]])
             [:mark ~end-label]
             ~@(when finally
                 (emit finally frame))
@@ -237,16 +258,14 @@
         catches)
      ~@(when finally
          `[[:mark ~finally-label]
-           [:var-insn :java.lang.Object/ISTORE ~finally-local]
+           [:astore ~finally-local]
            ~@(emit finally frame)
-           [:var-insn :java.lang.Object/ILOAD ~finally-local]
+           [:aload ~finally-local]
            [:throw-exception]])
 
      [:mark ~ret-label]
      ~@(when (not= :statement context)
-         `[[:var-insn :java.lang.Object/ILOAD ~ret-local]
-           ~@(when tag
-               [[:check-cast tag]])])
+         `[[:aload ~ret-local]])
      [:mark ~(label)]
 
      ~@(for [{:keys [^Class class] :as c} catches]
@@ -269,34 +288,49 @@
        [:line-number line l]])))
 
 (defmethod -emit :static-field
-  [{:keys [field tag class env]} frame]
+  [{:keys [field ret-tag class env]} frame]
   `^:const
   [~@(emit-line-number env)
-   ~[:get-static class field tag]])
+   ~[:get-static class field ret-tag]])
+
+(defn dup [tag]
+  (if (#{Long/TYPE Double/TYPE} tag)
+    [:dup2]
+    [:dup]))
+
+(defn dup-x1 [tag]
+  (if (#{Long/TYPE Double/TYPE} tag)
+    [:dup2-x1]
+    [:dup-x1]))
+
+(defn dup-x2 [tag]
+  (if (#{Long/TYPE Double/TYPE} tag)
+    [:dup2-x2]
+    [:dup-x2]))
 
 (defmethod -emit-set! :static-field
   [{:keys [target val env]} frame]
-  `[~@(emit-line-number env)
-    ~@(emit val frame)
-    [:dup]
-    ~@(emit-cast (:tag val) (:tag target))
-    ~[:put-static (:class target) (:field target) (:tag target)]])
+  (let [{:keys [ret-tag class field]} target]
+   `[~@(emit-line-number env)
+     ~@(emit (assoc val :tag ret-tag) frame)
+     ~(dup ret-tag)
+     ~[:put-static class field ret-tag]]))
 
 (defmethod -emit :instance-field
-  [{:keys [instance class field env tag]} frame]
+  [{:keys [instance class field env ret-tag]} frame]
   `^:const
   [~@(emit-line-number env)
-   ~@(emit (assoc instance :cast class) frame)
-   ~[:get-field class field tag]])
+   ~@(emit (assoc instance :tag class) frame)
+   ~[:get-field class field ret-tag]])
 
 (defmethod -emit-set! :instance-field
   [{:keys [target val env]} frame]
-  `[~@(emit-line-number env)
-    ~@(emit (assoc (:instance target) :cast (:class target)) frame)
-    ~@(emit val frame)
-    [:dup-x1]
-    ~@(emit-cast (:tag val) (:tag target))
-    ~[:put-field (:class target) (:field target) (:tag target)]])
+  (let [{:keys [instance class field ret-tag]} target]
+   `[~@(emit-line-number env)
+     ~@(emit (assoc instance :tag class) frame)
+     ~@(emit (assoc val :tag ret-tag) frame)
+     ~(dup-x1 ret-tag)
+     ~[:put-field class field ret-tag]]))
 
 (defmethod -emit :keyword-invoke
   [{:keys [env fn args] :as ast} frame]
@@ -326,20 +360,18 @@
       [:invoke-interface [:clojure.lang.ILookupThunk/get :java.lang.Object] :java.lang.Object]
       [:mark ~end-label]]))
 
-(defn arg-types [args]
-  (mapv #(or (:cast %) (:tag %)) args))
-
 (defmethod -emit :new
   [{:keys [env ^Class class args validated? tag]} frame]
   (if validated?
     `[[:new-instance ~class]
       [:dup]
       ~@(mapcat #(emit % frame) args)
-      [:invoke-constructor [~(keyword (.getName class) "<init>") ~@(arg-types args)] :void]]
+      [:invoke-constructor [~(keyword (.getName class) "<init>")
+                            ~@(mapv :tag args)] :void]]
     `[[:push ~(.getName class)]
       [:invoke-static [:java.lang.Class/forName :java.lang.String] :java.lang.Class]
       ~@(emit-as-array args frame)
-      [:invoke-static [:clojure.lang.Reflector/invokeCostructor :objects] :java.lang.Object]]))
+      [:invoke-static [:clojure.lang.Reflector/invokeCostructor :java.lang.Class :objects] :java.lang.Object]]))
 
 (defn emit-intrinsic [^Class class method args]
   (let [args (mapv (fn [{:keys [cast tag]}] (or cast tag)) args)
@@ -348,41 +380,38 @@
       (mapv (fn [op] [:insn op]) ops))))
 
 (defmethod -emit :static-call
-  [{:keys [env tag validated? args method ^Class class]} frame]
+  [{:keys [env ret-tag validated? args method ^Class class]} frame]
   (if validated?
     `[~@(emit-line-number env)
       ~@(mapcat #(emit % frame) args)
       ~@(or
          (emit-intrinsic class method args)
-         `[[:invoke-static [~(keyword (.getName class) (str method)) ~@(arg-types args)] ~tag]])]
+         `[[:invoke-static [~(keyword (.getName class) (str method))
+                            ~@(mapv :tag args)] ~ret-tag]])]
     `[[:push ~(.getName class)]
       [:invoke-static [:java.lang.Class/forName :java.lang.String] :java.lang.Class]
       [:push ~(str method)]
-      ~@(emit-as-array (mapv #(assoc % :cast Object) args) frame)
+      ~@(emit-as-array args frame)
       [:invoke-static [:clojure.lang.Reflector/invokeStaticMethod
                        :java.lang.Class :java.lang.String :objects]
-       :java.lang.Object]
-      ~@(when tag
-          (emit-cast Object tag))]))
+       :java.lang.Object]]))
 
 (defmethod -emit :instance-call
-  [{:keys [env tag validated? args method ^Class class instance]} frame]
+  [{:keys [env ret-tag validated? args method ^Class class instance]} frame]
   (if validated?
     `[~@(emit-line-number env)
-      ~@(emit (assoc instance :cast class) frame)
+      ~@(emit (assoc instance :tag class) frame)
       ~@(mapcat #(emit % frame) args)
       [~(if (.isInterface class)
           :invoke-interface
           :invoke-virtual)
-       [~(keyword (.getName class) (str method)) ~@(arg-types args)] ~tag]]
+       [~(keyword (.getName class) (str method)) ~@(mapv :tag args)] ~ret-tag]]
     `[~@(emit instance frame)
       [:push ~(str method)]
-      ~@(emit-as-array (mapv #(assoc % :cast Object) args) frame)
+      ~@(emit-as-array args frame)
       [:invoke-static [:clojure.lang.Reflector/invokeInstanceMethod
                        :java.lang.Object :java.lang.String :objects]
-       :java.lang.Object]
-      ~@(when tag
-          (emit-cast Object tag))]))
+       :java.lang.Object]]))
 
 (defmethod -emit :host-interop
   [{:keys [m-or-f target env]} frame]
@@ -409,7 +438,7 @@
     `^:container
     [~@(emit-line-number env)
      ~@(emit test frame)
-     ~@(if (:box test)
+     ~@(if (not= (:tag test) Boolean/TYPE)
          [[:dup]
           [:if-null null-label]
           [:get-static :java.lang.Boolean/FALSE :java.lang.Boolean]
@@ -426,7 +455,8 @@
 (defn emit-args-and-invoke
   ([args frame] (emit-args-and-invoke args frame false))
   ([args frame proto?]
-     `[~@(mapcat #(emit % frame) (take 20 args))
+     `[[:check-cast :clojure.lang.IFn]
+       ~@(mapcat #(emit % frame) (take 20 args))
        ~@(when-let [args (seq (drop 20 args))]
            (emit-as-array args frame))
        [:invoke-interface [:clojure.lang.IFn/invoke ~@(repeat (min 21 (count args)) :java.lang.Object) ~@(when proto? [:java.lang.Object])] :java.lang.Object]]))
@@ -475,7 +505,7 @@
 
         [:mark ~end-label]])
 
-    `[~@(emit (assoc fn :cast :clojure.lang.IFn) frame)
+    `[~@(emit fn frame)
       ~@(emit-args-and-invoke args frame)]))
 
 (defn emit-shift-mask
@@ -488,17 +518,18 @@
 
 (defn emit-test-ints
   [{:keys [test test-type] :as ast} frame default-label]
+
   (cond
    (nil? (:tag test))
    ;; reflection warning
    `[~@(emit test frame)
      [:instance-of :java.lang.Number]
      [:if-z-cmp :EQ ~default-label]
-     ~@(emit (assoc test :cast Integer/TYPE) frame) ;; can we avoid emitting this twice?
+     ~@(emit (assoc test :tag Integer/TYPE) frame)
      ~@(emit-shift-mask ast)]
 
    (numeric? (:tag test))
-   `[~@(emit (assoc test :cast Integer/TYPE) frame)
+   `[~@(emit (assoc test :tag Integer/TYPE) frame)
      ~@(emit-shift-mask ast)]
 
    :else
@@ -521,15 +552,15 @@
      ~@(emit then frame)]
 
    (= tag Long)
-   `[~@(emit (assoc test :cast Long/TYPE) frame)
-     ~@(emit (assoc comp :cast Long/TYPE) frame)
+   `[~@(emit (assoc test :tag Long/TYPE) frame)
+     ~@(emit (assoc comp :tag Long/TYPE) frame)
      [:if-cmp :long :NE ~default-label]
      ~@(emit then frame)]
 
-   (#{Integer Short Byte} tag)
+   (numeric? tag)
    `[~@(when (not (zero? mask))
-         `[~@(emit (assoc test :cast Long/TYPE) frame)
-           ~@(emit (assoc comp :cast Long/TYPE) frame)
+         `[~@(emit (assoc test :tag Long/TYPE) frame)
+           ~@(emit (assoc comp :tag Long/TYPE) frame)
            [:if-cmp :long :NE ~default-label]])
      ~@(emit then frame)]
 
@@ -602,6 +633,7 @@
      ~@(mapv (fn [{:keys [name tag]} label]
                [:local-variable name (or tag :java.lang.Object) nil label end-label name])
              bindings labels)]))
+
 (defmethod -emit :let
   [ast frame]
   (emit-let ast frame))
@@ -662,38 +694,39 @@
 
 (defmethod -emit :recur
   [{:keys [exprs]} {:keys [loop-label loop-locals] :as frame}]
-  `[~@(mapcat (fn [arg binding]
+  `[~@(mapcat (fn [{:keys [local name tag] :as arg} binding]
                 `[~@(emit arg frame)
-                  ~(if (= :arg (:local binding))
+                  ~(if (= :arg local)
                      [:store-arg (:arg-id binding)]
-                     [:var-insn :java.lang.Object/ISTORE (:name binding)])]) exprs loop-locals)
+                     [:var-insn ~(keyword (if tag (.getName ^Class tag)
+                                              "java.lang.Object") "ISTORE")
+                      ~name])]) exprs loop-locals)
     [:go-to ~loop-label]])
 
-(defn prim-or-obj [tag]
-  (if (and tag (primitive? tag)) ;; should be only long/double
-    tag
-    :java.lang.Object))
+;; (defn prim-or-obj [tag]
+;;   (if (and tag (primitive? tag)) ;; should be only long/double
+;;     tag
+;;     :java.lang.Object))
 
 ;; handle invokePrim
 (defmethod -emit :fn-method
   [{:keys [params tag fixed-arity variadic? body env]} frame]
   (let [method-name (if variadic? :doInvoke :invoke)
-        return-type (prim-or-obj tag)
+        ;; return-type (prim-or-obj tag)
         arg-types (repeat (count params) :java.lang.Object)
         [loop-label end-label] (repeatedly label)
 
         code
         `[[:start-method]
           [:local-variable :this :clojure.lang.AFunction nil ~loop-label ~end-label :this]
-          ~@(mapv (fn [{:keys [name]}]
-                    [:local-variable name :java.lang.Object nil loop-label end-label name])
-                  params) ;; cast when emitting locals?
+          ~@(mapv (fn [{:keys [name tag]}]
+                    [:local-variable name tag nil loop-label end-label name])
+                  params)
           [:mark ~loop-label]
           ~@(emit-line-number env loop-label)
-          ~@(emit (assoc body :box true)
-                  (assoc frame
-                    :loop-label  loop-label
-                    :loop-locals params))
+          ~@(emit body (assoc frame
+                         :loop-label  loop-label
+                         :loop-locals params))
           [:mark ~end-label]
           [:return-value]
           [:end-method]]]
@@ -715,13 +748,15 @@
 
         code
         `[[:start-method]
-          [:local-variable ~(:name this) ~class nil ~loop-label ~end-label 0]
+          ~[:local-variable (:name this) class nil loop-label end-label (:name this)]
           ~@(mapv (fn [{:keys [tag name]}]
                     [:local-variable name tag nil loop-label end-label name])
                   args)
           [:mark ~loop-label]
           ~@(emit-line-number env loop-label)
-          ~@(emit (assoc body :cast tag)
+          ~@(emit (assoc body
+                    :tag return-type
+                    :ret-tag (or (:tag body) Object))
                   (assoc frame
                     :loop-label  loop-label
                     :loop-locals args))
@@ -734,10 +769,9 @@
      :method [(into [method-name] arg-types) return-type]
      :code   code}))
 
-;; emit local, deftype/reify, letfn
-
 (defmethod -emit :local
-  [{:keys [to-clear? local name tag arg-id]} {:keys [closed-overs class] :as frame}]
+  [{:keys [to-clear? local name tag bind-tag arg-id]}
+   {:keys [closed-overs class] :as frame}]
   (let [to-clear? (and to-clear?
                        (not (primitive? tag)))]
    (cond
@@ -754,9 +788,7 @@
     `[[:load-arg ~arg-id]
       ~@(when to-clear?
           [[:insn :ACONST_NULL]
-           [:store-arg arg-id]])
-      ~@(when tag
-          [[:check-cast tag]])]
+           [:store-arg arg-id]])]
 
     (= :fn local)
     [[:var-insn :clojure.lang.AFunction/ILOAD 0]]
@@ -765,16 +797,16 @@
     [[:var-insn :clojure.lang.Object/ILOAD 0]]
 
     :else
-    `[~[:var-insn (keyword (if tag (.getName ^Class tag)
+    `[~[:var-insn (keyword (if bind-tag (.getName ^Class bind-tag)
                                "java.lang.Object") "ILOAD") name]
-      ~@(when to-clear?
+      ~@(when (and to-clear?
+                   (not (primitive? bind-tag)))
           [[:insn :ACONST_NULL]
            [:var-insn (keyword (if tag (.getName ^Class tag)
                                    "java.lang.Object") "ISTORE") name]])])))
 
-(defmulti emit-value (fn [type _] type))
+(defmulti emit-value (fn [type value] type))
 
-;; should probably never hit those
 (defmethod emit-value :nil [_ _]
   [[:insn :ACONST_NULL]])
 
@@ -798,7 +830,13 @@
     [:invoke-static [:java.lang.Double/valueOf :double] :java.lang.Double]
 
     (instance? Float n)
-    [:invoke-static [:java.lang.Float/valueOf :float] :java.lang.Float])])
+    [:invoke-static [:java.lang.Float/valueOf :float] :java.lang.Float]
+
+    (instance? Byte n)
+    [:invoke-static [:java.lang.Byte/valueOf :byte] :java.lang.Byte]
+
+    (instance? Short n)
+    [:invoke-static [:java.lang.Short/valueOf :short] :java.lang.Short])])
 
 (defmethod emit-value :class [_ c]
   (if (primitive? c)
@@ -819,14 +857,12 @@
     :clojure.lang.Keyword]])
 
 (defmethod emit-value :var [_ ^clojure.lang.Var v]
-  (let [name (name (.sym v))
-        ns (str (ns-name (.ns v)))]
-    [[:push ns]
-     [:push name]
-     [:invoke-static [:clojure.lang.RT/var :java.lang.String :java.lang.String]
-      :clojure.lang.Var]]))
+  [[:push (str (ns-name (.ns v)))]
+   [:push (name (.sym v))]
+   [:invoke-static [:clojure.lang.RT/var :java.lang.String :java.lang.String]
+    :clojure.lang.Var]])
 
-;; todo record/type
+;; todo record/type, slow path
 
 (defn emit-values-as-array [list]
   `[[:push ~(int (count list))]
@@ -868,12 +904,9 @@
 
 (defn emit-constants [{:keys [class constants]}]
   (mapcat (fn [{:keys [val id tag type]}]
-            (let [v (emit-value (or type (u/classify val)) val)]
-              `[~@(if (primitive? tag)
-                    (butlast v)
-                    v)
-                [:check-cast ~tag]
-                ~[:put-static class (str "const__" id) tag]]))
+            `[~@(emit-value (or type (u/classify val)) val)
+              [:check-cast ~tag]
+              ~[:put-static class (str "const__" id) tag]])
           (vals constants)))
 
 (defn emit-keyword-callsites
@@ -898,6 +931,13 @@
            protocol-callsites env annotations super interfaces op] :as ast}
    {:keys [debug? class-loader] :as frame}]
   (let [old-frame frame
+
+        constants (into {}
+                        (remove #(let [{:keys [tag type]} (val %)]
+                                   (or (primitive? tag)
+                                       (#{:string :bool} type)))
+                                constants))
+
         frame (merge frame
                      {:class              class-name
                       :constants          constants
@@ -990,7 +1030,7 @@
                                        [[:load-this]
                                         [:load-arg id]
 
-                                        [:check-cast tag]
+                                        ;; [:check-cast tag]
                                         [:put-field class-name name tag]])
                                      closed-overs (if meta (rest (range)) (range)))
 
@@ -1098,7 +1138,7 @@
                                                    ~@(emit-value :keyword field)
                                                    [:insn :ACONST_NULL]
                                                    [:invoke-interface [:clojure.lang.IPersistentMap/valAt :java.lang.Object :java.lang.Object] :java.lang.Object]
-                                                   [:var-insn :java.lang.Object/ISTORE ~id]
+                                                   [:astore ~id]
                                                    [:load-arg 0]
                                                    ~@(emit-value :keyword field)
                                                    [:invoke-interface [:clojure.lang.IPersistentMap/without :java.lang.Object] :clojure.lang.IPersistentMap]
@@ -1135,7 +1175,7 @@
 
         class (.defineClass ^clojure.lang.DynamicClassLoader class-loader class-name bc nil)]
     (if deftype?
-      (emit nil-expr frame)
+      [[:insn :ACONST_NULL]]
       (with-meta
         `[[:new-instance ~class-name]
           [:dup]

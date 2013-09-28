@@ -1,6 +1,6 @@
 (ns cinc.analyzer.passes.jvm.box
   (:require [cinc.analyzer.jvm.utils :as u])
-  (:require [cinc.analyzer.utils :refer [protocol-node?]]))
+  (:require [cinc.analyzer.utils :refer [protocol-node? arglist-for-arity]]))
 
 (defmulti box :op)
 
@@ -11,47 +11,45 @@
        ~then
        ~else)))
 
+(defn -box [{:keys [tag] :as ast}]
+  (if (u/primitive? tag)
+    (assoc ast :tag (u/box tag))
+    ast))
+
+(defn boxed? [tag expr]
+  (and (not (u/primitive? tag))
+       (u/primitive? (:tag expr))))
+
 (defmethod box :instance-call
-  [{:keys [class] :as ast}]
-  (if-let-box class
-              (assoc (assoc-in ast [:instance :box] true)
-     :class class)
-   ast))
+  [{:keys [args class validated?] :as ast}]
+  (let [ast (if-let-box class
+              (assoc (update-in ast [:instance :tag] u/box) :class class)
+              ast)]
+    (if validated?
+      ast
+      (assoc ast :args (mapv -box args)))))
+
+(defmethod box :static-call
+  [{:keys [args validated?] :as ast}]
+  (if validated?
+    ast
+    (assoc ast :args (mapv -box args))))
+
+(defmethod box :new
+  [{:keys [args validated?] :as ast}]
+  (if validated?
+    ast
+    (assoc ast :args (mapv -box args))))
 
 (defmethod box :instance-field
   [{:keys [class] :as ast}]
   (if-let-box class
-              (assoc (assoc-in ast [:instance :box] true)
-      :class class)
+    (assoc (update-in ast [:instance :tag] u/box) :class class)
     ast))
-
-(defn -box [{:keys [tag] :as ast}]
-  (if (u/primitive? tag)
-    (assoc ast :box true)
-    ast))
-
-(defmethod box :fn-method
-  [ast]
-  (if box
-    (assoc-in ast [:body :box] true)
-    ast))
-
-(defmethod box :if
-  [{:keys [test then else box] :as ast}]
-  (if (:box then)
-    ast
-    (let [test (if (and (not (:box test))
-                        (= Boolean/TYPE (:tag test)))
-                 test (assoc test :box true))
-          [then else] (if box (mapv -box [then else]) [then else])]
-      (merge ast
-             {:test test
-              :then then
-              :else else}))))
 
 (defmethod box :def
   [{:keys [init] :as ast}]
-  (if init
+  (if (and init (u/primitive? (:tag init)))
     (update-in ast [:init] -box)
     ast))
 
@@ -72,32 +70,78 @@
       :vals vals)))
 
 (defmethod box :do
-  [{:keys [box] :as ast}]
-  (if box
-    (assoc-in ast [:ret :box] true)
+  [{:keys [tag ret] :as ast}]
+  (if (boxed? tag ret)
+    (update-in ast [:ret] -box)
     ast))
 
-(defmethod box :let
-  [{:keys [box] :as ast}]
-  (if box
-    (assoc-in ast [:body :box] true)
-    ast))
-
-(defmethod box :letfn
-  [{:keys [box] :as ast}]
-  (if box
-    (assoc-in ast [:body :box] true)
-    ast))
-
-(defmethod box :invoke
-  [{:keys [fn args] :as ast}]
-  (if-not (and (#{:var :the-var} (:op fn))
-               (protocol-node? (:var fn)))
-    (assoc ast :args (mapv -box args))
+(defmethod box :quote
+  [{:keys [tag expr] :as ast}]
+  (if (boxed? tag expr)
+    (update-in ast [:expr] -box)
     ast))
 
 (defmethod box :keyword-invoke
   [{:keys [args] :as ast}]
+  (assoc ast :args (mapv -box args)))
+
+(defmethod box :let
+  [{:keys [tag body] :as ast}]
+  (if (boxed? tag body)
+    (update-in ast [:body] -box)
+    ast))
+
+(defmethod box :letfn
+  [{:keys [tag body] :as ast}]
+  (if (boxed? tag body)
+    (update-in ast [:body] -box)
+    ast))
+
+(defmethod box :loop
+  [{:keys [tag body] :as ast}]
+  (if (boxed? tag body)
+    (update-in ast [:body] -box)
+    ast))
+
+(defmethod box :fn-method
+  [ast]
+  (-box (update-in ast [:body] -box)))
+
+(defmethod box :if
+  [{:keys [test then else tag] :as ast}]
+  (let [test-tag (:tag test)
+        test (if (and (u/primitive? test-tag)
+                      (not= Boolean/TYPE test-tag))
+               (assoc test :tag (u/box test-tag))
+               test)
+        [then else] (if (or (boxed? tag then)
+                            (boxed? tag else))
+                      (mapv -box [then else])
+                      [then else])]
+    (merge ast
+           {:test test
+            :then then
+            :else else})))
+
+(defmethod box :case
+  [{:keys [tag default tests thens] :as ast}]
+  (if (and tag (u/primitive? tag))
+    ast
+    (-> ast
+      (assoc-in [:thens] (mapv (fn [t] (update-in t [:then] -box)) thens))
+      (update-in [:default] -box))))
+
+(defmethod box :try
+  [ast]
+  (-> ast
+    (update-in [:body] -box)
+    (update-in [:catches] #(mapv -box %))
+    (update-in [:finally] -box)))
+
+(defmethod box :invoke
+  [{:keys [fn args] :as ast}]
+  ;; (if-not (and (#{:var :the-var} (:op fn))
+  ;;                (protocol-node? (:var fn))))
   (assoc ast :args (mapv -box args)))
 
 (defmethod box :default [ast] ast)

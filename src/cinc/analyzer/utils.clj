@@ -96,6 +96,6 @@
         arglist (->> arglists (filter #(= argc (count %))) first)
         last-arglist (last arglists)]
     (or arglist
-     (when (and (> argc (count last-arglist))
-                (seq (filter '#{&} last-arglist)))
-       (last arglists)))))
+        (when (and (seq (filter '#{&} last-arglist))
+                   (>= argc (dec (count last-arglist))))
+          last-arglist))))

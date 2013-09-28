@@ -203,6 +203,18 @@
   [_ _ ^GeneratorAdapter gen]
   (.dupX2 gen))
 
+(defmethod -exec :dup2
+  [_ _ ^GeneratorAdapter gen]
+  (.dup2 gen))
+
+(defmethod -exec :dup2-x1
+  [_ _ ^GeneratorAdapter gen]
+  (.dup2X1 gen))
+
+(defmethod -exec :dup2-x2
+  [_ _ ^GeneratorAdapter gen]
+  (.dup2X2 gen))
+
 (defmethod -exec :pop
   [_ _ ^GeneratorAdapter gen]
   (.pop gen))
@@ -293,6 +305,14 @@
                                  (opcode (name insn)))
                  (get-local local)))
 
+(defmethod -exec :aload
+  [_ [local] ^GeneratorAdapter gen]
+  (.visitVarInsn gen Opcodes/ALOAD (get-local local)))
+
+(defmethod -exec :astore
+  [_ [local] ^GeneratorAdapter gen]
+  (.visitVarInsn gen Opcodes/ASTORE (get-local local)))
+
 (defn descriptor [tag]
   (.getDescriptor (type tag)))
 
@@ -321,6 +341,7 @@
   (.visitLookupSwitchInsn gen (get-label gen l) (int-array (map get-local t))
                           (into-array Label (mapv #(get-label gen %) labels))))
 
+;; todo: smarter
 (defmethod -exec :push
   [_ [x] ^GeneratorAdapter gen]
   (cond
@@ -338,7 +359,14 @@
    (.push gen (float x))
 
    (instance? Double x)
-   (.push gen (double x))))
+   (.push gen (double x))
+
+   (or (instance? Character x)
+       (instance? Short x))
+   (.visitIntInsn gen Opcodes/SIPUSH (int x))
+
+   (instance? Byte x)
+   (.visitIntInsn gen Opcodes/BIPUSH (int x))))
 
 (defn compute-attr [attr]
   (reduce (fn [r x] (+ r (opcode x))) 0 attr))

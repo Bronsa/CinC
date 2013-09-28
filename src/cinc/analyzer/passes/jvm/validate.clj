@@ -90,9 +90,7 @@
                                   (try-best-match tags))]
         (if (empty? rest)
           (let [arg-tags (mapv u/maybe-class (:parameter-types ctor))
-                args (mapv (fn [arg tag] (if (not= tag (:tag arg))
-                                          (assoc arg :cast tag)
-                                          arg))
+                args (mapv (fn [arg tag] (assoc arg :tag tag))
                            args arg-tags)]
             (assoc ast
               :args       args
@@ -111,17 +109,17 @@
         (if (empty? rest)
           (let [ret-tag  (u/maybe-class (:return-type m))
                 arg-tags (mapv u/maybe-class (:parameter-types m))
-                args     (mapv (fn [arg tag] (if (not= tag (:tag arg))
-                                              (assoc arg :cast tag)
-                                              arg)) args arg-tags)]
+                args (mapv (fn [arg tag] (assoc arg :tag tag)) args arg-tags)]
             (assoc ast
               :validated? true
-              :tag        ret-tag
+              :ret-tag    ret-tag
+              :tag        (or tag ret-tag)
               :args       args))
           (if (apply = (mapv (comp u/maybe-class :return-type) matching))
-            (let [tag (u/maybe-class (:return-type m))]
+            (let [ret-tag (u/maybe-class (:return-type m))]
               (assoc ast
-                :tag tag))
+                :ret-tag Object
+                :tag     (or tag ret-tag)))
             ast))
         (throw (ex-info (str "No matching method: " method " for class: " class " and given signature")
                         {:method method
@@ -163,12 +161,12 @@
 (defmethod -validate :def
   [{:keys [var init] :as ast}]
   (when-let [tag (:tag init)]
-    (alter-meta! var assoc :tag tag))
+    #_(alter-meta! var assoc :tag tag))
   (when-let [arglists (:arglists init)]
     (doseq [arglist arglists]
       (when-let [tag (:tag (meta arglist))]
         (validate-tag tag)))
-    (alter-meta! var assoc :arg-lists arglists))
+    #_(alter-meta! var assoc :arg-lists arglists))
   ast)
 
 (defmethod -validate :invoke
@@ -198,14 +196,12 @@
             (when-not (arglist-for-arity fn argc)
               (throw (ex-info (str "No matching arity found for function: " (:name fn))
                               {:arity (count args)
-                               :fn    fn }))))
+                               :fn    fn}))))
           (when (and (= :const (:op fn))
                      (not (instance? IFn (:form fn))))
             (throw (ex-info (str (class (:form fn)) " is not a function, but it's used as such")
                             {:form form})))
-          (if (and tag (not (u/primitive? tag)))
-            (assoc ast :cast tag)
-            ast))))))
+          ast)))))
 
 (defn validate-interfaces [interfaces]
   (when-not (every? #(.isInterface ^Class %) (disj interfaces Object))
@@ -251,6 +247,7 @@
         (throw (ex-info (str "no such method found: " name " with given signature in any of the"
                              " provided interfaces: " interfaces)
                         {:method     name
+                         :methods    methods
                          :interfaces interfaces
                          :params     params}))))
     ast))
@@ -258,8 +255,14 @@
 (defmethod -validate :default [ast] ast)
 
 (defn validate
-  [{:keys [tag] :as ast}]
-  (let [ast (if tag
-              (assoc ast :tag (validate-tag tag))
-              ast)]
-    (-validate ast)))
+  [{:keys [tag ret-tag bind-tag return-tag] :as ast}]
+  (let [ast (merge ast
+                   (when tag
+                     {:tag (validate-tag tag)})
+                   (when ret-tag
+                     {:ret-tag (validate-tag ret-tag)})
+                   (when return-tag
+                     {:return-tag (validate-tag return-tag)})
+                   (when bind-tag
+                     {:bind-tag (validate-tag bind-tag)}))]
+    (-validate ast) ))
