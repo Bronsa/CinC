@@ -778,11 +778,12 @@
 
     (closed-overs name)
     `[[:load-this]
-      ~[:get-field class name tag]
-      ~@(when to-clear?
+      ~[:get-field class name bind-tag]
+      ~@(when (and to-clear?
+                   (not (primitive? bind-tag)))
           [[:load-this]
            [:insn :ACONST_NULL]
-           [:put-field class name tag]])]
+           [:put-field class name bind-tag]])]
 
     (= :arg local)
     `[[:load-arg ~arg-id]
@@ -802,7 +803,7 @@
       ~@(when (and to-clear?
                    (not (primitive? bind-tag)))
           [[:insn :ACONST_NULL]
-           [:var-insn (keyword (if tag (.getName ^Class tag)
+           [:var-insn (keyword (if bind-tag (.getName ^Class bind-tag)
                                    "java.lang.Object") "ISTORE") name]])])))
 
 (defmulti emit-value (fn [type value] type))
@@ -928,7 +929,7 @@
 
 (defn emit-class
   [{:keys [class-name meta methods variadic? constants closed-overs keyword-callsites
-           protocol-callsites env annotations super interfaces op] :as ast}
+           protocol-callsites env annotations super interfaces op fields] :as ast}
    {:keys [debug? class-loader] :as frame}]
   (let [old-frame frame
 
@@ -989,14 +990,17 @@
         deftype? (= op :deftype)
         defrecord? (contains? closed-overs '__meta)
 
-        closed-overs (mapv (fn [{:keys [name tag mutable] :as local}]
+        closed-overs (mapv (fn [{:keys [name bind-tag mutable] :as local}]
                              (merge local
                                     {:op   :field
                                      :attr (when deftype? ;; deftype closed overs are its fields
                                              (if mutable
                                                #{mutable}
                                                #{:public :final}))
-                                     :tag  (or tag Object)})) (vals closed-overs))
+                                     :tag  (or bind-tag Object)}))
+                           (if deftype?
+                             fields
+                             (vals closed-overs)))
 
         ctor-types (into (if meta [:clojure.lang.IPersistentMap] [])
                          (repeat (count closed-overs) :java.lang.Object))
@@ -1026,12 +1030,12 @@
                                        [:load-arg 0]
                                        [:put-field class-name :__meta :clojure.lang.IPersistentMap]])
                                   ~@(mapcat
-                                     (fn [{:keys [name tag]} id]
-                                       [[:load-this]
-                                        [:load-arg id]
-
-                                        ;; [:check-cast tag]
-                                        [:put-field class-name name tag]])
+                                     (fn [{:keys [name bind-tag]} id]
+                                       `[[:load-this]
+                                         ~[:load-arg id]
+                                         ~@(emit-cast Object bind-tag)
+                                         ;; [:check-cast tag]
+                                         ~[:put-field class-name name bind-tag]])
                                      closed-overs (if meta (rest (range)) (range)))
 
                                   [:label ~end-label]
@@ -1181,7 +1185,7 @@
           [:dup]
           ~@(when meta
               [[:insn :ACONST_NULL]])
-          ~@(mapcat #(emit (assoc % :op :local) old-frame)
+          ~@(mapcat #(emit (assoc % :op :local :tag Object) old-frame)
                     closed-overs) ;; need to clear?
           [:invoke-constructor [~(keyword class-name "<init>")
                                 ~@ctor-types] :void]]
