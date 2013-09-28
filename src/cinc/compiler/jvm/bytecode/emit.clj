@@ -527,15 +527,15 @@
      ~@(emit then frame)]
 
    (= tag Long)
-   `[~@(emit (assoc test :cast Long/TYPE) frame)
-     ~@(emit (assoc comp :cast Long/TYPE) frame)
+   `[~@(emit (assoc test :tag Long/TYPE) frame)
+     ~@(emit (assoc comp :tag Long/TYPE) frame)
      [:if-cmp :long :NE ~default-label]
      ~@(emit then frame)]
 
    (#{Integer Short Byte} tag)
    `[~@(when (not (zero? mask))
-         `[~@(emit (assoc test :cast Long/TYPE) frame)
-           ~@(emit (assoc comp :cast Long/TYPE) frame)
+         `[~@(emit (assoc test :tag Long/TYPE) frame)
+           ~@(emit (assoc comp :tag Long/TYPE) frame)
            [:if-cmp :long :NE ~default-label]])
      ~@(emit then frame)]
 

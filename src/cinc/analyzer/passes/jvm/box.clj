@@ -75,6 +75,12 @@
     (update-in ast [:ret] -box)
     ast))
 
+(defmethod box :quote
+  [{:keys [tag expr] :as ast}]
+  (if (boxed? tag expr)
+    (update-in ast [:expr] -box)
+    ast))
+
 (defmethod box :keyword-invoke
   [{:keys [args] :as ast}]
   (assoc ast :args (mapv -box args)))
@@ -116,6 +122,15 @@
            {:test test
             :then then
             :else else})))
+
+(defmethod box :case
+  [{:keys [tag default tests thens] :as ast}]
+  (if (u/primitive? tag)
+    ast
+    (-> ast
+      (assoc-in [:tests] (mapv (fn [t] (update-in t [:test] -box)) tests))
+      (assoc-in [:thens] (mapv (fn [t] (update-in t [:then] -box)) thens))
+      (update-in [:default] -box))))
 
 (defmethod box :try
   [ast]
