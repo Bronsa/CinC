@@ -703,17 +703,22 @@
                       ~name])]) exprs loop-locals)
     [:go-to ~loop-label]])
 
-;; (defn prim-or-obj [tag]
-;;   (if (and tag (primitive? tag)) ;; should be only long/double
-;;     tag
-;;     :java.lang.Object))
+(defn prim-or-obj [tag]
+  (if (and tag (primitive? tag))
+    tag
+    java.lang.Object))
 
 ;; handle invokePrim
 (defmethod -emit :fn-method
-  [{:keys [params tag fixed-arity variadic? body env]} frame]
-  (let [method-name (if variadic? :doInvoke :invoke)
+  [{:keys [params tag  fixed-arity variadic? body env]}
+   {:keys [class] :as frame}]
+  (let [arg-tags (mapv (comp prim-or-obj :tag) params)
         ;; return-type (prim-or-obj tag)
-        arg-types (repeat (count params) :java.lang.Object)
+        primitive? (some primitive? arg-tags)
+
+        method-name (if variadic? :doInvoke (if primitive? :invokePrim :invoke))
+
+        ;; arg-types
         [loop-label end-label] (repeatedly label)
 
         code
@@ -731,10 +736,24 @@
           [:return-value]
           [:end-method]]]
 
-    [{:op     :method
-      :attr   #{:public}
-      :method [(into [method-name] arg-types) :java.lang.Object]
-      :code   code}]))
+    `[~{:op     :method
+        :attr   #{:public}
+        :method [(into [method-name] arg-tags) :java.lang.Object]
+        :code   code}
+      ~@(when primitive?
+          [{:op :method
+             :attr #{:public}
+             :method [(into [:invoke] (repeat (count params) :java.lang.Object))
+                      :java.lang.Object]
+             :code `[[:start-method]
+                     [:load-this]
+                     ~@(mapcat (fn [{:keys [tag]} id]
+                                 `[~[:load-arg id]
+                                   ~@(emit-cast Object tag)])
+                               params (range))
+                     ~[:invoke-virtual (into [(keyword class "invokePrim")] arg-tags) :java.lang.Object]
+                     [:return-value]
+                     [:end-method]]}])]))
 
 ;; addAnnotations
 (defmethod -emit :method
@@ -798,7 +817,8 @@
 
     (= :arg local)
     `[[:load-arg ~arg-id]
-      ~@(when to-clear?
+      ~@(when (and to-clear?
+                   (not (primitive? bind-tag)))
           [[:insn :ACONST_NULL]
            [:store-arg arg-id]])]
 

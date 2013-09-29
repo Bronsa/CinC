@@ -20,11 +20,14 @@
 
 (defmethod -infer-tag :local
   [{:keys [local atom] :as ast}]
-  (merge @atom
-         ast
-         {:bind-tag (if (= :arg local)
-                      Object
-                      (:tag @atom))}))
+  (let [tag (:tag @atom)]
+   (merge @atom
+          ast
+          {:bind-tag (if (= :arg local)
+                       (if (u/primitive? tag)
+                         tag
+                         Object)
+                       tag)})))
 
 (defmethod -infer-tag :var
   [{:keys [var] :as ast}]
