@@ -219,11 +219,10 @@
   (assoc ast :class-name (u/maybe-class class-name)))
 
 (defmethod -validate :method
-  [{:keys [name class interfaces tag params fixed-arity] :as ast}]
+  [{:keys [name class interfaces methods tag params fixed-arity] :as ast}]
   (if interfaces
-    (let [methods (seq (filter identity
-                               (mapcat #(u/instance-methods % name fixed-arity) interfaces)))
-          tags (mapv :tag params)]
+    (let [tags (mapv :tag params)
+          methods-set (set (mapv (fn [x] (dissoc x :declaring-class :flags)) methods))]
       (if-let [[m & rest :as matches]
                (try-best-match tags
                                (seq (filter (partial tag-match? tags) methods)))]
@@ -234,10 +233,12 @@
                 i-tag    (u/maybe-class (:declaring-class m))
                 arg-tags (mapv u/maybe-class (:parameter-types m))
                 args     (mapv (fn [arg tag] (assoc arg :tag tag)) params arg-tags)]
-            (assoc (dissoc ast :interfaces)
-              :bridges   (filter (fn [{:keys [flags]}]
-                                   (:bridge flags))
-                                 (u/instance-methods (u/maybe-class class) name fixed-arity))
+            (assoc (dissoc ast :interfaces :methods)
+              :bridges   (filter (fn [{:keys [return-type]}]
+                                   (.isAssignableFrom (u/maybe-class return-type)
+                                                      ret-tag))
+                                 (disj methods-set
+                                       (dissoc m :declaring-class :flags)))
               :methods methods
               :interface i-tag
               :tag       ret-tag

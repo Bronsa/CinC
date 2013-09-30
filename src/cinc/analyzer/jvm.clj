@@ -137,7 +137,6 @@
         method (analyze-fn-method meth env)]
     (assoc (dissoc method :variadic?)
       :op       :method
-      :class    (:class env)
       :form     form
       :this     this-expr
       :name     (symbol (clojure.core/name name))
@@ -155,9 +154,8 @@
         name (gensym "reify__")
         class-name (symbol (str (namespace-munge *ns*) "$" name))
         menv (assoc env :this class-name)
-        methods (mapv #(assoc (analyze-method-impls % menv)
-                         :interfaces interfaces
-                         :class class-name) methods)]
+        methods (mapv #(assoc (analyze-method-impls % menv) :interfaces interfaces)
+                      methods)]
 
     (-deftype name class-name [] interfaces)
 
@@ -189,9 +187,8 @@
                :context :expr
                :locals (zipmap fields fields-expr)
                :this class-name)
-        methods (mapv #(assoc (analyze-method-impls % menv)
-                         :interfaces interfaces
-                         :class class-name) methods)]
+        methods (mapv #(assoc (analyze-method-impls % menv) :interfaces interfaces)
+                      methods)]
 
     (-deftype name class-name fields interfaces)
 
@@ -238,6 +235,28 @@
      :skip-check? skip-check?
      :children    [:test :tests :thens :default]}))
 
+(defn add-methods
+  [{:keys [op methods interfaces] :as ast}]
+  (if (#{:reify :deftype} op)
+    (let [all-methods
+          (into #{}
+                (mapcat (fn [class]
+                          (mapv (fn [method]
+                                  (dissoc method :exception-types))
+                                (remove (fn [{:keys [flags return-type]}]
+                                          (or (some #{:static :final} flags)
+                                              (not-any? #{:public :protected} flags)
+                                              (not return-type)))
+                                        (:members (type-reflect class :ancestors true)))))
+                        (conj interfaces Object)))]
+      (assoc ast :methods (mapv (fn [{:keys [name params] :as ast}]
+                                  (let [argc (count params)]
+                                   (assoc ast :methods
+                                          (filter #(and (= name (:name %))
+                                                        (= argc (count (:parameter-types %))))
+                                                  all-methods)))) methods)))
+    ast))
+
 (defn analyze
   "Given an environment, a map containing
    -  :locals (mapping of names to lexical bindings),
@@ -257,6 +276,7 @@
                 annotate-branch
                 source-info
                 elide-meta
+                add-methods
                 ((fn [ast]
                    (when (:case-test ast)
                      (swap! (:atom ast) assoc :case-test true))
