@@ -717,10 +717,10 @@
 
 ;; handle invokePrim
 (defmethod -emit :fn-method
-  [{:keys [params tag  fixed-arity variadic? body env]}
+  [{:keys [params tag fixed-arity variadic? body env]}
    {:keys [class] :as frame}]
   (let [arg-tags (mapv (comp prim-or-obj :tag) params)
-        ;; return-type (prim-or-obj tag)
+        return-type (prim-or-obj tag)
         primitive? (some primitive? arg-tags)
 
         method-name (if variadic? :doInvoke (if primitive? :invokePrim :invoke))
@@ -745,7 +745,7 @@
 
     `[~{:op     :method
         :attr   #{:public}
-        :method [(into [method-name] arg-tags) :java.lang.Object]
+        :method [(into [method-name] arg-tags) return-type]
         :code   code}
       ~@(when primitive?
           [{:op :method
@@ -758,7 +758,8 @@
                                  `[~[:load-arg id]
                                    ~@(emit-cast Object tag)])
                                params (range))
-                     ~[:invoke-virtual (into [(keyword class "invokePrim")] arg-tags) :java.lang.Object]
+                     ~[:invoke-virtual (into [(keyword class "invokePrim")] arg-tags) return-type]
+                     ~@(emit-cast return-type Object)
                      [:return-value]
                      [:end-method]]}])]))
 
@@ -810,39 +811,37 @@
   [{:keys [to-clear? local name tag bind-tag arg-id]}
    {:keys [closed-overs class] :as frame}]
   (let [to-clear? (and to-clear?
-                       (not (primitive? tag)))]
-   (cond
+                       (not (primitive? bind-tag)))]
+    (println bind-tag)
+    (cond
 
-    (closed-overs name)
-    `[[:load-this]
-      ~[:get-field class name bind-tag]
-      ~@(when (and to-clear?
-                   (not (primitive? bind-tag)))
-          [[:load-this]
-           [:insn :ACONST_NULL]
-           [:put-field class name bind-tag]])]
+     (closed-overs name)
+     `[[:load-this]
+       ~[:get-field class name bind-tag]
+       ~@(when to-clear?
+           [[:load-this]
+            [:insn :ACONST_NULL]
+            [:put-field class name bind-tag]])]
 
-    (= :arg local)
-    `[[:load-arg ~arg-id]
-      ~@(when (and to-clear?
-                   (not (primitive? bind-tag)))
-          [[:insn :ACONST_NULL]
-           [:store-arg arg-id]])]
+     (= :arg local)
+     `[[:load-arg ~arg-id]
+       ~@(when to-clear?
+           [[:insn :ACONST_NULL]
+            [:store-arg arg-id]])]
 
-    (= :fn local)
-    [[:var-insn :clojure.lang.AFunction/ILOAD 0]]
+     (= :fn local)
+     [[:var-insn :clojure.lang.AFunction/ILOAD 0]]
 
-    (= :this local)
-    [[:var-insn :clojure.lang.Object/ILOAD 0]]
+     (= :this local)
+     [[:var-insn :clojure.lang.Object/ILOAD 0]]
 
-    :else
-    `[~[:var-insn (keyword (if bind-tag (.getName ^Class bind-tag)
-                               "java.lang.Object") "ILOAD") name]
-      ~@(when (and to-clear?
-                   (not (primitive? bind-tag)))
-          [[:insn :ACONST_NULL]
-           [:var-insn (keyword (if bind-tag (.getName ^Class bind-tag)
-                                   "java.lang.Object") "ISTORE") name]])])))
+     :else
+     `[~[:var-insn (keyword (if bind-tag (.getName ^Class bind-tag)
+                                "java.lang.Object") "ILOAD") name]
+       ~@(when to-clear?
+           [[:insn :ACONST_NULL]
+            [:var-insn (keyword (if bind-tag (.getName ^Class bind-tag)
+                                    "java.lang.Object") "ISTORE") name]])])))
 
 (defmulti emit-value (fn [type value] type))
 

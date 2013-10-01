@@ -20,7 +20,7 @@
 
 (defmethod -infer-tag :local
   [{:keys [local atom] :as ast}]
-  (let [tag (:tag @atom)]
+  (let [tag (u/maybe-class (:tag @atom))]
    (merge @atom
           ast
           {:bind-tag (if (= :arg local)

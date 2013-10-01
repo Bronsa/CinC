@@ -104,8 +104,10 @@
     ast))
 
 (defmethod box :fn-method
-  [ast]
-  (-box (update-in ast [:body] -box)))
+  [{:keys [tag] :as  ast}]
+  (if (u/primitive? tag)
+    ast
+    (-box (update-in ast [:body] -box))))
 
 (defmethod box :if
   [{:keys [test then else tag] :as ast}]
