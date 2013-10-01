@@ -4,7 +4,7 @@
             [cinc.analyzer.jvm.utils :refer [primitive? numeric? box] :as j.u]
             [clojure.string :as s]
             [cinc.compiler.jvm.bytecode.transform :as t]
-            [cinc.compiler.jvm.bytecode.intrinsics :refer [intrinsic]]))
+            [cinc.compiler.jvm.bytecode.intrinsics :refer [intrinsic intrinsic-predicate]]))
 
 (defmulti -emit (fn [{:keys [op]} _] op))
 (defmulti -emit-set! (fn [{:keys [op]} _] op))
@@ -373,19 +373,23 @@
       ~@(emit-as-array args frame)
       [:invoke-static [:clojure.lang.Reflector/invokeCostructor :java.lang.Class :objects] :java.lang.Object]]))
 
-(defn emit-intrinsic [^Class class method args]
+(defn emit-intrinsic [{:keys [args method ^Class class false-label]}]
   (let [args (mapv (fn [{:keys [cast tag]}] (or cast tag)) args)
         m    (str (.getMethod class (name method) (into-array Class args)))]
-    (when-let [ops (intrinsic m)]
-      (mapv (fn [op] [:insn op]) ops))))
+    (if false-label
+      (when-let [ops (intrinsic-predicate m)]
+        (conj (mapv (fn [op] [:insn op]) (butlast ops))
+              [:jump-insn (last ops) false-label]))
+      (when-let [ops (intrinsic m)]
+        (mapv (fn [op] [:insn op]) ops)))))
 
 (defmethod -emit :static-call
-  [{:keys [env ret-tag validated? args method ^Class class]} frame]
+  [{:keys [env ret-tag validated? args method ^Class class false-label] :as ast} frame]
   (if validated?
     `[~@(emit-line-number env)
       ~@(mapcat #(emit % frame) args)
       ~@(or
-         (emit-intrinsic class method args)
+         (emit-intrinsic ast)
          `[[:invoke-static [~(keyword (.getName class) (str method))
                             ~@(mapv :tag args)] ~ret-tag]])]
     `[[:push ~(.getName class)]
@@ -434,16 +438,19 @@
 
 (defmethod -emit :if
   [{:keys [test then else env]} frame]
-  (let [[null-label false-label end-label] (repeatedly label)]
+  (let [[null-label false-label end-label] (repeatedly label)
+        test-expr (emit (assoc test :false-label false-label) frame)]
     `^:container
     [~@(emit-line-number env)
-     ~@(emit test frame)
-     ~@(if (not= (:tag test) Boolean/TYPE)
-         [[:dup]
-          [:if-null null-label]
-          [:get-static :java.lang.Boolean/FALSE :java.lang.Boolean]
-          [:jump-insn :IF_ACMPEQ false-label]]
-         [[:if-z-cmp :EQ false-label]])
+     ~@test-expr
+     ~@(when (not (and (= :static-call (:op test))
+                     (= :jump-insn (first (last test-expr)))))
+         (if (not= (:tag test) Boolean/TYPE)
+           [[:dup]
+            [:if-null null-label]
+            [:get-static :java.lang.Boolean/FALSE :java.lang.Boolean]
+            [:jump-insn :IF_ACMPEQ false-label]]
+           [[:if-z-cmp :EQ false-label]]))
      ~@(emit then frame)
      [:go-to ~end-label]
      [:mark ~null-label]

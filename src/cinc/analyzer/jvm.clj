@@ -17,6 +17,8 @@
             [cinc.analyzer.passes.uniquify :refer [uniquify-locals]]
             [cinc.analyzer.passes.jvm.box :refer [box]]
             [cinc.analyzer.passes.jvm.annotate-branch :refer [annotate-branch]]
+            [cinc.analyzer.passes.jvm.annotate-methods :refer [annotate-methods]]
+            [cinc.analyzer.passes.jvm.fix-case-test :refer [fix-case-test]]
             [cinc.analyzer.passes.jvm.clear-locals :refer [clear-locals]]
             [cinc.analyzer.passes.jvm.validate :refer [validate]]
             [cinc.analyzer.passes.jvm.infer-tag :refer [infer-tag]]
@@ -137,7 +139,6 @@
         method (analyze-fn-method meth env)]
     (assoc (dissoc method :variadic?)
       :op       :method
-      :class    (:class env)
       :form     form
       :this     this-expr
       :name     (symbol (clojure.core/name name))
@@ -155,9 +156,8 @@
         name (gensym "reify__")
         class-name (symbol (str (namespace-munge *ns*) "$" name))
         menv (assoc env :this class-name)
-        methods (mapv #(assoc (analyze-method-impls % menv)
-                         :interfaces interfaces
-                         :class class-name) methods)]
+        methods (mapv #(assoc (analyze-method-impls % menv) :interfaces interfaces)
+                      methods)]
 
     (-deftype name class-name [] interfaces)
 
@@ -189,9 +189,8 @@
                :context :expr
                :locals (zipmap fields fields-expr)
                :this class-name)
-        methods (mapv #(assoc (analyze-method-impls % menv)
-                         :interfaces interfaces
-                         :class class-name) methods)]
+        methods (mapv #(assoc (analyze-method-impls % menv) :interfaces interfaces)
+                      methods)]
 
     (-deftype name class-name fields interfaces)
 
@@ -257,10 +256,8 @@
                 annotate-branch
                 source-info
                 elide-meta
-                ((fn [ast]
-                   (when (:case-test ast)
-                     (swap! (:atom ast) assoc :case-test true))
-                   ast))))
+                annotate-methods
+                fix-case-test))
             constant-lift)
 
       ((fn analyze [ast]
