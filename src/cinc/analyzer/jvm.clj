@@ -17,6 +17,8 @@
             [cinc.analyzer.passes.uniquify :refer [uniquify-locals]]
             [cinc.analyzer.passes.jvm.box :refer [box]]
             [cinc.analyzer.passes.jvm.annotate-branch :refer [annotate-branch]]
+            [cinc.analyzer.passes.jvm.annotate-methods :refer [annotate-methods]]
+            [cinc.analyzer.passes.jvm.fix-case-test :refer [fix-case-test]]
             [cinc.analyzer.passes.jvm.clear-locals :refer [clear-locals]]
             [cinc.analyzer.passes.jvm.validate :refer [validate]]
             [cinc.analyzer.passes.jvm.infer-tag :refer [infer-tag]]
@@ -235,28 +237,6 @@
      :skip-check? skip-check?
      :children    [:test :tests :thens :default]}))
 
-(defn add-methods
-  [{:keys [op methods interfaces] :as ast}]
-  (if (#{:reify :deftype} op)
-    (let [all-methods
-          (into #{}
-                (mapcat (fn [class]
-                          (mapv (fn [method]
-                                  (dissoc method :exception-types))
-                                (remove (fn [{:keys [flags return-type]}]
-                                          (or (some #{:static :final} flags)
-                                              (not-any? #{:public :protected} flags)
-                                              (not return-type)))
-                                        (:members (type-reflect class :ancestors true)))))
-                        (conj interfaces Object)))]
-      (assoc ast :methods (mapv (fn [{:keys [name params] :as ast}]
-                                  (let [argc (count params)]
-                                   (assoc ast :methods
-                                          (filter #(and (= name (:name %))
-                                                        (= argc (count (:parameter-types %))))
-                                                  all-methods)))) methods)))
-    ast))
-
 (defn analyze
   "Given an environment, a map containing
    -  :locals (mapping of names to lexical bindings),
@@ -276,11 +256,8 @@
                 annotate-branch
                 source-info
                 elide-meta
-                add-methods
-                ((fn [ast]
-                   (when (:case-test ast)
-                     (swap! (:atom ast) assoc :case-test true))
-                   ast))))
+                annotate-methods
+                fix-case-test))
             constant-lift)
 
       ((fn analyze [ast]
