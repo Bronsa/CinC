@@ -21,7 +21,7 @@ Note that some passes remove or add new nodes to the AST.
 
 The bytecode emitter (`cinc.compiler.jvm.bytecode/eval`) takes in an expression, gets the AST from its analysis and emits the corresponing bytecode.
 
-How this process works is documented in [emitter](doc/emitter.md)
+How this process works is documented in [emit](doc/emit.md)
 
 # What's not working
 
