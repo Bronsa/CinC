@@ -1,7 +1,7 @@
 (ns cinc.compiler.jvm.bytecode.emit
   (:refer-clojure :exclude [cast])
   (:require [cinc.analyzer.utils :as u]
-            [cinc.analyzer.jvm.utils :refer [primitive? numeric? box] :as j.u]
+            [cinc.analyzer.jvm.utils :refer [primitive? numeric? box prim-or-obj] :as j.u]
             [clojure.string :as s]
             [cinc.compiler.jvm.bytecode.transform :as t]
             [cinc.compiler.jvm.bytecode.intrinsics :refer [intrinsic intrinsic-predicate]]))
@@ -470,9 +470,12 @@
 
 (defmethod -emit :invoke
   [{:keys [fn args env]} frame]
-  (if (and (= :var (:op fn))
-           (u/protocol-node? (:var fn)))
-    (let [[on-label call-label end-label] (repeatedly label)
+  `[~@(emit fn frame)
+    ~@(emit-args-and-invoke args frame)])
+
+(defmethod -emit :protocol-invoke
+  [{:keys [fn args env]} frame]
+  (let [[on-label call-label end-label] (repeatedly label)
           v (:var fn)
           [target & args] args
           id (:id fn)
@@ -510,10 +513,15 @@
                                       (munge (str (:name fn))))
                             ~@(repeat (count args) :java.lang.Object)] :java.lang.Object]
 
-        [:mark ~end-label]])
+        [:mark ~end-label]]))
 
-    `[~@(emit fn frame)
-      ~@(emit-args-and-invoke args frame)]))
+(defmethod -emit :prim-invoke
+  [{:keys [fn args ^Class prim-interface arg-tags ret-tag]} frame]
+  `[~@(emit fn frame)
+    [:check-cast ~prim-interface]
+    ~@(mapcat #(emit % frame) args)
+    [:invoke-interface [~(keyword (.getName prim-interface) "invokePrim")
+                        ~@arg-tags] ~ret-tag]])
 
 (defn emit-shift-mask
   [{:keys [shift mask]}]
@@ -710,20 +718,21 @@
                       ~name])]) exprs loop-locals)
     [:go-to ~loop-label]])
 
-(defn prim-or-obj [tag]
-  (if (and tag (primitive? tag))
-    tag
-    java.lang.Object))
-
-;; handle invokePrim
 (defmethod -emit :fn-method
   [{:keys [params tag fixed-arity variadic? body env]}
    {:keys [class] :as frame}]
-  (let [arg-tags (mapv (comp prim-or-obj :tag) params)
-        return-type (prim-or-obj tag)
-        primitive? (some primitive? arg-tags)
+  (let [arg-tags               (mapv (comp prim-or-obj :tag) params)
+        return-type            (prim-or-obj tag)
+        tags                   (conj arg-tags return-type)
+        prim-interface         (j.u/prim-interface tags)
 
-        method-name (if variadic? :doInvoke (if primitive? :invokePrim :invoke))
+        primitive?             (some primitive? tags)
+
+        method-name            (cond
+                                variadic? :doInvoke
+                                primitive? :invokePrim
+                                :else
+                                :invoke)
 
         ;; arg-types
         [loop-label end-label] (repeatedly label)
@@ -743,25 +752,28 @@
           [:return-value]
           [:end-method]]]
 
-    `[~{:op     :method
-        :attr   #{:public}
-        :method [(into [method-name] arg-tags) return-type]
-        :code   code}
-      ~@(when primitive?
-          [{:op :method
-             :attr #{:public}
-             :method [(into [:invoke] (repeat (count params) :java.lang.Object))
-                      :java.lang.Object]
-             :code `[[:start-method]
-                     [:load-this]
-                     ~@(mapcat (fn [{:keys [tag]} id]
-                                 `[~[:load-arg id]
-                                   ~@(emit-cast Object tag)])
-                               params (range))
-                     ~[:invoke-virtual (into [(keyword class "invokePrim")] arg-tags) return-type]
-                     ~@(emit-cast return-type Object)
-                     [:return-value]
-                     [:end-method]]}])]))
+    ;; should emit typed only when there's an interface, otherwise it's useless
+
+      `[~{:op     :method
+          :attr   #{:public}
+          :method [(into [method-name] arg-tags) return-type]
+          :code   code}
+        ~@(when primitive?
+            [{:op        :method
+              :attr      #{:public}
+              :interface prim-interface
+              :method    [(into [:invoke] (repeat (count params) :java.lang.Object))
+                          :java.lang.Object]
+              :code      `[[:start-method]
+                           [:load-this]
+                           ~@(mapcat (fn [{:keys [tag]} id]
+                                       `[~[:load-arg id]
+                                         ~@(emit-cast Object tag)])
+                                     params (range))
+                           ~[:invoke-virtual (into [(keyword class "invokePrim")] arg-tags) return-type]
+                           ~@(emit-cast return-type Object)
+                           [:return-value]
+                           [:end-method]]}])]))
 
 ;; addAnnotations
 (defmethod -emit :method
@@ -812,7 +824,6 @@
    {:keys [closed-overs class] :as frame}]
   (let [to-clear? (and to-clear?
                        (not (primitive? bind-tag)))]
-    (println bind-tag)
     (cond
 
      (closed-overs name)
