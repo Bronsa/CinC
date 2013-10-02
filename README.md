@@ -36,8 +36,6 @@ There may still be a couple of issues around primitive boxing/unboxing.
 
 # License
 
-Copyright © 2012 Aaron Cohen
+Copyright © Nicola Mometto, Rich Hickey & contributors.
 
-Copyright © 2013 Nicola Mometto
-
-Distributed under the Eclipse Public License, the same as Clojure.
+Licensed under the EPL (see the file epl.html).
