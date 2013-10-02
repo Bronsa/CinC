@@ -1,7 +1,8 @@
 (ns cinc.compiler.jvm.bytecode
   (:refer-clojure :exclude [eval])
   (:require [cinc.analyzer.jvm :as a]
-            [cinc.compiler.jvm.bytecode.emit :as e]))
+            [cinc.compiler.jvm.bytecode.emit :as e])
+  (:import clojure.lang.IFn))
 
 (defn eval
   ([form] (eval form false))
@@ -10,4 +11,4 @@
                      {:debug? debug?
                       :class-loader (clojure.lang.RT/makeClassLoader)})
            {:keys [class]} (meta r)]
-       ((.newInstance ^Class class)))))
+       (.invoke ^IFn (.newInstance ^Class class)))))

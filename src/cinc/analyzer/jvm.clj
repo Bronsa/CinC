@@ -268,14 +268,14 @@
                annotate-literal-tag)) ;; not necesary, select on v-l-l
            (prewalk
             (comp box
+               classify-invoke
                (validate-loop-locals analyze)))))) ;; empty binding atom
 
       (prewalk
        (comp cleanup2
           (collect :constants
                    :callsites
-                   :closed-overs)
-          classify-invoke))
+                   :closed-overs)))
 
       clear-locals)))
 

@@ -184,13 +184,15 @@
              {:arglists arglists}))))
 
 (defmethod -infer-tag :fn-method
-  [{:keys [form body params] :as ast}]
-  (let [tag (or (:tag (meta (first form)))
-                (:tag (meta (second form)))
-                (:tag body))]
+  [{:keys [form body params local] :as ast}]
+  (let [annotated-tag (or (:tag (meta (first form)))
+                          (:tag (meta (:form local))))
+        body-tag (:tag body)
+        tag (or annotated-tag body-tag)]
     (merge ast
            (when tag
-             {:tag tag})
+             {:tag tag
+              :ret-tag (or body-tag tag)})
            {:arglist (with-meta (mapv :form params)
                        (when tag {:tag tag}))})))
 
@@ -212,9 +214,9 @@
                   (and (= :var (:op fn))
                        (:tag (meta (:var fn)))))]
       (merge ast
-             {:ret-tag Object}
              (when tag
-               {:tag tag})))
+               {:tag     tag
+                :ret-tag tag})))
     (if-let [tag (:return-tag fn)]
       (assoc ast :tag tag)
       ast)))
