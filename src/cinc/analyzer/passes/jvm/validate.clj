@@ -86,7 +86,6 @@
           tags (mapv :tag args)]
       (if-let [[ctor & rest] (->> (filter #(= (count (:parameter-types %)) argc)
                                           (u/members class c-name))
-                                  (filter (partial tag-match? tags))
                                   (try-best-match tags))]
         (if (empty? rest)
           (let [arg-tags (mapv u/maybe-class (:parameter-types ctor))
