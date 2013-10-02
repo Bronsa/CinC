@@ -20,6 +20,7 @@
             [cinc.analyzer.passes.jvm.annotate-methods :refer [annotate-methods]]
             [cinc.analyzer.passes.jvm.fix-case-test :refer [fix-case-test]]
             [cinc.analyzer.passes.jvm.clear-locals :refer [clear-locals]]
+            [cinc.analyzer.passes.jvm.classify-invoke :refer [classify-invoke]]
             [cinc.analyzer.passes.jvm.validate :refer [validate]]
             [cinc.analyzer.passes.jvm.infer-tag :refer [infer-tag]]
             [cinc.analyzer.passes.jvm.annotate-tag :refer [annotate-literal-tag annotate-binding-tag]]
@@ -267,6 +268,7 @@
                annotate-literal-tag)) ;; not necesary, select on v-l-l
            (prewalk
             (comp box
+               classify-invoke
                (validate-loop-locals analyze)))))) ;; empty binding atom
 
       (prewalk

@@ -158,3 +158,13 @@
 
 (defn instance-method [class method]
   (first (instance-methods class method 0)))
+
+(defn prim-or-obj [tag]
+  (if (and tag (primitive? tag))
+    tag
+    java.lang.Object))
+
+(defn prim-interface [tags]
+  (when (some primitive? tags)
+    (let [sig (apply str (mapv #(.toUpperCase (subs (.getName ^Class %) 0 1)) tags))]
+      (maybe-class (str "clojure.lang.IFn$" sig)))))

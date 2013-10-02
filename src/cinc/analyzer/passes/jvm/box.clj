@@ -104,8 +104,10 @@
     ast))
 
 (defmethod box :fn-method
-  [ast]
-  (-box (update-in ast [:body] -box)))
+  [{:keys [tag] :as  ast}]
+  (if (u/primitive? tag)
+    ast
+    (-box (update-in ast [:body] -box))))
 
 (defmethod box :if
   [{:keys [test then else tag] :as ast}]
@@ -140,8 +142,8 @@
 
 (defmethod box :invoke
   [{:keys [fn args] :as ast}]
-  ;; (if-not (and (#{:var :the-var} (:op fn))
-  ;;                (protocol-node? (:var fn))))
-  (assoc ast :args (mapv -box args)))
+  (assoc ast
+    :args (mapv -box args)
+    :ret-tag Object))
 
 (defmethod box :default [ast] ast)

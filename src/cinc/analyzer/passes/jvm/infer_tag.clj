@@ -20,11 +20,14 @@
 
 (defmethod -infer-tag :local
   [{:keys [local atom] :as ast}]
-  (merge @atom
-         ast
-         {:bind-tag (if (= :arg local)
-                      Object
-                      (:tag @atom))}))
+  (let [tag (u/maybe-class (:tag @atom))]
+   (merge @atom
+          ast
+          {:bind-tag (if (= :arg local)
+                       (if (u/primitive? tag)
+                         tag
+                         Object)
+                       tag)})))
 
 (defmethod -infer-tag :var
   [{:keys [var] :as ast}]
@@ -181,13 +184,15 @@
              {:arglists arglists}))))
 
 (defmethod -infer-tag :fn-method
-  [{:keys [form body params] :as ast}]
-  (let [tag (or (:tag (meta (first form)))
-                (:tag (meta (second form)))
-                (:tag body))]
+  [{:keys [form body params local] :as ast}]
+  (let [annotated-tag (or (:tag (meta (first form)))
+                          (:tag (meta (:form local))))
+        body-tag (:tag body)
+        tag (or annotated-tag body-tag)]
     (merge ast
            (when tag
-             {:tag tag})
+             {:tag tag
+              :ret-tag (or body-tag tag)})
            {:arglist (with-meta (mapv :form params)
                        (when tag {:tag tag}))})))
 
@@ -209,9 +214,9 @@
                   (and (= :var (:op fn))
                        (:tag (meta (:var fn)))))]
       (merge ast
-             {:ret-tag Object}
              (when tag
-               {:tag tag})))
+               {:tag     tag
+                :ret-tag tag})))
     (if-let [tag (:return-tag fn)]
       (assoc ast :tag tag)
       ast)))
