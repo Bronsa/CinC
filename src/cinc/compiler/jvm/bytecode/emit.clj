@@ -33,11 +33,12 @@
      [[:invoke-static [:clojure.lang.RT/box :boolean] :java.lang.Object]
       [:check-cast :java.lang.Boolean]])
     (when (primitive? box)
-      [[:invoke-static [(keyword "clojure.lang.RT"
-                                 (str (.getName ^Class box)
-                                      "Cast"))
-                        (if (primitive? tag) tag
-                            :java.lang.Object)] box]])))
+      (let [method (str (.getName ^Class box) "Cast")
+            tag (prim-or-obj tag)
+            method-sig (str (.getMethod clojure.lang.RT method (into-array Class [tag])))]
+        (if-let [ops (intrinsic method-sig)]
+          (mapv (fn [op] [:insn op]) ops)
+          [[:invoke-static [(keyword "clojure.lang.RT" method) tag] box]])))))
 
 (defn emit-cast [tag cast]
   (if (not (or (primitive? tag)
