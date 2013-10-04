@@ -51,29 +51,29 @@
   (every? identity (map u/convertible? arg-tags (:parameter-types meth))))
 
 (defn try-best-match [tags methods]
-  (let [exact-match? (fn [[x y]] (or (nil? y) (= (u/maybe-class x) (u/maybe-class y))))
-        filter-methods (fn [methods f] (seq (filter #(every? f (mapv list (:parameter-types %) tags)) methods)))
-        methods (or (filter-methods methods exact-match?) methods)]
-    (or
-     (seq
-      (filter #(reduce (fn [subsumes? m]
-                         (and subsumes?
-                              (or (= m %)
-                                  (and (= (:parameter-types %) (:parameter-types m))
-                                       (let [dc1 (:declaring-class %)
-                                             dc2 (:declaring-class m)]
-                                         (and (u/subsumes? dc1 dc2)
-                                              (or (not= dc1 dc2)
-                                                  (and (some #{:synthetic :bridge :abstract} (:flags m))
-                                                       (not-any? #{:synthetic :bridge :abstract} (:flags %)))))))
-                                  (and (not= (:parameter-types %) (:parameter-types m))
-                                       (every? (fn [[m1 m2 t]]
-                                            (if (nil? t)
-                                              (= Object (u/maybe-class m1))
-                                              (u/subsumes? m1 m2)))
-                                          (mapv list (:parameter-types %) (:parameter-types m) tags))))))
-                       true methods) methods))
-     methods)))
+  (let [o-tags (mapv #(or (u/maybe-class %) Object) tags)
+        exact-matches (seq (filter
+                            #(= o-tags (mapv u/maybe-class  (:parameter-types %))) methods))]
+    (if exact-matches
+      (if (next exact-matches)
+        [(reduce (fn [prev next]
+                   (if (.isAssignableFrom (u/maybe-class (:return-type prev))
+                                          (u/maybe-class (:return-type next)))
+                     next
+                     prev)) exact-matches)]
+        exact-matches)
+      (if-let [methods (seq (filter #(tag-match? tags %) methods))]
+        (reduce (fn [[prev & _ :as p] next]
+                  (if (or (not prev)
+                          (and (= (mapv u/maybe-class (:parameter-types prev))
+                                  (mapv u/maybe-class (:parameter-types next)))
+                               (.isAssignableFrom (u/maybe-class (:return-type prev))
+                                                  (u/maybe-class (:return-type next))))
+                          (some true? (mapv u/subsumes? (:parameter-types next)
+                                         (:parameter-types prev))))
+                    [next]
+                    (conj p next))) [] methods)
+        methods))))
 
 (defn validate-class
   [{:keys [maybe-class args] :as ast}]
@@ -112,7 +112,7 @@
         f (if (= :static type) u/static-methods u/instance-methods)
         tags (mapv :tag args)]
     (if-let [matching-methods (seq (f class method argc))]
-      (if-let [[m & rest :as matching] (try-best-match tags (filter (partial tag-match? tags) matching-methods))]
+      (if-let [[m & rest :as matching] (try-best-match tags matching-methods)]
         (if (empty? rest)
           (let [ret-tag  (u/maybe-class (:return-type m))
                 arg-tags (mapv u/maybe-class (:parameter-types m))
@@ -211,11 +211,8 @@
     (let [tags (mapv :tag params)
           methods-set (set (mapv (fn [x] (dissoc x :declaring-class :flags)) methods))]
       (if-let [[m & rest :as matches]
-               (try-best-match tags
-                               (seq (filter (partial tag-match? tags) methods)))]
-        (if (or (empty? rest)
-                (and (apply = (mapv :return-type matches))
-                     (apply = (mapv :parameter-types matches))))
+               (try-best-match tags methods)]
+        (if (empty? rest)
           (let [ret-tag  (u/maybe-class (:return-type m))
                 i-tag    (u/maybe-class (:declaring-class m))
                 arg-tags (mapv u/maybe-class (:parameter-types m))

@@ -107,19 +107,21 @@
 (defn subsumes? [c1 c2]
   (let [c1 (maybe-class c1)
         c2 (maybe-class c2)]
-    (or (= c1 c2)
-        (and (not (primitive? c1))
-             (primitive? c2))
-        (.isAssignableFrom c2 c1)
-        (and (primitive? c2)
-             (boolean ((convertible-primitives? c2) c1))))))
+    (and (not= c1 c2)
+         (or (and (not (primitive? c1))
+                  (primitive? c2))
+             (.isAssignableFrom c2 c1)))))
 
 (defn convertible? [from to]
-  (or (nil? from)
-      (let [c1 (maybe-class from)
-            c2 (maybe-class to)]
-        (or (subsumes? c1 c2)
-            (and (numeric? c1) (numeric? c2))))))
+  (let [c1 (maybe-class from)
+        c2 (maybe-class to)]
+    (if (nil? c1)
+      (not (primitive? c2))
+      (or
+       (= c1 c2)
+       (.isAssignableFrom c2 c1)
+       (and (primitive? c2)
+            ((convertible-primitives? c2) c1))))))
 
 (defn members [class member]
   (let [members (-> (maybe-class class)
