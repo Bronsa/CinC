@@ -546,6 +546,7 @@
         arglists (when-let [arglists (:arglists (meta sym))]
                    (second arglists)) ;; drop quote
         meta (merge (meta sym)
+                    (-source-info form env)
                     (when doc {:doc doc}))
         meta-expr (when meta (analyze meta
                                       (ctx env :expr)))

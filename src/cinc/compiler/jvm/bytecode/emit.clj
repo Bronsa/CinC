@@ -168,7 +168,7 @@
   (emit-var var frame))
 
 (defmethod -emit :def
-  [{:keys [var meta init]} frame]
+  [{:keys [var meta init env]} frame]
   `[~@(emit-var var frame)
     ~@(when (u/dynamic? var) ;; why not when macro?
         [[:push true]

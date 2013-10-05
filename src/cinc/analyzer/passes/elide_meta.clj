@@ -6,16 +6,15 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns cinc.analyzer.passes.elide-meta
-  (:require [cinc.analyzer :refer [analyze]]))
+(ns cinc.analyzer.passes.elide-meta)
 
 (def elides (set (:elide-meta *compiler-options*)))
 
 (defn dissoc-meta [{:keys [op form keys vals env] :as meta}]
   (let [form (apply dissoc form elides)]
     (if (= :const op)
-      (analyze (list 'quote form) env)
-      (let [new-meta (mapcat (fn [{:keys [form] :as k} v]
+      (assoc meta :form form)
+      (let [new-meta (mapv (fn [{:keys [form] :as k} v]
                                (when-not (elides form)
                                  [k v]))
                              keys vals)]
