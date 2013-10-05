@@ -16,7 +16,7 @@
          :reflector (reflect/->JavaReflector (RT/baseLoader))
          options))
 
-(def ^:private prims
+(def ^:private specials
   {"byte" Byte/TYPE
    "boolean" Boolean/TYPE
    "char" Character/TYPE
@@ -25,7 +25,8 @@
    "float" Float/TYPE
    "double" Double/TYPE
    "short" Short/TYPE
-   "void" Void/TYPE})
+   "void" Void/TYPE
+   "object" Object})
 
 (defmulti ^Class maybe-class class)
 
@@ -52,13 +53,16 @@
 
 (defmethod maybe-class Symbol [sym]
   (when-not (namespace sym)
-    (if (.endsWith (name sym) "<>")
-      (let [str (name sym)
-            base-type (maybe-class (subs str 0 (- (count str) 2)))]
-        (array-class base-type))
-      (if-let [ret (prims (name sym))]
-        ret
-        (maybe-class-from-string (str sym))))))
+    (let [sname (name sym)
+          snamec (count sname)]
+      (if-let [base-type (or (and (.endsWith sname "<>")
+                                  (maybe-class (subs sname 0 (- snamec 2))))
+                             (and (.endsWith sname "s")
+                                  (maybe-class (subs sname 0 (dec snamec)))))]
+        (array-class base-type)
+        (if-let [ret (specials sname)]
+          ret
+          (maybe-class-from-string sname))))))
 
 (defn primitive? [o]
   (let [c (maybe-class o)]
