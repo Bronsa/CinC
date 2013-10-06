@@ -9,11 +9,7 @@
 (ns clojure.tools.analyzer
   "Utilities for host-agnostic analysis of clojure forms"
   (:refer-clojure :exclude [macroexpand-1 macroexpand])
-  (:require [clojure.tools.analyzer.utils :refer :all]
-            [clojure.java.io :as io]
-            [clojure.tools.reader :as r]
-            [clojure.tools.reader.reader-types :as rt])
-  (:import (clojure.lang LazySeq Var)))
+  (:require [clojure.tools.analyzer.utils :refer :all]))
 
 (defmulti -analyze (fn [op form env & _] op))
 (defmulti parse (fn [[op & form] & rest] op))
@@ -22,9 +18,11 @@
   "Given an environment, a map containing
    -  :locals (mapping of names to lexical bindings),
    -  :context (one of :statement, :expr or :return
- and form, returns an expression object (a map containing at least :form, :op and :env keys)."
+ and form, returns an expression object (a map containing at least :form, :op and :env keys).
+   -  :namespaces
+   -  :ns"
   [form {:keys [context] :as env}]
-  (let [form (if (instance? LazySeq form)
+  (let [form (if (seq? form)
                (or (seq form) ())      ; we need to force evaluation in order to analyze
                form)]
     (cond
@@ -41,20 +39,8 @@
 
      :else            (-analyze :const  form env))))
 
-(defn analyze-file
-  ([file] (analyze-file file analyze))
-  ([file analyze]
-     (let [res (or (io/resource file) (io/as-url (io/as-file file)))]
-       (assert res (str "Can't find " file " in classpath"))
-       (binding [*file* (.getPath res)]
-         (with-open [r (io/input-stream res)]
-           (let [env {:context :statement :locals {}}
-                 pbr (rt/indexing-push-back-reader
-                      (rt/input-stream-push-back-reader r))]
-             (loop [r (r/read pbr false ::eof false) ret []]
-               (if-not (identical? ::eof r)
-                 (recur (r/read pbr false ::eof false) (conj ret (analyze r env)))
-                 ret))))))))
+(defn empty-env []
+  {:context :expr :locals {} :ns 'user :namespaces (atom {})})
 
 (defn analyze-in-env
   "Given an env returns a function that when called with an argument
@@ -146,17 +132,15 @@
        :else form))
     form))
 
-;; we only know about namespaces and vars, no class information available
-;; true macroexpansion will be host-dependent
 (defn ^:dynamic macroexpand-1 [form env]
   (if (seq? form)
     (let [op (first form)]
-      (if (specials op) ;; how do we handle host-specific specials? (e.g clojurescript ns)
+      (if (specials op)
         form
-        (let [v (maybe-var op)]
+        (let [v (maybe-var op env)]
           (if (and (not (-> env :locals (get op))) ;; locals cannot be macros
                    (:macro (meta v)))
-            (apply @v form env (rest form)) ; (m &form &env & args)
+            (apply v form env (rest form)) ; (m &form &env & args)
             (desugar-host-expr form)))))
     form))
 
@@ -177,10 +161,8 @@
                        :assignable? (boolean mutable)}
                       (when init
                         {:children [:init]}))
-               (if-let [^Var var (resolve-var sym)]
+               (if-let [var (resolve-var sym env)]
                  {:op          :var
-                  :name        (.sym var)
-                  :ns          (-> var .ns .name)
                   :assignable? (dynamic? var) ;; we cannot detect using thread-bound? without evaluating
                   :var         var}
                  (if-let [maybe-class (namespace sym)] ;; e.g. js/foo.bar or Long/MAX_VALUE
@@ -260,7 +242,7 @@
 
 (defmethod parse 'var
   [[_ var :as form] env]
-  (if-let [var (maybe-var var)]
+  (if-let [var (maybe-var var env)]
     {:op   :the-var
      :env  env
      :form form
@@ -529,7 +511,7 @@
            {:children `[~@(when n [:local]) :methods]})))
 
 (defmethod parse 'def
-  [[_ sym & expr :as form] env]
+  [[_ sym & expr :as form] {:keys [ns namespaces] :as env}]
   {:pre [(symbol? sym)
          (or (not (namespace sym))
              (= *ns* (the-ns (namespace sym))))]}
@@ -548,16 +530,20 @@
         meta (merge (meta sym)
                     (-source-info form env)
                     (when doc {:doc doc}))
+        sym (if arglists
+              (vary-meta sym assoc :arglists arglists)
+              sym)
+
         meta-expr (when meta (analyze meta
                                       (ctx env :expr)))
-        var (doto (intern *ns* sym)
-              (reset-meta! (merge meta
-                                  (when arglists
-                                    {:arglists arglists}))))
         args (when-let [[_ init] (find args :init)]
                {:init (analyze init (ctx env :expr))})
         children `[~@(when meta [:meta])
-                   ~@(when (:init args) [:init])]]
+                   ~@(when (:init args) [:init])]
+        var (create-var ns sym)]
+
+    (swap! namespaces assoc ns :mappings sym var)
+
     (merge {:op   :def
             :env  env
             :form form

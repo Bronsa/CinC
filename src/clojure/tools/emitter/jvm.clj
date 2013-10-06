@@ -15,7 +15,7 @@
 (defn eval
   ([form] (eval form false))
   ([form debug?]
-     (let [r (e/emit (a/analyze `(^:once fn* [] ~form) {:context :expr})
+     (let [r (e/emit (a/analyze `(^:once fn* [] ~form) (a/empty-env))
                      {:debug? debug?
                       :class-loader (clojure.lang.RT/makeClassLoader)})
            {:keys [class]} (meta r)]

@@ -39,6 +39,16 @@
   (into ana/specials
         '#{monitor-enter monitor-exit clojure.core/import* reify* deftype* case*}))
 
+(defn empty-env []
+  {:context :expr :locals {} :ns (ns-name *ns*)
+   :namespaces (atom
+                (into {} (mapv #(vector (ns-name %)
+                                        {:mappings (ns-map %)
+                                         :aliases  (reduce-kv (fn [a k v] (assoc a k (ns-name v)))
+                                                              {} (ns-aliases %))
+                                         :ns       (ns-name %)})
+                               (all-ns))))})
+
 (defn desugar-host-expr [form env]
   (cond
    (symbol? form)
@@ -87,7 +97,7 @@
     (let [op (first form)]
       (if (specials op)
         form
-        (let [v (maybe-var op)
+        (let [v (maybe-var op env)
               m (meta v)
               local? (-> env :locals (get op))
               macro? (and (not local?) (:macro m))
@@ -100,7 +110,7 @@
           (cond
 
            macro?
-           (apply @v form env (rest form)) ; (m &form &env & args)
+           (apply v form env (rest form)) ; (m &form &env & args)
 
            inline?
            (vary-meta (apply inline? args) merge m)
@@ -286,7 +296,3 @@
                    :closed-overs)))
 
       clear-locals)))
-
-(defn analyze-file
-  [file]
-  (ana/analyze-file file analyze))

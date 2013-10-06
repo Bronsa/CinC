@@ -66,37 +66,31 @@
 (defn protocol-node? [var]
   (boolean (:protocol (meta var))))
 
-(defn resolve-ns [ns]
-  (when ns
-    (or (find-ns ns)
-        ((ns-aliases *ns*) ns))))
+(defn resolve-ns [ns-sym {:keys [ns namespaces]}]
+  (when ns-sym
+    (or (:ns (@namespaces ns-sym))
+        (get (:aliases ns) ns-sym))))
 
-(defn resolve-var
-  ([sym] (resolve-var sym false))
-  ([sym allow-macro?]
-     (let [name (-> sym name symbol)
-           ns (when-let [ns (namespace sym)]
-                (symbol ns))
-           full-ns (resolve-ns ns)]
-       (when (or (not ns)
-                 (and ns full-ns))
-         (if-let [var (if full-ns
-                        ((ns-interns full-ns) name)
-                        ((ns-map *ns*) name))]
-           (when (var? var)
-             (let [var-ns (.ns ^Var var)]
-               #_(when (and (not= *ns* var-ns)
-                            (private? var))
-                   (throw (ex-info (str "var: " sym " is not public") {:var sym})))
-               (if (and (macro? var) (not allow-macro?))
-                 (throw (ex-info (str "can't take value of a macro: " var) {:var var}))
-                 var)))
-           (when full-ns
-             (throw (ex-info (str "no such var: " sym) {:var sym}))))))))
+(defn maybe-var [sym {:keys [ns namespaces] :as env}]
+  (when (symbol? sym)
+    (let [name (-> sym name symbol)
+          sym-ns (when-let [ns (namespace sym)]
+                   (symbol ns))
+          full-ns (resolve-ns sym-ns env)]
+      (when (or (not sym-ns) full-ns)
+        (if-let [var (-> (@namespaces (or full-ns ns)) :mappings (get name))]
+          (when (var? var)
+            var))))))
 
-(defn maybe-var [sym]
-  (try (resolve-var sym true)
-       (catch Exception _)))
+(defn resolve-var [sym env]
+  (or (maybe-var sym env)
+      (when (symbol? sym)
+       (when-let [ns (namespace sym)]
+         (when (resolve-ns (symbol ns) env)
+           (throw (ex-info (str "no such var: " sym) {:var sym})))))))
+
+(defn create-var [ns sym]
+  (intern ns sym))
 
 ;; should also use :variadic? and :max-fixed-arity
 (defn arglist-for-arity [fn argc]
