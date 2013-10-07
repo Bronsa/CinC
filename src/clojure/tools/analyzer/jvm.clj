@@ -119,6 +119,9 @@
            (desugar-host-expr form env)))))
     (desugar-host-expr form env)))
 
+(defn create-var [sym {:keys [ns]}]
+  (intern ns sym))
+
 (defmethod parse 'var
   [[_ var :as form] env]
   (if-let [var (maybe-var var env)]
@@ -271,7 +274,8 @@
    -  :context (one of :statement, :expr or :return
  and form, returns an expression object (a map containing at least :form, :op and :env keys)."
   [form env]
-  (binding [ana/macroexpand-1 macroexpand-1]
+  (binding [ana/macroexpand-1 macroexpand-1
+            ana/create-var create-var]
     (-> (-analyze form env)
 
       uniquify-locals

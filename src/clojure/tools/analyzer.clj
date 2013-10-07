@@ -48,6 +48,12 @@
   [env]
   (fn [form] (analyze form env)))
 
+;; platoform specific hooks
+(declare ^:dynamic macroexpand-1 ;[form env]
+         ^:dynamic create-var)   ;[sym env]
+
+
+
 (defn wrapping-meta [{:keys [form env] :as expr}]
   (let [meta (dissoc (meta form) :line :column :file)
         quoted? (::quoted meta)
@@ -113,37 +119,6 @@
      catch throw finally & def .
      let* letfn* loop* recur fn*})
 
-(defn desugar-host-expr [[op & expr :as form]]
-  (if (symbol? op)
-    (let [opname (name op)]
-      (cond
-
-       (= (first opname) \.)         ; (.foo bar ..)
-       (let [[target & args] expr
-             args (list* (symbol (subs opname 1)) args)]
-         (with-meta (list '. target (if (= 1 (count args)) ;; we don't know if (.foo bar) ia
-                                      (first args) args))  ;; a method call or a field access
-           (meta form)))
-
-       (= (last opname) \.) ;; (class. ..)
-       (with-meta (list* 'new (symbol (subs opname 0 (dec (count opname)))) expr)
-         (meta form))
-
-       :else form))
-    form))
-
-(defn ^:dynamic macroexpand-1 [form env]
-  (if (seq? form)
-    (let [op (first form)]
-      (if (specials op)
-        form
-        (let [v (maybe-var op env)]
-          (if (and (not (-> env :locals (get op))) ;; locals cannot be macros
-                   (:macro (meta v)))
-            (apply v form env (rest form)) ; (m &form &env & args)
-            (desugar-host-expr form)))))
-    form))
-
 (defn macroexpand
   [form env]
   (let [ex (macroexpand-1 form env)]
@@ -163,7 +138,7 @@
                         {:children [:init]}))
                (if-let [var (resolve-var sym env)]
                  {:op          :var
-                  :assignable? (dynamic? var) ;; we cannot detect using thread-bound? without evaluating
+                  :assignable? (dynamic? var)
                   :var         var}
                  (if-let [maybe-class (namespace sym)] ;; e.g. js/foo.bar or Long/MAX_VALUE
                    (let [maybe-class (symbol maybe-class)]
@@ -531,7 +506,7 @@
                {:init (analyze init (ctx env :expr))})
         children `[~@(when meta [:meta])
                    ~@(when (:init args) [:init])]
-        var (create-var ns sym)]
+        var (create-var sym env)]
 
     (swap! namespaces assoc ns :mappings sym var)
 

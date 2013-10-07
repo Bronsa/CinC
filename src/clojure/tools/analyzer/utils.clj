@@ -62,7 +62,8 @@
   (:const (meta var)))
 (defn dynamic? [var]
   (or (:dynamic (meta var))
-      (.isDynamic ^Var var)))
+      (when (var? var)
+        (.isDynamic ^Var var))))
 (defn protocol-node? [var]
   (boolean (:protocol (meta var))))
 
@@ -88,9 +89,6 @@
        (when-let [ns (namespace sym)]
          (when (resolve-ns (symbol ns) env)
            (throw (ex-info (str "no such var: " sym) {:var sym})))))))
-
-(defn create-var [ns sym]
-  (intern ns sym))
 
 ;; should also use :variadic? and :max-fixed-arity
 (defn arglist-for-arity [fn argc]
