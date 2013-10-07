@@ -37,7 +37,7 @@
 
 (def specials
   (into ana/specials
-        '#{monitor-enter monitor-exit clojure.core/import* reify* deftype* case*}))
+        '#{var monitor-enter monitor-exit clojure.core/import* reify* deftype* case*}))
 
 (defn empty-env []
   {:context :expr :locals {} :ns (ns-name *ns*)
@@ -118,6 +118,15 @@
            :else
            (desugar-host-expr form env)))))
     (desugar-host-expr form env)))
+
+(defmethod parse 'var
+  [[_ var :as form] env]
+  (if-let [var (maybe-var var env)]
+    {:op   :the-var
+     :env  env
+     :form form
+     :var  var}
+    (throw (ex-info (str "var not found: " var) {:var var}))))
 
 (defmethod parse 'monitor-enter
   [[_ target :as form] env]

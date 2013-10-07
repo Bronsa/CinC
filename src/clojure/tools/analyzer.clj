@@ -109,7 +109,7 @@
       :children [:items]})))
 
 (def specials
-  '#{do if new var quote set! try
+  '#{do if new quote set! try
      catch throw finally & def .
      let* letfn* loop* recur fn*})
 
@@ -239,15 +239,6 @@
      :maybe-class class
      :args        args
      :children    [:args]}))
-
-(defmethod parse 'var
-  [[_ var :as form] env]
-  (if-let [var (maybe-var var env)]
-    {:op   :the-var
-     :env  env
-     :form form
-     :var  var}
-    (throw (ex-info (str "var not found: " var) {:var var}))))
 
 (defmethod parse 'quote
   [[_ expr :as form] env]
